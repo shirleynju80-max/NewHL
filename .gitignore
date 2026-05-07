@@ -1,0 +1,14 @@
+node_modules
+dist
+.DS_Store
+*.local
+.env
+.env.*
+
+# 真实行情/参数 CSV 勿提交（保留 public/data/README.txt 即可）
+public/data/*.csv
+# bars.csv 可由 GitHub Actions（TickFlow）同步后纳入版本库；其余 CSV 仍建议仅本地
+!public/data/bars.csv
+
+# 本地 Python 测 TickFlow 等
+scripts/.venv/
