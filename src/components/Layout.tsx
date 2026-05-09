@@ -3,7 +3,8 @@ import { useDataSource } from "../context/DataSourceContext";
 
 const nav = [
   { to: "/", label: "总览" },
-  { to: "/registry", label: "参数注册" },
+  { to: "/monitor", label: "监控汇总" },
+  { to: "/registry", label: "参数回测与注册" },
 ];
 
 export function Layout() {

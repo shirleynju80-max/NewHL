@@ -2,18 +2,25 @@
 """
 将 TickFlow 日 K 合并进 public/data/bars.csv（表头：etf_code,date,open,high,low,close）。
 
+默认 **仅增量**：对每个标的只写入「CSV 中该标的已有最大 date **之后**」的 TickFlow 日 K，
+不覆盖历史行（与东方财富主数据并存）。新标的在 bars 中无记录时，则首次写入 TickFlow 返回的全部根数。
+
+传 --full-refresh 时恢复「重叠日期以 TickFlow 覆盖」的旧行为（慎用：早期口径可能与东财不一致）。
+
 标的列表来自 public/data/etfs.csv 的 code 列；可选列 tickflow_symbol 可覆盖自动推断的
 510300.SH / 159915.SZ 形式。
 
 环境变量：
   TICKFLOW_API_KEY   完整服务（推荐 CI）；未设置且传 --free 时用 TickFlow.free() 仅历史日 K。
-  TICKFLOW_KLINE_COUNT  每只标的拉取的 K 根数，默认 3000。
+  TICKFLOW_KLINE_COUNT  每只标的拉取的 K 根数，默认 3000（增量模式一般只需最近几百根，可设小如 120）。
+  TICKFLOW_ADJUST      复权：forward（前复权，默认）| backward | none
 
 用法：
   export TICKFLOW_API_KEY='…'
   python3 scripts/tickflow_sync/sync_bars.py
   python3 scripts/tickflow_sync/sync_bars.py --dry-run
   python3 scripts/tickflow_sync/sync_bars.py --free   # 无 Key，仅免费档历史日 K
+  python3 scripts/tickflow_sync/sync_bars.py --full-refresh   # 全量覆盖重叠日
 """
 from __future__ import annotations
 
@@ -152,8 +159,8 @@ def dataframe_to_bar_rows(df) -> List[Tuple[str, str, str, str, str]]:
     return rows
 
 
-def fetch_klines(tf, symbol: str, count: int) -> List[Tuple[str, str, str, str, str]]:
-    df = tf.klines.get(symbol, period="1d", count=count, as_dataframe=True)
+def fetch_klines(tf, symbol: str, count: int, adjust: str) -> List[Tuple[str, str, str, str, str]]:
+    df = tf.klines.get(symbol, period="1d", count=count, adjust=adjust, as_dataframe=True)
     return dataframe_to_bar_rows(df)
 
 
@@ -176,6 +183,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="TickFlow 日 K 合并到 public/data/bars.csv")
     ap.add_argument("--dry-run", action="store_true", help="只打印计划，不写文件")
     ap.add_argument("--free", action="store_true", help="使用 TickFlow.free()（无需 Key，仅历史日 K）")
+    ap.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="重叠交易日以 TickFlow 覆盖 CSV（默认仅追加 CSV 最大日期之后的日 K）",
+    )
     args = ap.parse_args()
 
     try:
@@ -193,6 +205,10 @@ def main() -> None:
         tf = TickFlow.free()
 
     count = int(os.environ.get("TICKFLOW_KLINE_COUNT", "3000"))
+    adjust = (os.environ.get("TICKFLOW_ADJUST") or "forward").strip().lower()
+    if adjust not in ("forward", "backward", "none"):
+        print(f"错误: TICKFLOW_ADJUST 须为 forward|backward|none，当前: {adjust!r}", file=sys.stderr)
+        sys.exit(1)
 
     etf_rows = load_etf_rows()
     if not etf_rows:
@@ -200,22 +216,38 @@ def main() -> None:
         sys.exit(1)
 
     merged = load_existing_bars()
+    incremental = not args.full_refresh
+    mode = "增量（仅追加 max(date) 之后）" if incremental else "全量（重叠日以 TickFlow 为准）"
+    print(f"模式: {mode}；复权 adjust={adjust!r}；count={count}")
 
+    total_new = 0
     for i, (etf_code, tf_sym) in enumerate(etf_rows):
         print(f"[{i + 1}/{len(etf_rows)}] {etf_code} <- {tf_sym} …")
         try:
-            bars = fetch_klines(tf, tf_sym, count)
+            bars = fetch_klines(tf, tf_sym, count, adjust)
         except Exception as e:
             print(f"错误: 拉取 {tf_sym} 失败: {e}", file=sys.stderr)
             sys.exit(1)
+        last_d = max(merged[etf_code].keys()) if merged[etf_code] else ""
+        n_new = 0
         for d, o, h, lo, c in bars:
-            merged[etf_code][d] = (d, o, h, lo, c)
+            if args.full_refresh:
+                merged[etf_code][d] = (d, o, h, lo, c)
+                n_new += 1
+            elif not last_d:
+                merged[etf_code][d] = (d, o, h, lo, c)
+                n_new += 1
+            elif d > last_d:
+                merged[etf_code][d] = (d, o, h, lo, c)
+                n_new += 1
+        print(f"    CSV 末交易日: {last_d or '(无)'}；本标的写入 {n_new} 根（TickFlow 拉取 {len(bars)} 根）")
+        total_new += n_new
         if i < len(etf_rows) - 1:
             time.sleep(0.35)
 
     if args.dry_run:
         n = sum(len(v) for v in merged.values())
-        print(f"--dry-run: 合并后共 {len(merged)} 只标的、{n} 行（未写入）")
+        print(f"--dry-run: 合并后共 {len(merged)} 只标的、{n} 行；本 run 从 TickFlow 采纳约 {total_new} 根写入映射（未写入磁盘）")
         return
 
     write_bars(merged)

@@ -12,3 +12,4 @@ public/data/*.csv
 
 # 本地 Python 测 TickFlow 等
 scripts/.venv/
+.venv/

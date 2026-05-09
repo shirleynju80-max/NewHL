@@ -1,14 +1,129 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDataSource } from "../context/DataSourceContext";
 import type { EtfDefinition } from "../types";
 import { compareDefinitions } from "../lib/compareEtfs";
+
+const WARN_SHORT_BARS = 504;
+const NOTE_SHORT_BARS = 378;
+
+function groupDefinitions(defs: EtfDefinition[]) {
+  const cn: EtfDefinition[] = [];
+  const hk: EtfDefinition[] = [];
+  const cf: EtfDefinition[] = [];
+  for (const d of defs) {
+    if (d.meta.product_kind === "现金流类") cf.push(d);
+    else if (d.meta.dividend_market_scope === "港股红利") hk.push(d);
+    else cn.push(d);
+  }
+  return { cn, hk, cf };
+}
+
+function tenureNote(barCount: number): { text: string; tone: "ok" | "warn" | "bad" } | null {
+  if (barCount >= WARN_SHORT_BARS) return null;
+  if (barCount < NOTE_SHORT_BARS) {
+    return {
+      text: `上市可交易样本仅约 ${barCount} 日（< 约 1.5 年），策略回测可信度偏低。`,
+      tone: "bad",
+    };
+  }
+  return {
+    text: `可交易样本 ${barCount} 日（< 约 2 年），回测结论仅供参考。`,
+    tone: "warn",
+  };
+}
+
+function PoolColumn({
+  title,
+  subtitle,
+  items,
+  compareCodes,
+  toggleCompare,
+}: {
+  title: string;
+  subtitle: string;
+  items: EtfDefinition[];
+  compareCodes: string[];
+  toggleCompare: (code: string) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-100 bg-zinc-50/40 p-5">
+      <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
+      <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{subtitle}</p>
+      {items.length === 0 ? (
+        <p className="mt-4 text-sm text-zinc-400">暂无</p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {items.map((e) => {
+            const note = tenureNote(e.bars.length);
+            return (
+              <li
+                key={e.meta.code}
+                className={`flex gap-3 rounded-xl border p-3 transition ${
+                  compareCodes.includes(e.meta.code) ? "border-indigo-300 bg-indigo-50/50" : "border-zinc-100 bg-white"
+                }`}
+              >
+                <label className="flex cursor-pointer items-start pt-1">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-indigo-600 accent-indigo-600"
+                    checked={compareCodes.includes(e.meta.code)}
+                    onChange={() => toggleCompare(e.meta.code)}
+                  />
+                </label>
+                <Link
+                  to={`/etf/${e.meta.code}`}
+                  className="group min-w-0 flex-1 rounded-lg p-1 transition hover:bg-zinc-50"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs text-zinc-400">{e.meta.code}</p>
+                      <p className="mt-0.5 font-semibold text-zinc-900 group-hover:text-indigo-700">{e.meta.name}</p>
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">策略 {e.meta.strategy_id}</p>
+                  {note && (
+                    <p
+                      className={`mt-2 rounded-lg px-2 py-1.5 text-xs leading-snug ${
+                        note.tone === "bad"
+                          ? "bg-red-50 text-red-800 border border-red-100"
+                          : "bg-amber-50 text-amber-900 border border-amber-100"
+                      }`}
+                    >
+                      {note.text}
+                    </p>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export function HomePage() {
   const { definitions, loadFromDownloads, resetToMock, loadError, sourceKind } = useDataSource();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [compareCodes, setCompareCodes] = useState<string[]>([]);
+  const compareInitRef = useRef(false);
+
+  useEffect(() => {
+    if (compareInitRef.current || definitions.length < 2) return;
+    compareInitRef.current = true;
+    const ashare = definitions
+      .filter((d) => d.meta.dividend_market_scope === "A股红利")
+      .map((d) => d.meta.code);
+    const rest = definitions.map((d) => d.meta.code);
+    const pick: string[] = [];
+    for (const c of [...ashare, ...rest]) {
+      if (!pick.includes(c)) pick.push(c);
+      if (pick.length >= 3) break;
+    }
+    if (pick.length >= 2) setCompareCodes(pick.slice(0, 3));
+  }, [definitions]);
 
   function toggleCompare(code: string) {
     setCompareCodes((prev) =>
@@ -26,6 +141,8 @@ export function HomePage() {
     if (compareDefsOrdered.length < 2) return null;
     return compareDefinitions(compareDefsOrdered);
   }, [compareDefsOrdered]);
+
+  const groups = useMemo(() => groupDefinitions(definitions), [definitions]);
 
   async function onPickFiles(files: FileList | null) {
     if (!files?.length) return;
@@ -91,55 +208,35 @@ export function HomePage() {
 
       <section className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm">
         <h2 className="text-lg font-semibold text-zinc-900">标的池</h2>
-        <p className="text-sm text-zinc-500 mt-2 max-w-2xl">
-          勾选 2 个及以上标的可生成下方<strong>对比</strong>；点击进入单页看板：回测、盘中分位、台账、利差与港股说明。
+        <p className="text-sm text-zinc-500 mt-2 max-w-3xl leading-relaxed">
+          按品类浏览；勾选 2 只及以上参与下方<strong>标的对比</strong>。点击名称进入<strong>单标的看板</strong>（回测、盘中分位、台账、利差等）。默认已为你在「A股红利」中预勾选至多 3 只用于对比，可改选。
         </p>
         {definitions.length === 0 ? (
           <p className="mt-8 text-sm text-zinc-500">暂无标的，请检查 CSV。</p>
         ) : (
-          <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {definitions.map((e) => (
-              <li
-                key={e.meta.code}
-                className={`flex gap-3 rounded-2xl border p-4 transition ${
-                  compareCodes.includes(e.meta.code)
-                    ? "border-indigo-300 bg-indigo-50/40"
-                    : "border-zinc-100 bg-zinc-50/50"
-                }`}
-              >
-                <label className="flex cursor-pointer items-start pt-1">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-indigo-600 accent-indigo-600"
-                    checked={compareCodes.includes(e.meta.code)}
-                    onChange={() => toggleCompare(e.meta.code)}
-                  />
-                </label>
-                <Link
-                  to={`/etf/${e.meta.code}`}
-                  className="group min-w-0 flex-1 rounded-xl p-2 transition hover:bg-white hover:shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-mono text-xs text-zinc-400">{e.meta.code}</p>
-                      <p className="mt-1 font-semibold text-zinc-900 group-hover:text-indigo-700">{e.meta.name}</p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                        e.meta.product_kind === "现金流类"
-                          ? "bg-amber-50 text-amber-800"
-                          : "bg-indigo-50 text-indigo-800"
-                      }`}
-                    >
-                      {e.meta.product_kind === "现金流类" ? "现金流" : "红利"}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xs text-zinc-500">策略 {e.meta.strategy_id}</p>
-                  <p className="text-xs text-zinc-400">参数版本 {e.meta.param_version}</p>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-8 grid gap-6 lg:grid-cols-3">
+            <PoolColumn
+              title="A股红利"
+              subtitle="dividend_market_scope = A股红利"
+              items={groups.cn}
+              compareCodes={compareCodes}
+              toggleCompare={toggleCompare}
+            />
+            <PoolColumn
+              title="港股红利"
+              subtitle="dividend_market_scope = 港股红利"
+              items={groups.hk}
+              compareCodes={compareCodes}
+              toggleCompare={toggleCompare}
+            />
+            <PoolColumn
+              title="现金流类"
+              subtitle="product_kind = 现金流类"
+              items={groups.cf}
+              compareCodes={compareCodes}
+              toggleCompare={toggleCompare}
+            />
+          </div>
         )}
       </section>
 
@@ -156,7 +253,7 @@ export function HomePage() {
           <strong>最大连续上涨/下跌日数</strong>、<strong>分月收益热力</strong>等——有基准序列与利率口径后即可接入。
         </p>
         {compareCodes.length < 2 && (
-          <p className="mt-6 text-sm text-zinc-500">请在上面的标的池中勾选至少 2 个标的。</p>
+          <p className="mt-6 text-sm text-zinc-500">请在标的池中勾选至少 2 个标的。</p>
         )}
         {compareCodes.length >= 2 && !compareResult && (
           <p className="mt-6 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">

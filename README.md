@@ -30,8 +30,9 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
 
 - **GitHub Actions**：工作流 [.github/workflows/tickflow-sync.yml](.github/workflows/tickflow-sync.yml) 在工作日约北京时间 16:40 拉取日 K，合并写入 `public/data/bars.csv`；有变更时自动 `git push`。请在仓库 **Settings → Secrets and variables → Actions** 中配置 `TICKFLOW_API_KEY`（勿提交到代码或聊天）。
 - **标的列表**：若 CI 检出环境里没有 `public/data/etfs.csv`（例如该文件仍被 gitignore），脚本会改用已入库的 [scripts/tickflow_sync/sync_etfs.csv](scripts/tickflow_sync/sync_etfs.csv)；也可通过环境变量 `TICKFLOW_ETFS_CSV` 指向任意含 `code` 列的 CSV。可选列 `tickflow_symbol` 可写死如 `510300.SH`，否则按 6 位代码推断 `.SH` / `.SZ`。
-- **本地执行**：`pip install -r scripts/tickflow_sync/requirements.txt`，再 `export TICKFLOW_API_KEY='…'` 后运行 `python3 scripts/tickflow_sync/sync_bars.py`。无 Key 时可用 `python3 scripts/tickflow_sync/sync_bars.py --free`（仅 TickFlow 免费档历史日 K）。环境变量 `TICKFLOW_KLINE_COUNT` 控制每只标的拉取根数（默认 3000）。
-- **复权口径**：当前脚本直接采用 TickFlow 日 K 的 OHLC；若回测必须与某一复权方式严格一致，需与数据源文档对齐后再在脚本中增加对应参数。
+- **本地执行**：`pip install -r scripts/tickflow_sync/requirements.txt`，再 `export TICKFLOW_API_KEY='…'` 后运行 `python3 scripts/tickflow_sync/sync_bars.py`。无 Key 时可用 `python3 scripts/tickflow_sync/sync_bars.py --free`（仅 TickFlow 免费档历史日 K）。环境变量 `TICKFLOW_KLINE_COUNT` 控制每只标的拉取根数（默认 3000；**增量**时通常 120～400 足够）。`TICKFLOW_ADJUST` 默认 `forward`（前复权）。
+- **增量默认**：脚本**只追加**各标的在 `bars.csv` 中已有 **最大 `date` 之后** 的 TickFlow 日 K，**不覆盖**历史行（与东方财富主数据一致）。若需用 TickFlow 覆盖重叠历史，显式传 `--full-refresh`（慎用）。
+- **复权口径**：TickFlow 侧由 `TICKFLOW_ADJUST` 控制；默认前复权。若回测必须与东财某一口径严格一致，仍以 CSV 主数据为准，仅用增量补新交易日。
 
 ## 对外访问（Web 部署）
 

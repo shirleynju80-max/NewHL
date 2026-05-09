@@ -1,5 +1,5 @@
 import type { EtfParams, OhlcBar } from "../types";
-import { closesFromBars, rsi, sma } from "./indicators";
+import { bollinger, closesFromBars, rsi, sma } from "./indicators";
 
 export type Signal = "BUY" | "SELL" | "HOLD";
 
@@ -25,6 +25,14 @@ export function getMaPair(params: EtfParams): { fastP: number; slowP: number } |
 export function getRsiVariant(params: EtfParams) {
   const id = params.strategy_rsi_id ?? "rsi_csv";
   return params.rsi_variants.find((r) => r.variant_id === id) ?? params.rsi_variants[0];
+}
+
+export function getBollingerVariant(params: EtfParams) {
+  return params.bollinger_variants[0];
+}
+
+export function usesBollStrategy(strategyId: string): boolean {
+  return strategyId.toLowerCase().includes("boll");
 }
 
 /** MA 金叉 / 死叉 */
@@ -56,6 +64,37 @@ export function computeSignalsMa(bars: OhlcBar[], params: EtfParams): Signal[] {
  * - 买入：RSI 自上向下穿越超卖线（前一日 >= oversold 且当日 < oversold）
  * - 卖出：RSI 自下向上穿越超买线（前一日 <= overbought 且当日 > overbought）
  */
+/**
+ * 布林带均值回归：自下轨外回到轨内 → BUY；自上轨外回到轨内 → SELL。
+ */
+export function computeSignalsBollingerMeanReversion(bars: OhlcBar[], params: EtfParams): Signal[] {
+  const bv = getBollingerVariant(params);
+  if (!bv || bars.length < bv.period + 2) return bars.map(() => "HOLD");
+  const closes = closesFromBars(bars);
+  const { upper, lower } = bollinger(closes, bv.period, bv.stdDev);
+  const sig: Signal[] = [];
+  for (let i = 0; i < bars.length; i++) {
+    if (i === 0) {
+      sig.push("HOLD");
+      continue;
+    }
+    const up = upper[i];
+    const lo = lower[i];
+    const pup = upper[i - 1];
+    const plo = lower[i - 1];
+    if (up == null || lo == null || pup == null || plo == null) {
+      sig.push("HOLD");
+      continue;
+    }
+    const c = bars[i].close;
+    const pc = bars[i - 1].close;
+    if (pc < plo && c >= lo) sig.push("BUY");
+    else if (pc > pup && c <= up) sig.push("SELL");
+    else sig.push("HOLD");
+  }
+  return sig;
+}
+
 export function computeSignalsRsiMeanReversion(bars: OhlcBar[], params: EtfParams): Signal[] {
   const rv = getRsiVariant(params);
   if (!rv || bars.length < rv.period + 2) return bars.map(() => "HOLD");
@@ -79,6 +118,10 @@ export function computeSignalsRsiMeanReversion(bars: OhlcBar[], params: EtfParam
 
 /** 左侧截取回测窗口时，向前多取若干根 K 做 MA/RSI 预热 */
 export function indicatorWarmupBars(params: EtfParams, strategyId: string): number {
+  if (usesBollStrategy(strategyId)) {
+    const bv = getBollingerVariant(params);
+    return Math.min(500, Math.max(40, (bv?.period ?? 20) * 3 + 20));
+  }
   if (usesRsiStrategy(strategyId)) {
     const rv = getRsiVariant(params);
     return Math.min(500, Math.max(40, (rv?.period ?? 14) * 3 + 20));
@@ -93,8 +136,9 @@ export function usesRsiStrategy(strategyId: string): boolean {
   return s.includes("rsi");
 }
 
-/** 全日 K 重放与盘中合并序列共用：按 strategy_id 自动选 MA 或 RSI */
+/** 全日 K 重放与盘中合并序列共用：按 strategy_id 自动选 MA / RSI / 布林带 */
 export function computeSignals(bars: OhlcBar[], params: EtfParams, strategyId: string): Signal[] {
+  if (usesBollStrategy(strategyId)) return computeSignalsBollingerMeanReversion(bars, params);
   if (usesRsiStrategy(strategyId)) return computeSignalsRsiMeanReversion(bars, params);
   return computeSignalsMa(bars, params);
 }

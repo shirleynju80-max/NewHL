@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { useDataSource } from "../context/DataSourceContext";
+import { useStrategyRegistry } from "../context/StrategyRegistryContext";
 import { buildTrades } from "../lib/backtest";
 import { buildPriceIndicatorRows, mergeTradeMarkers } from "../lib/backtestChartSeries";
 import { computeWindowedBacktest } from "../lib/backtestRange";
@@ -48,6 +49,7 @@ function clampWindowIndices(n: number, start: number, end: number): { i0: number
 export function EtfDashboardPage() {
   const { code } = useParams<{ code: string }>();
   const { getEtf, bondByDate } = useDataSource();
+  const { entries: registeredStrategies } = useStrategyRegistry();
   const etf = code ? getEtf(code) : undefined;
 
   const isDividend = etf?.meta.product_kind === "红利_含股息分红";
@@ -58,19 +60,22 @@ export function EtfDashboardPage() {
 
   const [tab, setTab] = useState<TabId>("backtest");
 
-  const variants = useMemo(() => (etf ? getParamVariants(etf) : []), [etf]);
+  const variants = useMemo(
+    () => (etf ? getParamVariants(etf, registeredStrategies) : []),
+    [etf, registeredStrategies]
+  );
   const [variantKey, setVariantKey] = useState("");
   useEffect(() => {
     if (!etf) return;
-    const v = getParamVariants(etf);
+    const v = getParamVariants(etf, registeredStrategies);
     setVariantKey(v[0]?.key ?? "");
-  }, [etf]);
+  }, [etf, registeredStrategies]);
 
   const [intraVariantKey, setIntraVariantKey] = useState("");
   useEffect(() => {
     if (!etf) return;
-    setIntraVariantKey(getParamVariants(etf)[0]?.key ?? "");
-  }, [etf?.meta.code]);
+    setIntraVariantKey(getParamVariants(etf, registeredStrategies)[0]?.key ?? "");
+  }, [etf?.meta.code, etf, registeredStrategies]);
 
   const activeVariant = useMemo(() => {
     if (!variants.length) return undefined;

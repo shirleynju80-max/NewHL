@@ -31,7 +31,9 @@ jobs:
       - name: Sync bars from TickFlow
         env:
           TICKFLOW_API_KEY: ${{ secrets.TICKFLOW_API_KEY }}
-          TICKFLOW_KLINE_COUNT: "3000"
+          # 增量模式只需最近若干根日 K
+          TICKFLOW_KLINE_COUNT: "400"
+          TICKFLOW_ADJUST: "forward"
         run: python scripts/tickflow_sync/sync_bars.py
 
       - name: Commit bars.csv if changed

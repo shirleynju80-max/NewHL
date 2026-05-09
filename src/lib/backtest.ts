@@ -3,7 +3,8 @@ import type { Signal } from "./strategy";
 
 function triggerLabel(strategyId: string, side: "BUY" | "SELL"): string {
   const s = strategyId.toLowerCase();
-  const rsi = s.includes("rsi") && !s.includes("boll");
+  if (s.includes("boll")) return side === "BUY" ? "布林下轨外回归" : "布林上轨外回归";
+  const rsi = s.includes("rsi");
   if (rsi) return side === "BUY" ? "RSI 下穿超卖" : "RSI 上穿超买";
   return side === "BUY" ? "MA 金叉" : "MA 死叉";
 }

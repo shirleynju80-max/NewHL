@@ -1,6 +1,6 @@
 import type { EtfParams, OhlcBar } from "../types";
-import { closesFromBars, rsi, sma } from "./indicators";
-import { getMaPair, getRsiVariant, usesRsiStrategy } from "./strategy";
+import { bollinger, closesFromBars, rsi, sma } from "./indicators";
+import { getBollingerVariant, getMaPair, getRsiVariant, usesBollStrategy, usesRsiStrategy } from "./strategy";
 
 const BUY_PCT = 20;
 const SELL_PCT = 80;
@@ -38,6 +38,48 @@ export function strategyPercentileContext(
   if (bars.length < 3) return null;
   const closes = closesFromBars(bars);
   const n = bars.length;
+
+  if (usesBollStrategy(strategyId)) {
+    const bv = getBollingerVariant(params);
+    if (!bv) return null;
+    const { upper, lower } = bollinger(closes, bv.period, bv.stdDev);
+    const history: number[] = [];
+    for (let i = 0; i < n - 1; i++) {
+      const u = upper[i];
+      const lo = lower[i];
+      if (u == null || lo == null) continue;
+      const span = u - lo;
+      if (span <= 0) continue;
+      const p = ((closes[i] - lo) / span) * 100;
+      history.push(Math.max(0, Math.min(100, p)));
+    }
+    const source = mergedBars ?? bars;
+    const c2 = closesFromBars(source);
+    const { upper: u2, lower: l2 } = bollinger(c2, bv.period, bv.stdDev);
+    const last = source.length - 1;
+    const u = u2[last];
+    const lo = l2[last];
+    if (u == null || lo == null || history.length === 0) return null;
+    const span = u - lo;
+    if (span <= 0) return null;
+    const cur = Math.max(0, Math.min(100, ((c2[last] - lo) / span) * 100));
+    const pct = empiricalPercentile(history, cur);
+    const zone: PercentileZone =
+      pct <= BUY_PCT ? "buy_hint" : pct >= SELL_PCT ? "sell_hint" : "neutral";
+    const hint =
+      zone === "buy_hint"
+        ? `临近买入区间（价格在布林带内位置分位 ≤${BUY_PCT}%）`
+        : zone === "sell_hint"
+          ? `临近卖出区间（位置分位 ≥${SELL_PCT}%）`
+          : `中性区间（分位 ${pct}%）`;
+    return {
+      metricName: "%B(近似)",
+      metricValue: `${Math.round(cur * 100) / 100}`,
+      percentile: pct,
+      zone,
+      hint,
+    };
+  }
 
   if (usesRsiStrategy(strategyId)) {
     const rv = getRsiVariant(params);
@@ -116,6 +158,18 @@ export function indicatorValueLabelAtDate(
   const idx = bars.findIndex((b) => b.date === date);
   if (idx < 0) return "—";
   const closes = closesFromBars(bars);
+  if (usesBollStrategy(strategyId)) {
+    const bv = getBollingerVariant(params);
+    if (!bv) return "—";
+    const { upper, lower } = bollinger(closes, bv.period, bv.stdDev);
+    const u = upper[idx];
+    const lo = lower[idx];
+    if (u == null || lo == null) return "—";
+    const span = u - lo;
+    if (span <= 0) return "—";
+    const pb = Math.round(((closes[idx] - lo) / span) * 10000) / 100;
+    return `%B≈${pb}`;
+  }
   if (usesRsiStrategy(strategyId)) {
     const rv = getRsiVariant(params);
     if (!rv) return "—";

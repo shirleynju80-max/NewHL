@@ -90,6 +90,20 @@ export type ParamStrategyVariant = {
   params: EtfParams;
 };
 
+export type RegisteredStrategyKind = "ma" | "rsi" | "boll";
+
+/** 用户在「参数回测」页加入注册的策略快照（localStorage 持久化） */
+export type UserRegisteredStrategy = {
+  id: string;
+  etfCode: string;
+  label: string;
+  strategyType: RegisteredStrategyKind;
+  strategyId: string;
+  paramVersion: string;
+  params: EtfParams;
+  createdAt: string;
+};
+
 export type EtfDefinition = {
   meta: EtfMeta;
   params: EtfParams;
