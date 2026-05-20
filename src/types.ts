@@ -23,12 +23,24 @@ export type BollingerVariant = {
   stdDev: number;
 };
 
+/**
+ * MA 自定义：收盘价上穿 MA(buyMaPeriod) 买入。
+ * 卖出为「止盈」与「高点回撤」二选一（满足任一即卖，非需同时满足）。
+ */
+export type MaCustomRule = {
+  buyMaPeriod: number;
+  profitTakePct: number;
+  trailDrawdownPct: number;
+};
+
 export type OhlcBar = {
   date: string;
   open: number;
   high: number;
   low: number;
   close: number;
+  /** 可选：按交易日的名义股息率（%）。缺省则利差等用 etfs.csv 的 div_yield_nominal_pct 并前向填充逻辑。 */
+  div_yield_nominal_pct?: number;
 };
 
 export type TradePoint = {
@@ -79,6 +91,8 @@ export type EtfParams = {
   /** 策略引用的 variant id */
   strategy_ma_ids: [string, string];
   strategy_rsi_id?: string;
+  /** 仅 MA 自定义策略（strategy_id 含 ma_custom）使用 */
+  ma_custom_rule?: MaCustomRule;
 };
 
 /** 单套可切换的策略参数（多来自 etf_params 多行或 mock） */
@@ -90,9 +104,9 @@ export type ParamStrategyVariant = {
   params: EtfParams;
 };
 
-export type RegisteredStrategyKind = "ma" | "rsi" | "boll";
+export type RegisteredStrategyKind = "ma" | "ma_custom" | "rsi" | "boll";
 
-/** 用户在「参数回测」页加入注册的策略快照（localStorage 持久化） */
+/** 用户在「策略回测与注册」页加入注册的策略快照（localStorage 持久化） */
 export type UserRegisteredStrategy = {
   id: string;
   etfCode: string;
@@ -110,6 +124,57 @@ export type EtfDefinition = {
   bars: OhlcBar[];
   /** 多组参数时展示下拉；缺省则仅当前 params */
   paramVariants?: ParamStrategyVariant[];
+};
+
+export type IndexMarket = "A" | "H";
+export type IndexCategory = "A股红利" | "港股红利" | "现金流" | "价值" | "宽基";
+
+export type IndexMeta = {
+  index_code: string;
+  name: string;
+  market: IndexMarket;
+  category: IndexCategory;
+  methodology_summary: string;
+  methodology_url?: string;
+  /** 无按日股息率列时的利差回退（%） */
+  fallback_div_yield_pct?: number;
+  /** 指数成立日 YYYY-MM-DD（用于筛选） */
+  inception_date?: string;
+  /** 基日 YYYY-MM-DD */
+  base_date?: string;
+  /** 基点 */
+  base_value?: number;
+  /** 启用/发布日期 YYYY-MM-DD */
+  launch_date?: string;
+  /** 加权方式 */
+  weighting_method?: string;
+  /** 调样频率 */
+  rebalancing_frequency?: string;
+};
+
+export type IndexBar = {
+  date: string;
+  tri_close: number;
+  price_close?: number;
+  div_yield_nominal_pct?: number;
+};
+
+export type IndexDefinition = {
+  meta: IndexMeta;
+  bars: IndexBar[];
+};
+
+/** 跟踪产品类型：场内 ETF/LOF 可链 ETF 看板；场外基金仅展示与外链 */
+export type IndexTrackingProductType = "etf" | "otc_fund";
+
+export type IndexTrackingRow = {
+  index_code: string;
+  etf_code: string;
+  /** etf（默认）| otc_fund；也可在 note 中写「场外」推断 */
+  product_type?: IndexTrackingProductType;
+  note?: string;
+  fee_pct?: number;
+  listed_date?: string;
 };
 
 /** 一轮完整买卖（明细表一行） */

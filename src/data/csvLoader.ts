@@ -1,4 +1,5 @@
 import { parseCsv, rowsToObjects } from "../lib/csv";
+import { strategyKindLabel, stripQuotedAnnotations } from "../lib/strategyLabels";
 import type {
   BondSeriesPoint,
   BollingerVariant,
@@ -7,12 +8,15 @@ import type {
   EtfDefinition,
   EtfMeta,
   EtfParams,
+  IndexDefinition,
+  IndexTrackingRow,
   InvestorChannel,
   OhlcBar,
   ParamStrategyVariant,
   ProductKind,
   RsiVariant,
 } from "../types";
+import { identifyIndexCsv, parseIndexCsvBundle } from "./indexCsv";
 
 function num(s: string, field: string): number {
   const v = Number(String(s).replace(/,/g, "").trim());
@@ -24,6 +28,21 @@ function optNum(s: string | undefined): number | undefined {
   if (s == null || s.trim() === "") return undefined;
   const v = Number(s.replace(/,/g, "").trim());
   return Number.isNaN(v) ? undefined : v;
+}
+
+/** bars / 行情补片：可选按日股息率（%），与 etfs 中 div_yield_nominal_pct 同口径。 */
+function optBarDivYieldNominalPct(r: Record<string, string>, code: string, date: string): number | undefined {
+  const raw =
+    r.div_yield_nominal_pct?.trim() ||
+    r.dividend_yield_pct?.trim() ||
+    r.div_yield_pct?.trim() ||
+    "";
+  if (raw === "") return undefined;
+  const v = Number(String(raw).replace(/,/g, "").trim());
+  if (Number.isNaN(v)) {
+    throw new Error(`bars.csv 标的 ${code} 日期 ${date} 的股息率列不是有效数字: ${raw}`);
+  }
+  return v;
 }
 
 function mustProductKind(s: string, code: string): ProductKind {
@@ -62,14 +81,61 @@ function parseDocLinks(raw: string | undefined): { label: string; href: string }
   }
 }
 
+const DATE_CELL = /^\d{4}-\d{1,2}-\d{1,2}$/;
+
+function firstIsoDateInRow(r: Record<string, string>): string | null {
+  for (const v of Object.values(r)) {
+    const t = v.trim();
+    if (DATE_CELL.test(t)) return t;
+  }
+  return null;
+}
+
 export type CsvBundle = {
   definitions: EtfDefinition[];
   bondByDate: Record<string, BondSeriesPoint>;
 };
 
+export type AppDataBundle = CsvBundle & {
+  indices: IndexDefinition[];
+  indexTracking: IndexTrackingRow[];
+};
+
+export function withIndexCsvSafe(
+  bundle: CsvBundle,
+  indicesText: string,
+  indexBarsText: string,
+  trackingText: string
+): { bundle: AppDataBundle; indexCsvError: string | null } {
+  try {
+    const { indices, indexTracking } = parseIndexCsvBundle(
+      indicesText ?? "",
+      indexBarsText ?? "",
+      trackingText ?? ""
+    );
+    return { bundle: { ...bundle, indices, indexTracking }, indexCsvError: null };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      bundle: { ...bundle, indices: [], indexTracking: [] },
+      indexCsvError: `指数 CSV 解析失败（已忽略指数数据）：${msg}`,
+    };
+  }
+}
+
+/** 与主 CSV 合并：`etfsmore`/`barsmore`/`bondsmore` 中同标的、同日期覆盖主文件；国债序列按日期合并后重新排序。 */
+export type CsvMergeOptions = {
+  etfsMore?: string;
+  barsMore?: string;
+  bondsMore?: string;
+  /** 场外基金净值（fund_bars.csv），按 fund_code 并入 bars，与场内 ETF 同看板展示 */
+  fundBars?: string;
+};
+
 export function parseEtfsCsv(text: string): EtfMeta[] {
+  if (!text?.trim()) return [];
   const rows = parseCsv(text);
-  if (rows.length < 2) throw new Error("etfs.csv 无数据行");
+  if (rows.length < 2) return [];
   const headers = rows[0];
   return rowsToObjects(headers, rows.slice(1)).map((r) => {
     const code = r.code?.trim();
@@ -103,6 +169,7 @@ export function parseEtfsCsv(text: string): EtfMeta[] {
 }
 
 export function parseBarsCsv(text: string): Map<string, OhlcBar[]> {
+  if (!text?.trim()) return new Map();
   const rows = parseCsv(text);
   if (rows.length < 2) throw new Error("bars.csv 无数据行");
   const headers = rows[0];
@@ -111,15 +178,20 @@ export function parseBarsCsv(text: string): Map<string, OhlcBar[]> {
   for (const r of list) {
     const code = r.etf_code?.trim();
     if (!code) throw new Error("bars.csv 存在空 etf_code");
-    const bar: OhlcBar = {
-      date: r.date?.trim() || (() => {
+    const date =
+      r.date?.trim() ||
+      (() => {
         throw new Error("bars.csv 缺少 date");
-      })(),
+      })();
+    const bar: OhlcBar = {
+      date,
       open: num(r.open ?? "", "open"),
       high: num(r.high ?? "", "high"),
       low: num(r.low ?? "", "low"),
       close: num(r.close ?? "", "close"),
     };
+    const divY = optBarDivYieldNominalPct(r, code, date);
+    if (divY !== undefined) bar.div_yield_nominal_pct = divY;
     if (!map.has(code)) map.set(code, []);
     map.get(code)!.push(bar);
   }
@@ -134,36 +206,308 @@ export function parseBarsCsv(text: string): Map<string, OhlcBar[]> {
   return map;
 }
 
-/** 读 bonds.csv：空单元格沿用上一行有效值（文件内前向填充） */
-export function parseBondsCsvToList(text: string): BondSeriesPoint[] {
+/** fund_bars.csv：场外开放式基金净值 → OHLC（净值日 close=nav_unit；缺 OHLC 时用 close 填充） */
+export function parseFundBarsCsv(text: string): Map<string, OhlcBar[]> {
+  if (!text?.trim()) return new Map();
   const rows = parseCsv(text);
-  if (rows.length < 2) throw new Error("bonds.csv 无数据行");
+  if (rows.length < 2) return new Map();
   const headers = rows[0];
   const list = rowsToObjects(headers, rows.slice(1));
+  const map = new Map<string, OhlcBar[]>();
+  for (const r of list) {
+    const code = (r.fund_code ?? r.etf_code ?? "").trim();
+    const date = r.date?.trim();
+    if (!code || !date) continue;
+    const navRaw = r.nav_unit?.trim() || r.close?.trim();
+    if (!navRaw) continue;
+    const c = num(navRaw, "nav_unit");
+    const bar: OhlcBar = { date, open: c, high: c, low: c, close: c };
+    const divRaw =
+      r.div_yield_index_did_pct?.trim() ||
+      r.div_yield_nominal_pct?.trim() ||
+      r.div_yield_fund_ttm_pct?.trim() ||
+      "";
+    if (divRaw) {
+      bar.div_yield_nominal_pct = num(divRaw.replace(/,/g, ""), "div_yield");
+    }
+    if (!map.has(code)) map.set(code, []);
+    map.get(code)!.push(bar);
+  }
+  for (const [code, bars] of map) {
+    bars.sort((a, b) => a.date.localeCompare(b.date));
+    const seen = new Set<string>();
+    for (const b of bars) {
+      if (seen.has(b.date)) throw new Error(`fund_bars.csv 标的 ${code} 重复日期 ${b.date}`);
+      seen.add(b.date);
+    }
+  }
+  return map;
+}
+
+function looksLikeInstrumentHeaderRow(row: string[]): boolean {
+  const j = row.join("|").toLowerCase();
+  const hasCode = /etf_code|基金代码|产品代码|fund_code/i.test(j);
+  const hasDate = /\bdate\b|日期|trade_date|交易日期/i.test(j);
+  const hasCloseLike = /收盘|净值|nav|\bclose\b|单位净值/i.test(j);
+  if (/cn10y|us10y|中债国债|美债|国债收益率/i.test(j) && !hasCode) return false;
+  return Boolean(hasDate && hasCloseLike && (hasCode || /\bcode\b/i.test(j)));
+}
+
+function findInstrumentHeaderRow(rows: string[][]): number {
+  for (let i = 0; i < Math.min(20, rows.length - 1); i++) {
+    if (looksLikeInstrumentHeaderRow(rows[i])) return i;
+  }
+  return -1;
+}
+
+function pickCell(r: Record<string, string>, ...names: string[]): string {
+  for (const n of names) {
+    const v = r[n]?.trim();
+    if (v) return v;
+  }
+  for (const key of Object.keys(r)) {
+    const t = key.trim();
+    for (const n of names) {
+      if (t === n || (n.length > 1 && t.includes(n))) {
+        const v = r[key]?.trim();
+        if (v) return v;
+      }
+    }
+  }
+  return "";
+}
+
+/**
+ * bonds.csv / bondsmore 双用途：① 含 etf_code+日期+收盘/净值 → **追加**并入行情（主数据仍须来自 bars.csv）；② 否则按国债收益率解析（可空）。
+ */
+export function parseBondsFileDualPurpose(text: string): {
+  quoteBars: Map<string, OhlcBar[]>;
+  yieldCurve: BondSeriesPoint[];
+} {
+  if (!text?.trim()) return { quoteBars: new Map(), yieldCurve: [] };
+  const rows = parseCsv(text);
+  if (rows.length < 2) return { quoteBars: new Map(), yieldCurve: parseBondsCsvToList(text) };
+  const hi = findInstrumentHeaderRow(rows);
+  if (hi < 0) return { quoteBars: new Map(), yieldCurve: parseBondsCsvToList(text) };
+  const headers = rows[hi].map((x) => x.trim());
+  const list = rowsToObjects(headers, rows.slice(hi + 1));
+  const map = new Map<string, OhlcBar[]>();
+  for (const r of list) {
+    const code =
+      pickCell(r, "etf_code", "基金代码", "产品代码", "code") ||
+      (() => {
+        const k = Object.keys(r).find((x) => /代码$/i.test(x.trim()) && !/指标|策略/i.test(x));
+        return k ? r[k]!.trim() : "";
+      })();
+    const date = pickCell(r, "date", "日期", "trade_date", "交易日期");
+    if (!code || !date || !DATE_CELL.test(date)) continue;
+    const closeRaw = pickCell(r, "close", "收盘", "收盘价", "净值", "nav", "单位净值");
+    if (!closeRaw) continue;
+    const c = num(closeRaw.replace(/,/g, ""), "close");
+    const oRaw = pickCell(r, "open", "开盘", "开盘价");
+    const hRaw = pickCell(r, "high", "最高", "最高价");
+    const lRaw = pickCell(r, "low", "最低", "最低价");
+    const o = oRaw ? num(oRaw.replace(/,/g, ""), "open") : c;
+    const h = hRaw ? num(hRaw.replace(/,/g, ""), "high") : c;
+    const l = lRaw ? num(lRaw.replace(/,/g, ""), "low") : c;
+    const bar: OhlcBar = { date, open: o, high: h, low: l, close: c };
+    const divRaw = pickCell(r, "div_yield_nominal_pct", "dividend_yield_pct", "div_yield_pct", "股息率");
+    if (divRaw) {
+      const v = num(divRaw.replace(/,/g, ""), "div_yield_nominal_pct");
+      bar.div_yield_nominal_pct = v;
+    }
+    if (!map.has(code)) map.set(code, []);
+    map.get(code)!.push(bar);
+  }
+  for (const [code, bars] of map) {
+    bars.sort((a, b) => a.date.localeCompare(b.date));
+    const byD = new Map<string, OhlcBar>();
+    for (const b of bars) byD.set(b.date, b);
+    map.set(code, [...byD.values()].sort((a, b) => a.date.localeCompare(b.date)));
+  }
+  return { quoteBars: map, yieldCurve: [] };
+}
+
+/** etfs 全空时，按 bars 中的代码生成占位 meta（与 ensureParamRows 配合）。 */
+function syntheticMetasWhenNoEtfs(barsMap: Map<string, OhlcBar[]>): EtfMeta[] {
+  return [...barsMap.keys()].sort().map((code) => ({
+    code,
+    name: `${code}（etfs 为空，已自动占位；可补 etfs.csv 或联网补全）`,
+    strategy_id: "rsi_mean_reversion",
+    param_version: `auto-${code}`,
+    product_kind: "红利_含股息分红",
+    dividend_market_scope: "A股红利",
+    div_yield_nominal_pct: 0,
+    div_yield_source: "估算",
+  }));
+}
+
+/** 多标的 K 线合并：同一 etf_code 同一 date 以后出现的序列为准（通常来自 barsmore）；OHLC 以后表为准，按日股息率仅在后表缺列时保留先表。 */
+export function mergeBarsMaps(primary: Map<string, OhlcBar[]>, secondary: Map<string, OhlcBar[]>): Map<string, OhlcBar[]> {
+  const out = new Map<string, OhlcBar[]>();
+  const codes = new Set<string>([...primary.keys(), ...secondary.keys()]);
+  for (const code of codes) {
+    const a = primary.get(code) ?? [];
+    const b = secondary.get(code) ?? [];
+    const byDate = new Map<string, OhlcBar>();
+    for (const bar of a) byDate.set(bar.date, { ...bar });
+    for (const bar of b) {
+      const prev = byDate.get(bar.date);
+      byDate.set(bar.date, {
+        ...(prev ?? {}),
+        ...bar,
+        div_yield_nominal_pct: bar.div_yield_nominal_pct ?? prev?.div_yield_nominal_pct,
+      });
+    }
+    const merged = [...byDate.values()].sort((x, y) => x.date.localeCompare(y.date));
+    out.set(code, merged);
+  }
+  return out;
+}
+
+/** etfs 合并：同 code 以后出现的 meta 为准（通常来自 etfsmore）。顺序为「主表顺序 + more 中新增 code」。 */
+export function mergeEtfMetas(base: EtfMeta[], more: EtfMeta[]): EtfMeta[] {
+  const byCode = new Map<string, EtfMeta>();
+  for (const m of base) byCode.set(m.code, m);
+  for (const m of more) byCode.set(m.code, m);
+  const order: string[] = [];
+  for (const m of base) if (!order.includes(m.code)) order.push(m.code);
+  for (const m of more) if (!order.includes(m.code)) order.push(m.code);
+  return order.map((c) => {
+    const meta = byCode.get(c);
+    if (!meta) throw new Error(`mergeEtfMetas: 缺少标的 ${c}`);
+    return meta;
+  });
+}
+
+/** 国债收益率按 date 合并，同一日期以后出现的文件为准；再按日期排序。 */
+export function mergeBondSeries(primary: BondSeriesPoint[], secondary: BondSeriesPoint[]): BondSeriesPoint[] {
+  const byDate = new Map<string, BondSeriesPoint>();
+  for (const p of primary) byDate.set(p.date, { ...p });
+  for (const p of secondary) byDate.set(p.date, { ...p });
+  const dates = [...byDate.keys()].sort();
+  return dates.map((d) => byDate.get(d)!);
+}
+
+function bondHeaderScore(row: string[]): number {
+  let s = 0;
+  for (const c of row) {
+    const t = c.trim();
+    const low = t.toLowerCase();
+    if (low === "date" || t === "日期" || t.includes("日期")) s += 3;
+    if (/中债|cn\s*10|cn10y|国债.*10/.test(t)) s += 2;
+    if (/美国|us\s*10|us10y|美债|u\.s\./i.test(t)) s += 2;
+  }
+  return s;
+}
+
+/** 定位表头行（兼容 Wind/中债等前几行为说明、表头为「日期」+ 两列收益率） */
+function findBondTableStart(rows: string[][]): { headerIdx: number; headers: string[] } | null {
+  let best: { headerIdx: number; headers: string[]; score: number } | null = null;
+  for (let i = 0; i < rows.length - 1; i++) {
+    const hdr = rows[i];
+    if (!hdr.some((c) => c.trim())) continue;
+    const sc = bondHeaderScore(hdr);
+    if (sc >= 3 && (!best || sc > best.score)) best = { headerIdx: i, headers: hdr, score: sc };
+  }
+  if (best) return { headerIdx: best.headerIdx, headers: best.headers };
+  return null;
+}
+
+function mapBondRow(
+  headers: string[],
+  cols: string[]
+): { date: string; cnRaw: string; usRaw: string } | null {
+  const h = headers.map((x) => x.trim());
+  const cells = h.map((_, j) => (cols[j] ?? "").trim());
+  let di = h.findIndex((t) => {
+    const low = t.toLowerCase();
+    return low === "date" || t === "日期" || t.includes("日期") || low === "trade_date";
+  });
+  if (di < 0) di = 0;
+  const date = cells[di];
+  if (!date || !DATE_CELL.test(date)) return null;
+
+  let ci = h.findIndex((t) => /中债|cn\s*10|cn10y|国债.*10/.test(t) || t.toLowerCase() === "cn10y_pct");
+  let ui = h.findIndex((t) => /美国|us\s*10|us10y|美债|u\.s\./i.test(t) || t.toLowerCase() === "us10y_pct");
+  const numericIdxs = cells
+    .map((v, j) => ({ v, j }))
+    .filter(({ v, j }) => j !== di && v !== "" && !Number.isNaN(Number(v.replace(/,/g, ""))));
+  if (ci < 0 && numericIdxs.length >= 1) ci = numericIdxs[0].j;
+  if (ui < 0 && numericIdxs.length >= 2) ui = numericIdxs.find((x) => x.j !== ci)?.j ?? -1;
+  const cnRaw = ci >= 0 ? cells[ci] : "";
+  const usRaw = ui >= 0 ? cells[ui] : "";
+  return { date, cnRaw, usRaw };
+}
+
+/** 无国债文件或文件无有效行时用于对齐 K 线的常数（%） */
+export const DEFAULT_BOND_CN10Y_PCT = 2.5;
+export const DEFAULT_BOND_US10Y_PCT = 4.0;
+
+/** 读 bonds.csv：空单元格沿用上一行有效值（文件内前向填充）；跳过无日期行；支持中文表头与前置说明行。缺文件、仅表头、无有效行时返回空数组。 */
+export function parseBondsCsvToList(text: string): BondSeriesPoint[] {
+  if (!text?.trim()) return [];
+  const rows = parseCsv(text);
+  if (rows.length < 2) return [];
+
+  const start = findBondTableStart(rows);
+  let list: Record<string, string>[];
+  if (start && start.headerIdx > 0) {
+    const headers = start.headers;
+    const body = rows.slice(start.headerIdx + 1);
+    list = body.map((cols) => {
+      const o: Record<string, string> = {};
+      headers.forEach((h, i) => {
+        o[h.trim()] = cols[i]?.trim() ?? "";
+      });
+      return o;
+    });
+  } else {
+    const headers = rows[0];
+    list = rowsToObjects(headers, rows.slice(1));
+  }
+
   let lastCn = 2.5;
   let lastUs = 4.0;
   const out: BondSeriesPoint[] = [];
+  const headersForMap = start?.headers ?? rows[0];
+
   for (const r of list) {
-    const date = r.date?.trim();
-    if (!date) throw new Error("bonds.csv 缺少 date");
-    const cnRaw = r.cn10y_pct?.trim();
-    const usRaw = r.us10y_pct?.trim();
-    if (cnRaw) lastCn = num(cnRaw, "cn10y_pct");
-    if (usRaw) lastUs = num(usRaw, "us10y_pct");
-    out.push({ date, cn10y_pct: lastCn, us10y_pct: lastUs });
+    const cols = headersForMap.map((h) => r[h.trim()] ?? "");
+    const mapped = mapBondRow(headersForMap, cols);
+    if (!mapped) {
+      const date = firstIsoDateInRow(r);
+      if (!date) continue;
+      const cnRaw = r.cn10y_pct?.trim() ?? "";
+      const usRaw = r.us10y_pct?.trim() ?? "";
+      if (cnRaw) lastCn = num(cnRaw, "cn10y_pct");
+      if (usRaw) lastUs = num(usRaw, "us10y_pct");
+      out.push({ date, cn10y_pct: lastCn, us10y_pct: lastUs });
+      continue;
+    }
+    if (mapped.cnRaw) lastCn = num(mapped.cnRaw, "cn10y_pct");
+    if (mapped.usRaw) lastUs = num(mapped.usRaw, "us10y_pct");
+    out.push({ date: mapped.date, cn10y_pct: lastCn, us10y_pct: lastUs });
   }
+
   out.sort((a, b) => a.date.localeCompare(b.date));
   return out;
 }
 
-/** 将国债序列对齐到 K 线每一个交易日：对每个 bar 日期取「最近且不晚于该日」的国债观测 */
+/** 将国债序列对齐到 K 线每一个交易日：对每个 bar 日期取「最近且不晚于该日」的国债观测；无国债数据时对每个交易日填默认常数 */
 export function expandBondsToBarDates(
   bondSeries: BondSeriesPoint[],
   barDates: string[]
 ): Record<string, BondSeriesPoint> {
-  if (!bondSeries.length) throw new Error("bonds.csv 无有效行");
-  const sorted = [...bondSeries].sort((a, b) => a.date.localeCompare(b.date));
   const out: Record<string, BondSeriesPoint> = {};
+  if (!barDates.length) return out;
+  if (!bondSeries.length) {
+    for (const d of barDates) {
+      out[d] = { date: d, cn10y_pct: DEFAULT_BOND_CN10Y_PCT, us10y_pct: DEFAULT_BOND_US10Y_PCT };
+    }
+    return out;
+  }
+  const sorted = [...bondSeries].sort((a, b) => a.date.localeCompare(b.date));
   for (const d of barDates) {
     let pick = sorted[0];
     for (const b of sorted) {
@@ -191,8 +535,9 @@ type ParamRow = {
 };
 
 export function parseEtfParamsCsv(text: string): ParamRow[] {
+  if (!text?.trim()) return [];
   const rows = parseCsv(text);
-  if (rows.length < 2) throw new Error("etf_params.csv 无数据行");
+  if (rows.length < 2) return [];
   const headers = rows[0];
   const list = rowsToObjects(headers, rows.slice(1));
   return list.map((r) => {
@@ -242,13 +587,91 @@ function paramsFromRow(row: ParamRow): EtfParams {
 }
 
 function buildParamVariantList(meta: EtfMeta, rowsForCode: ParamRow[]): ParamStrategyVariant[] {
-  return rowsForCode.map((row, i) => ({
-    key: `${meta.code}|${i}|${row.param_version ?? ""}|${row.strategy_id ?? ""}`,
-    label: row.note?.trim() || row.param_version?.trim() || `参数组 ${i + 1}`,
-    strategyId: row.strategy_id?.trim() || meta.strategy_id,
-    paramVersion: row.param_version?.trim() || meta.param_version,
-    params: paramsFromRow(row),
-  }));
+  return rowsForCode.map((row, i) => {
+    const sid = row.strategy_id?.trim() || meta.strategy_id;
+    const raw =
+      stripQuotedAnnotations(row.note?.trim() || "") ||
+      row.param_version?.trim() ||
+      `参数组 ${i + 1}`;
+    const kind = strategyKindLabel(sid);
+    const label = raw.includes(kind) ? raw : `${raw} · ${kind}`;
+    return {
+      key: `${meta.code}|${i}|${row.param_version ?? ""}|${row.strategy_id ?? ""}`,
+      label,
+      strategyId: sid,
+      paramVersion: row.param_version?.trim() || meta.param_version,
+      params: paramsFromRow(row),
+    };
+  });
+}
+
+/**
+ * bars 里出现、但 etfs 合并结果里没有的标的（常见于只更新了 barsmore）：补占位 meta，
+ * 便于总览/看板展示；名称中会提示在 etfs / etfsmore 中补全行。
+ */
+function ensureMetasForBars(metas: EtfMeta[], barsMap: Map<string, OhlcBar[]>): EtfMeta[] {
+  if (!metas.length) return metas;
+  const template = metas[0]!;
+  const byCode = new Map(metas.map((m) => [m.code, m]));
+  const barOnly: string[] = [];
+  for (const code of barsMap.keys()) {
+    if (!byCode.has(code)) {
+      const pv = `auto-${code}`;
+      const stub: EtfMeta = {
+        code,
+        name: `${code}（仅 bars 有数据，请在 etfs / etfsmore 补全）`,
+        strategy_id: template.strategy_id,
+        param_version: pv,
+        product_kind: template.product_kind,
+        dividend_market_scope: template.dividend_market_scope,
+        div_yield_nominal_pct: template.div_yield_nominal_pct,
+        div_yield_source: template.div_yield_source,
+      };
+      byCode.set(code, stub);
+      barOnly.push(code);
+    }
+  }
+  if (!barOnly.length) return metas;
+  barOnly.sort((a, b) => a.localeCompare(b));
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const m of metas) {
+    if (!seen.has(m.code)) {
+      order.push(m.code);
+      seen.add(m.code);
+    }
+  }
+  for (const c of barOnly) {
+    if (!seen.has(c)) {
+      order.push(c);
+      seen.add(c);
+    }
+  }
+  return order.map((c) => byCode.get(c)!);
+}
+
+/** etfs 中有、etf_params 中无的标的：补一行与 etfs 默认版本对齐的参数，避免合并后无法建 bundle。 */
+function ensureParamRowsForMetas(metas: EtfMeta[], paramRows: ParamRow[]): ParamRow[] {
+  const codesWith = new Set(paramRows.map((p) => p.etf_code));
+  const extra: ParamRow[] = [];
+  for (const meta of metas) {
+    if (codesWith.has(meta.code)) continue;
+    extra.push({
+      etf_code: meta.code,
+      strategy_id: meta.strategy_id,
+      param_version: meta.param_version,
+      note: "合并补全（仅 etfs 无 etf_params 时自动生成，可在 etf_params.csv 中覆盖）",
+      ma_fast: 5,
+      ma_slow: 20,
+      rsi_period: 14,
+      rsi_overbought: 70,
+      rsi_oversold: 30,
+      bb_period: 20,
+      bb_std: 2,
+    });
+    codesWith.add(meta.code);
+  }
+  return [...paramRows, ...extra];
 }
 
 function findParamRow(rows: ParamRow[], meta: EtfMeta): ParamRow {
@@ -271,18 +694,48 @@ export function buildCsvBundle(
   etfsText: string,
   barsText: string,
   bondsText: string,
-  paramsText: string
+  paramsText: string,
+  merge?: CsvMergeOptions
 ): CsvBundle {
-  const metas = parseEtfsCsv(etfsText);
-  const barsMap = parseBarsCsv(barsText);
-  const paramRows = parseEtfParamsCsv(paramsText);
+  if (!barsText?.trim()) {
+    throw new Error("bars.csv 为必选：须包含产品代码（etf_code）、日期、收盘价或净值等有效数据行。");
+  }
+  const splitMain = parseBondsFileDualPurpose(bondsText);
+  let barsMap = mergeBarsMaps(parseBarsCsv(barsText), splitMain.quoteBars);
+  let bondList = splitMain.yieldCurve;
+  if (merge?.barsMore?.trim()) {
+    barsMap = mergeBarsMaps(barsMap, parseBarsCsv(merge.barsMore.trim()));
+  }
+  if (merge?.bondsMore?.trim()) {
+    const splitMore = parseBondsFileDualPurpose(merge.bondsMore.trim());
+    if (splitMore.quoteBars.size) barsMap = mergeBarsMaps(barsMap, splitMore.quoteBars);
+    if (splitMore.yieldCurve.length) {
+      bondList = bondList.length ? mergeBondSeries(bondList, splitMore.yieldCurve) : splitMore.yieldCurve;
+    }
+  }
+  if (merge?.fundBars?.trim()) {
+    barsMap = mergeBarsMaps(barsMap, parseFundBarsCsv(merge.fundBars.trim()));
+  }
+  if (!barsMap.size) {
+    throw new Error(
+      "bars.csv 解析后无有效行情：请检查是否含 etf_code/基金代码、日期、收盘价或净值等列与数据行；可选地通过 bonds.csv / bondsmore 中带产品代码的行情表追加合并。"
+    );
+  }
+
+  let metas = parseEtfsCsv(etfsText);
+  if (merge?.etfsMore?.trim()) {
+    metas = mergeEtfMetas(metas, parseEtfsCsv(merge.etfsMore.trim()));
+  }
+  if (!metas.length) metas = syntheticMetasWhenNoEtfs(barsMap);
+  metas = ensureMetasForBars(metas, barsMap);
+  let paramRows = parseEtfParamsCsv(paramsText);
+  paramRows = ensureParamRowsForMetas(metas, paramRows);
 
   const allBarDates = new Set<string>();
   for (const bars of barsMap.values()) {
     for (const b of bars) allBarDates.add(b.date);
   }
   const barDatesSorted = [...allBarDates].sort();
-  const bondList = parseBondsCsvToList(bondsText);
   const bondByDate = expandBondsToBarDates(bondList, barDatesSorted);
 
   const definitions: EtfDefinition[] = metas.map((meta) => {
@@ -318,23 +771,91 @@ export function identifyCsv(name: string): "etfs" | "bars" | "bonds" | "etf_para
   return null;
 }
 
-export async function readFilesAsBundle(files: FileList | File[]): Promise<CsvBundle> {
+export function identifyFundBarsCsv(name: string): boolean {
+  const n = name.toLowerCase().trim();
+  return n === "fund_bars.csv" || n.endsWith("/fund_bars.csv");
+}
+
+/** 可选补充 CSV，与主文件同名结构；可与 bars/bonds/etfs 等一并选择。 */
+export function identifyOptionalMergeCsv(name: string): keyof CsvMergeOptions | null {
+  const n = name.toLowerCase().trim();
+  if (n === "etfsmore.csv" || n.endsWith("/etfsmore.csv")) return "etfsMore";
+  if (n === "barsmore.csv" || n.endsWith("/barsmore.csv")) return "barsMore";
+  if (n === "bondsmore.csv" || n.endsWith("/bondsmore.csv")) return "bondsMore";
+  return null;
+}
+
+export async function readFilesAsBundle(files: FileList | File[]): Promise<{
+  bundle: AppDataBundle;
+  indexCsvError: string | null;
+}> {
   const arr = Array.from(files);
   let etfs = "";
   let bars = "";
   let bonds = "";
   let params = "";
+  let indicesText = "";
+  let indexBarsText = "";
+  let indexTrackingText = "";
+  const merge: Partial<CsvMergeOptions> = {};
   for (const f of arr) {
+    const idxKind = identifyIndexCsv(f.name);
+    if (idxKind) {
+      const text = await f.text();
+      if (idxKind === "indices") indicesText = text;
+      else if (idxKind === "index_bars") indexBarsText = text;
+      else indexTrackingText = text;
+      continue;
+    }
+    if (identifyFundBarsCsv(f.name)) {
+      merge.fundBars = await f.text();
+      continue;
+    }
+    const opt = identifyOptionalMergeCsv(f.name);
+    if (opt) {
+      const text = await f.text();
+      if (opt === "etfsMore") merge.etfsMore = text;
+      else if (opt === "barsMore") merge.barsMore = text;
+      else merge.bondsMore = text;
+      continue;
+    }
     const kind = identifyCsv(f.name);
-    if (!kind) throw new Error(`无法识别文件（请命名为 etfs.csv / bars.csv / bonds.csv / etf_params.csv）: ${f.name}`);
+    if (!kind) {
+      throw new Error(
+        `无法识别文件: ${f.name}（必选 bars.csv；bonds.csv、etfs.csv、etf_params.csv 可省略；可选 etfsmore / barsmore / bondsmore / fund_bars.csv；指数可选 indices.csv、index_bars.csv、index_tracking_etfs.csv）`
+      );
+    }
     const text = await f.text();
     if (kind === "etfs") etfs = text;
     if (kind === "bars") bars = text;
     if (kind === "bonds") bonds = text;
     if (kind === "etf_params") params = text;
   }
-  if (!etfs || !bars || !bonds || !params) {
-    throw new Error("请一次选择四个文件：etfs.csv、bars.csv、bonds.csv、etf_params.csv");
+  if (!bars.trim()) {
+    throw new Error(
+      "请选择 bars.csv（必选）：须含产品代码、日期、收盘价或净值。bonds.csv、etfs.csv、etf_params.csv 可省略；bonds 若含国债收益率或额外行情会与 bars 合并。"
+    );
   }
-  return buildCsvBundle(etfs, bars, bonds, params);
+  const hasMerge = Boolean(merge.etfsMore || merge.barsMore || merge.bondsMore || merge.fundBars);
+  const base = buildCsvBundle(etfs, bars, bonds, params, hasMerge ? (merge as CsvMergeOptions) : undefined);
+  const { bundle, indexCsvError } = withIndexCsvSafe(base, indicesText, indexBarsText, indexTrackingText);
+  const allDates = new Set<string>();
+  for (const def of bundle.definitions) {
+    for (const b of def.bars) allDates.add(b.date);
+  }
+  for (const ix of bundle.indices) {
+    for (const b of ix.bars) allDates.add(b.date);
+  }
+  const mainBondList = parseBondsFileDualPurpose(bonds).yieldCurve;
+  const moreBondList = merge.bondsMore?.trim() ? parseBondsFileDualPurpose(merge.bondsMore).yieldCurve : [];
+  const bondList =
+    mainBondList.length && moreBondList.length
+      ? mergeBondSeries(mainBondList, moreBondList)
+      : moreBondList.length
+        ? moreBondList
+        : mainBondList;
+  return {
+    bundle: { ...bundle, bondByDate: expandBondsToBarDates(bondList, [...allDates].sort()) },
+    indexCsvError,
+  };
 }

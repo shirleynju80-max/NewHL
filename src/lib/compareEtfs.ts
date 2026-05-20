@@ -71,37 +71,141 @@ function pearson(x: number[], y: number[]): number {
   return num / Math.sqrt(dx * dy);
 }
 
-export type CompareRow = {
-  code: string;
-  name: string;
-  overlapDays: number;
+const MIN_WINDOW_DAYS = 20;
+const TRADING_1Y = 252;
+const TRADING_3Y = 756;
+const TRADING_5Y = 1260;
+const MIN_OVERLAP = 30;
+
+/** 一段连续收盘序列上的买入持有与风险指标 */
+export type SeriesMetricBlock = {
+  days: number;
   from: string;
   to: string;
-  /** 买入持有年化（重合区间，按交易日缩放） */
+  /** 区间首尾收盘总收益 % */
+  totalReturnPct: number;
   annualReturnPct: number;
   maxDrawdownPct: number;
   annualVolPct: number;
-  /** 年化收益 / 最大回撤（回撤为 0 时记为 —） */
   calmarLike: number | null;
+  /** 年化收益 ÷ 年化波动（简化夏普），波动极小时为 null */
+  sharpeLike: number | null;
+} | null;
+
+function totalReturnPctFromCloses(closes: number[]): number {
+  if (closes.length < 2) return 0;
+  return Math.round((closes[closes.length - 1]! / closes[0]! - 1) * 10000) / 100;
+}
+
+export function seriesMetricBlock(closes: number[], dates: string[]): SeriesMetricBlock {
+  if (closes.length < MIN_WINDOW_DAYS || dates.length < MIN_WINDOW_DAYS) return null;
+  const ann = Math.round(annualizedReturnPct(closes) * 100) / 100;
+  const mdd = maxDrawdownFromCloses(closes);
+  const mddPct = Math.round(mdd * 10000) / 100;
+  const sd = sampleStdDailyReturns(closes);
+  const volPct = Math.round(sd * Math.sqrt(252) * 10000) / 100;
+  const calmar = mdd > 1e-8 ? Math.round((ann / (mdd * 100)) * 100) / 100 : null;
+  const tot = totalReturnPctFromCloses(closes);
+  const sharpeLike =
+    volPct > 1e-6 ? Math.round((ann / volPct) * 100) / 100 : null;
+  return {
+    days: closes.length,
+    from: dates[0],
+    to: dates[dates.length - 1],
+    totalReturnPct: tot,
+    annualReturnPct: ann,
+    maxDrawdownPct: mddPct,
+    annualVolPct: volPct,
+    calmarLike: calmar,
+    sharpeLike,
+  };
+}
+
+function sortedBarsSeries(d: EtfDefinition): { closes: number[]; dates: string[] } {
+  const sorted = [...d.bars].sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    closes: sorted.map((b) => b.close),
+    dates: sorted.map((b) => b.date),
+  };
+}
+
+export type SeriesOverviewRow = {
+  code: string;
+  name: string;
+  all: SeriesMetricBlock;
+  y1: SeriesMetricBlock;
+  y3: SeriesMetricBlock;
+  y5: SeriesMetricBlock;
 };
+
+/** 任意净值/收盘序列：全样本 + 近 1/3/5 年（与 ETF 总览同一套指标）。 */
+export function buildSeriesOverviewRowFromNav(
+  closes: number[],
+  dates: string[],
+  code: string,
+  name: string
+): SeriesOverviewRow | null {
+  if (closes.length !== dates.length || closes.length < MIN_WINDOW_DAYS) return null;
+  const n = closes.length;
+  const tail = (len: number) =>
+    n >= len ? seriesMetricBlock(closes.slice(-len), dates.slice(-len)) : null;
+  return {
+    code,
+    name,
+    all: seriesMetricBlock(closes, dates),
+    y1: tail(TRADING_1Y),
+    y3: tail(TRADING_3Y),
+    y5: tail(TRADING_5Y),
+  };
+}
+
+/** 单标的：全样本 + 近 1/3/5 年（按约 252 交易日/年切片），均基于该标的全部有行情日期 */
+export function buildSeriesOverviewRow(d: EtfDefinition): SeriesOverviewRow {
+  const { closes, dates } = sortedBarsSeries(d);
+  const row = buildSeriesOverviewRowFromNav(closes, dates, d.meta.code, d.meta.name);
+  if (!row) {
+    return {
+      code: d.meta.code,
+      name: d.meta.name,
+      all: null,
+      y1: null,
+      y3: null,
+      y5: null,
+    };
+  }
+  return row;
+}
 
 export type CompareResult = {
-  rows: CompareRow[];
-  labels: string[];
-  /** 日收益 Pearson，与 labels 同序 */
-  correlation: number[][];
-  dates: string[];
+  overview: SeriesOverviewRow[];
+  /** Pearson 日收益相关：仅在多标的且重合日 ≥30 时有值 */
+  correlation: number[][] | null;
+  corrLabels: string[];
+  overlapDates: string[];
+  overlapOk: boolean;
 };
 
-const MIN_OVERLAP = 30;
-
 /**
- * 在全体 K 线日期交集上，对各标的按收盘做买入持有统计与收益相关性。
+ * 概览：各标的在**自身全部 bar 日期**上算收益/回撤/波动（及滚动窗口）。
+ * 相关性矩阵：仅在**多标的日期交集**上算日收益 Pearson。
  */
 export function compareDefinitions(defs: EtfDefinition[]): CompareResult | null {
-  if (defs.length < 2) return null;
+  if (defs.length < 1) return null;
+  const overview = defs.map(buildSeriesOverviewRow);
+  if (defs.length < 2) {
+    return { overview, correlation: null, corrLabels: [], overlapDates: [], overlapOk: false };
+  }
+
   const dates = overlappingSortedDates(defs);
-  if (dates.length < MIN_OVERLAP) return null;
+  if (dates.length < MIN_OVERLAP) {
+    return {
+      overview,
+      correlation: null,
+      corrLabels: defs.map((d) => d.meta.code),
+      overlapDates: dates,
+      overlapOk: false,
+    };
+  }
 
   const maps = defs.map((d) => barCloseByDate(d.bars));
   const closesMatrix: number[][] = defs.map((_, i) =>
@@ -112,7 +216,15 @@ export function compareDefinitions(defs: EtfDefinition[]): CompareResult | null 
     })
   );
   for (const row of closesMatrix) {
-    if (row.some((x) => Number.isNaN(x))) return null;
+    if (row.some((x) => Number.isNaN(x))) {
+      return {
+        overview,
+        correlation: null,
+        corrLabels: defs.map((d) => d.meta.code),
+        overlapDates: dates,
+        overlapOk: false,
+      };
+    }
   }
 
   const rets: number[][] = closesMatrix.map((closes) => {
@@ -134,31 +246,11 @@ export function compareDefinitions(defs: EtfDefinition[]): CompareResult | null 
     }
   }
 
-  const rows: CompareRow[] = defs.map((d, i) => {
-    const c = closesMatrix[i];
-    const ann = Math.round(annualizedReturnPct(c) * 100) / 100;
-    const mdd = maxDrawdownFromCloses(c);
-    const mddPct = Math.round(mdd * 10000) / 100;
-    const sd = sampleStdDailyReturns(c);
-    const volPct = Math.round(sd * Math.sqrt(252) * 10000) / 100;
-    const calmar = mdd > 1e-8 ? Math.round((ann / (mdd * 100)) * 100) / 100 : null;
-    return {
-      code: d.meta.code,
-      name: d.meta.name,
-      overlapDays: dates.length,
-      from: dates[0],
-      to: dates[dates.length - 1],
-      annualReturnPct: ann,
-      maxDrawdownPct: mddPct,
-      annualVolPct: volPct,
-      calmarLike: calmar,
-    };
-  });
-
   return {
-    rows,
-    labels: defs.map((d) => d.meta.code),
+    overview,
     correlation,
-    dates,
+    corrLabels: defs.map((d) => d.meta.code),
+    overlapDates: dates,
+    overlapOk: true,
   };
 }

@@ -36,6 +36,6 @@ export function computeWindowedBacktest(
   const winLen = b - a + 1;
   const sigWin = sigChunk.slice(off, off + winLen);
   const barsWin = bars.slice(a, b + 1);
-  const tradesWin = buildTrades(barsWin, sigWin, paramVersion, strategyId);
+  const tradesWin = buildTrades(barsWin, sigWin, paramVersion, strategyId, params);
   return { barsWin, signalsWin: sigWin, tradesWin, i0: a, i1: b };
 }

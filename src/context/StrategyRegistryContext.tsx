@@ -45,30 +45,27 @@ export function StrategyRegistryProvider({ children }: { children: ReactNode }) 
     setEntries(loadFromStorage());
   }, []);
 
-  const persist = useCallback((next: UserRegisteredStrategy[]) => {
-    setEntries(next);
-    saveToStorage(next);
-  }, []);
-
-  const addEntry = useCallback(
-    (e: Omit<UserRegisteredStrategy, "id" | "createdAt"> & { id?: string }) => {
-      const id = e.id ?? `reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const addEntry = useCallback((e: Omit<UserRegisteredStrategy, "id" | "createdAt"> & { id?: string }) => {
+    const id = e.id ?? `reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setEntries((prev) => {
       const row: UserRegisteredStrategy = {
         ...e,
         id,
         createdAt: new Date().toISOString(),
       };
-      persist([row, ...entries]);
-    },
-    [entries, persist]
-  );
+      const next = [row, ...prev];
+      saveToStorage(next);
+      return next;
+    });
+  }, []);
 
-  const removeEntry = useCallback(
-    (id: string) => {
-      persist(entries.filter((x) => x.id !== id));
-    },
-    [entries, persist]
-  );
+  const removeEntry = useCallback((id: string) => {
+    setEntries((prev) => {
+      const next = prev.filter((x) => x.id !== id);
+      saveToStorage(next);
+      return next;
+    });
+  }, []);
 
   const value = useMemo<Ctx>(
     () => ({

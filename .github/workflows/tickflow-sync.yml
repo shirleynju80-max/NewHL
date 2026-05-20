@@ -31,6 +31,7 @@ jobs:
       - name: Sync bars from TickFlow
         env:
           TICKFLOW_API_KEY: ${{ secrets.TICKFLOW_API_KEY }}
+          TICKFLOW_ETFS_CSV: scripts/tickflow_sync/sync_etfs_full.csv
           # 增量模式只需最近若干根日 K
           TICKFLOW_KLINE_COUNT: "400"
           TICKFLOW_ADJUST: "forward"

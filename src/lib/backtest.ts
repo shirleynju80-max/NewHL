@@ -1,12 +1,35 @@
-import type { OhlcBar, TradePoint } from "../types";
+import type { EtfParams, MaCustomRule, OhlcBar, TradePoint } from "../types";
 import type { Signal } from "./strategy";
+
+/**
+ * 与 computeSignalsMaCustom 一致：自买入日下一根起逐日检查，**首次**满足止盈或回撤的收盘目录入卖因；
+ * 同日双触则「止盈+回撤（同日）」。
+ */
+function maCustomSellTriggerLabel(bars: OhlcBar[], entryIdx: number, exitIdx: number, rule: MaCustomRule): string {
+  const closes = bars.map((b) => b.close);
+  const entry = closes[entryIdx]!;
+  let peak = entry;
+  for (let j = entryIdx + 1; j <= exitIdx; j++) {
+    peak = Math.max(peak, closes[j]!);
+    const pnl = ((closes[j]! - entry) / entry) * 100;
+    const dd = peak > 0 ? ((peak - closes[j]!) / peak) * 100 : 0;
+    const hitP = pnl >= rule.profitTakePct;
+    const hitD = dd >= rule.trailDrawdownPct;
+    if (hitP || hitD) {
+      if (hitP && hitD) return "止盈+回撤（同日）";
+      if (hitP) return "止盈";
+      return "回撤";
+    }
+  }
+  return "止盈或回撤";
+}
 
 function triggerLabel(strategyId: string, side: "BUY" | "SELL"): string {
   const s = strategyId.toLowerCase();
-  if (s.includes("boll")) return side === "BUY" ? "布林下轨外回归" : "布林上轨外回归";
-  const rsi = s.includes("rsi");
-  if (rsi) return side === "BUY" ? "RSI 下穿超卖" : "RSI 上穿超买";
-  return side === "BUY" ? "MA 金叉" : "MA 死叉";
+  if (s.includes("ma_custom")) return side === "BUY" ? "MA上穿" : "止盈或回撤";
+  if (s.includes("boll")) return side === "BUY" ? "下轨" : "上轨";
+  if (s.includes("rsi")) return side === "BUY" ? "超卖" : "超买";
+  return side === "BUY" ? "金叉" : "死叉";
 }
 
 /**
@@ -16,11 +39,13 @@ export function buildTrades(
   bars: OhlcBar[],
   signals: Signal[],
   paramVersion: string,
-  strategyId: string
+  strategyId: string,
+  params?: EtfParams | null
 ): TradePoint[] {
+  const sid = strategyId.toLowerCase();
+  const rule = sid.includes("ma_custom") && params?.ma_custom_rule ? params.ma_custom_rule : null;
   const trades: TradePoint[] = [];
   let lastBuyIdx: number | null = null;
-  const prefix = strategyId;
   for (let i = 0; i < bars.length; i++) {
     if (signals[i] === "BUY") {
       if (lastBuyIdx == null) {
@@ -29,7 +54,7 @@ export function buildTrades(
           date: bars[i].date,
           side: "BUY",
           price: bars[i].close,
-          reason: `${prefix} · ${triggerLabel(strategyId, "BUY")}`,
+          reason: triggerLabel(strategyId, "BUY"),
           param_version: paramVersion,
         });
       } else {
@@ -42,11 +67,13 @@ export function buildTrades(
       const sell = bars[i].close;
       const pnl = ((sell - buy) / buy) * 100;
       const holdDays = i - lastBuyIdx;
+      const sellReason =
+        rule != null ? maCustomSellTriggerLabel(bars, lastBuyIdx, i, rule) : triggerLabel(strategyId, "SELL");
       trades.push({
         date: bars[i].date,
         side: "SELL",
         price: sell,
-        reason: `${prefix} · ${triggerLabel(strategyId, "SELL")}`,
+        reason: sellReason,
         param_version: paramVersion,
         holdDays,
         pnlPct: Math.round(pnl * 100) / 100,

@@ -11,6 +11,20 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
 
 数据为 `src/data/mock.ts` 生成的示例序列，可替换为真实行情与参数表。
 
+## 未完成事项梳理
+
+按当前文档与代码状态，项目主流程已能用 mock / CSV 跑通，但还有这些明确的待办：
+
+| 优先级 | 模块 | 当前状态 | 下一步 |
+|--------|------|----------|--------|
+| P0 | 真实数据接入 | 仍是纯前端读取 mock / CSV；`src/config/env.ts` 与 `src/data/dataEnrichment.ts` 只做预留。 | 确定行情、国债、股息率数据源与鉴权方式，新增 `src/api/` 拉数层，并统一错误、缓存、刷新策略。 |
+| P0 | 数据授权与合规 | 文档已提示权限风险，但没有登录、权限边界或数据展示授权校验。 | 明确二次展示/公网访问授权；若对外服务，增加后端聚合与用户鉴权。 |
+| P1 | 布林带策略 | 参数类型和 CSV 列已存在；`strategy_id` 含 `boll` 时当前仍走 MA 分支。 | 在 `src/lib/strategy.ts` 增加布林带买卖规则，并让回测、分位、图表指标同步展示。 |
+| P1 | 现金流类标的 | 红利利差模块已隐藏，但页面仍是占位说明。 | 定义分配率、现金流日历、久期/波动等字段与图表，再接 CSV/API。 |
+| P1 | 盘中实时联动 | 有模拟价与 `mergeIntraday1345` 类逻辑，但没有真实快照源和交易日历服务。 | 服务端定时写入当日 partial bar 或提供快照 API，前端复用现有信号计算。 |
+| P2 | 指数数据 | 指数 CSV 已可选加载；解析失败不阻断主表。 | 补齐 `indices.csv`、`index_bars.csv`、`index_tracking_etfs.csv` 的正式数据与编制说明链接。 |
+| P2 | 自动同步链路 | TickFlow 脚本与 `.github/workflows/tickflow-sync.yml` 已存在，可工作日盘后增量同步 `bars.csv`。 | 配好 `TICKFLOW_API_KEY` Secret 后做一次手动 `workflow_dispatch` 验证，并补失败告警/监控。 |
+
 ### 每日更新与「历史 + 当日实时」如何联动（你需要提供什么）
 
 本仓库当前是 **纯前端 + CSV/静态文件**，没有内置行情库。要做到**每天更新**并把**历史 K 线**与**当日未收盘的价量**串起来，推荐由你方提供 **HTTPS API** 或 **定时落盘的 CSV**（与现有表头兼容），并约定以下字段与节奏：
@@ -32,6 +46,26 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
 - **标的列表**：若 CI 检出环境里没有 `public/data/etfs.csv`（例如该文件仍被 gitignore），脚本会改用已入库的 [scripts/tickflow_sync/sync_etfs.csv](scripts/tickflow_sync/sync_etfs.csv)；也可通过环境变量 `TICKFLOW_ETFS_CSV` 指向任意含 `code` 列的 CSV。可选列 `tickflow_symbol` 可写死如 `510300.SH`，否则按 6 位代码推断 `.SH` / `.SZ`。
 - **本地执行**：`pip install -r scripts/tickflow_sync/requirements.txt`，再 `export TICKFLOW_API_KEY='…'` 后运行 `python3 scripts/tickflow_sync/sync_bars.py`。无 Key 时可用 `python3 scripts/tickflow_sync/sync_bars.py --free`（仅 TickFlow 免费档历史日 K）。环境变量 `TICKFLOW_KLINE_COUNT` 控制每只标的拉取根数（默认 3000；**增量**时通常 120～400 足够）。`TICKFLOW_ADJUST` 默认 `forward`（前复权）。
 - **增量默认**：脚本**只追加**各标的在 `bars.csv` 中已有 **最大 `date` 之后** 的 TickFlow 日 K，**不覆盖**历史行（与东方财富主数据一致）。若需用 TickFlow 覆盖重叠历史，显式传 `--full-refresh`（慎用）。
+
+### 实时爬虫（ETF 定点刷新）
+
+- **用途**：发布成静态网页后，在工作日北京时间 11:00、14:00 定点更新 ETF 当日行情，不做持续轮询。
+- **脚本**：[scripts/realtime_crawler/sync_etf_realtime.py](scripts/realtime_crawler/sync_etf_realtime.py)
+- **工作流**：[.github/workflows/realtime-crawler.yml](.github/workflows/realtime-crawler.yml)
+- **写入文件**：`public/data/barsmore.csv`。前端会按 `bars.csv + barsmore.csv` 合并，同一 `etf_code + date` 以后者覆盖。
+- **目标标的**：合并读取 `etfs.csv`、`etfsmore.csv`、`index_tracking_etfs.csv` 的场内 ETF 代码；场外基金代码会跳过。
+- **实时来源**：优先东方财富 quote，失败时用新浪 quote 兜底。
+- **默认定时模式**：`python scripts/realtime_crawler/sync_etf_realtime.py --skip-history`，只更新实时 quote，速度更快、适合 11:00 / 14:00。
+- **历史补缺与校验**：手动运行 `python scripts/realtime_crawler/sync_etf_realtime.py` 会尝试补齐历史日 K，并校验今年以来源数据与本地重合日期 OHLC 是否一致；发现差异会打印明细，可加 `--fail-on-mismatch` 让 CI 失败。
+
+### 指数 T-1 爬虫
+
+- **用途**：指数价格/全收益数据按 T-1 或盘后节奏更新，不参与盘中实时刷新。
+- **工作流**：[.github/workflows/index-t1-sync.yml](.github/workflows/index-t1-sync.yml)，工作日北京时间 18:30 运行。
+- **执行内容**：
+  - `python scripts/index_data_sync/sync_a_share_dividend_indices.py`
+  - `python scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py`
+- **写入文件**：`public/data/index_bars.csv`、`public/data/indices.csv`、`public/data/index_tracking_etfs.csv`。
 - **复权口径**：TickFlow 侧由 `TICKFLOW_ADJUST` 控制；默认前复权。若回测必须与东财某一口径严格一致，仍以 CSV 主数据为准，仅用增量补新交易日。
 
 ## 对外访问（Web 部署）
@@ -126,6 +160,7 @@ npx vite preview --host 0.0.0.0 --port 4173
 | `high` | 是 | 最高价 |
 | `low` | 是 | 最低价 |
 | `close` | 是 | 收盘价（与策略/回测口径一致，**前复权建议写进脚注**） |
+| `div_yield_nominal_pct` | 否 | 该交易日**名义股息率**（百分数数字，与 etfs 中 `div_yield_nominal_pct` 同口径）。提供后，「股息与利差」图按**时序**展示，并对有值日**前向填充**至下一有值日；未填行沿用上一有效观测，若全程无列则回退为 etfs 一行名义值（常数）。兼容列名：`dividend_yield_pct`、`div_yield_pct`。 |
 
 同一 `etf_code` 按 `date` **升序**排列；缺日则该段图表会断档，建议与 `bonds.csv` 日期对齐。
 
@@ -139,7 +174,7 @@ npx vite preview --host 0.0.0.0 --port 4173
 
 **与 K 线日期对齐**：程序会用「每个 bar 日期之前最近一条」国债观测对齐到 `bars` 的每个交易日，不要求 bonds 与 bars 日期一一相同。
 
-红利利差：`div_yield_nominal_pct - 对应锚国债`（A 股红利用 `cn10y_pct`，港股红利用 `us10y_pct`），与当前前端逻辑一致。
+红利利差：**每个 bar 日** 的有效名义股息率（优先 bars 按日列 + 前向填充，否则 etfs 名义值）减去**对应锚国债**（A 股红利用 `cn10y_pct`，港股红利用 `us10y_pct`），与当前前端逻辑一致。
 
 ### 4）`etf_params.csv` — 策略用到的指标参数（扁平列；**同一 `etf_code` 可多行**）
 
@@ -203,7 +238,21 @@ npx vite preview --host 0.0.0.0 --port 4173
 2. **自动从 `public/data/` 载入**  
    把四个 CSV 复制到 `public/data/`（与 `README.txt` 同级），文件名与表头符合下文章节；启动 dev 或访问构建后的站点时，若四份文件均存在且解析成功，会自动替换内置示例（若你已在页面手动选过 CSV，则不会覆盖）。
 
-实现代码：`src/lib/csv.ts`、`src/data/csvLoader.ts`、`src/context/DataSourceContext.tsx`。
+实现代码：`src/lib/csv.ts`、`src/data/csvLoader.ts`、`src/data/indexCsv.ts`、`src/context/DataSourceContext.tsx`、路由 `src/pages/IndicesListPage.tsx` / `IndexDetailPage.tsx`。
+
+### 指数（可选，「指数」导航）
+
+与 ETF 主数据独立；**解析失败不会阻断** `bars/etfs` 等主表加载，顶栏会显示黄色「指数数据提示」。
+
+| 文件 | 说明 |
+|------|------|
+| `indices.csv` | 每行一个指数：`index_code`, `name`, `market`（`A`/`A股` 或 `H`/`港股`）, `category`（**仅** `A股红利` / `港股红利` / `现金流` / `价值`）, `methodology_summary`, `methodology_url`（可空）, `fallback_div_yield_pct`（可空）, `inception_date`（可选，`YYYY-MM-DD`） |
+| `index_bars.csv` | `index_code`, `date`, `tri_close`（必填，全收益净值点）, `price_close`（可选，价格指数）, `div_yield_nominal_pct`（可选，按日股息率%） |
+| `index_tracking_etfs.csv` | `index_code`, `etf_code`；可选 `note`, `fee_pct`, `listed_date`。**仅用于指数页的 ETF 看板链接**，不参与指数收益/波动/利差计算；打开看板仍需该标的在 `etfs.csv`+`bars.csv` 中有数据 |
+
+**绩效默认口径**：全收益（`tri_close`）；详情页可切换到价格指数（需 `price_close`）。指数列表与详情中的收益/波动等指标**仅使用 `index_bars` 指数序列**，不使用 ETF 行情替代。`category` 为上述四类时展示「股息率−国债」辅助图：A 股锚 `cn10y_pct`，港股锚 `us10y_pct`。
+
+本机多选载入时，将上述三份与主 CSV **一并选择**；文件名须与上表一致。
 
 ## 本地运行
 

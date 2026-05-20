@@ -20,17 +20,23 @@ export function buildSpreadSeries(
 ): SpreadRow[] {
   const anchor = bondAnchorForEtf(etf);
   if (!anchor) return [];
-  const nominal = etf.meta.div_yield_nominal_pct;
+  const fallbackNominal = etf.meta.div_yield_nominal_pct;
+  let lastExplicit: number | undefined;
   return etf.bars.map((b) => {
+    const raw = b.div_yield_nominal_pct;
+    if (typeof raw === "number" && !Number.isNaN(raw)) {
+      lastExplicit = raw;
+    }
+    const divYieldPct = lastExplicit ?? fallbackNominal;
     const bondRow = bondByDate[b.date];
     const bondYieldPct =
       anchor === "CN_10Y" ? bondRow?.cn10y_pct ?? 2.5 : bondRow?.us10y_pct ?? 4.2;
     return {
       date: b.date,
       price: b.close,
-      divYieldPct: nominal,
+      divYieldPct,
       bondYieldPct: bondYieldPct,
-      spreadPct: Math.round((nominal - bondYieldPct) * 100) / 100,
+      spreadPct: Math.round((divYieldPct - bondYieldPct) * 100) / 100,
     };
   });
 }

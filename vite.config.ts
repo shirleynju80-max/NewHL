@@ -7,6 +7,16 @@ const base = (process.env.VITE_BASE_PATH as string | undefined) || "/";
 export default defineConfig({
   base,
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          charts: ["recharts"],
+        },
+      },
+    },
+  },
   preview: {
     host: true,
     port: 4173,

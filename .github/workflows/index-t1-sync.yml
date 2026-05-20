@@ -1,0 +1,45 @@
+# 工作日盘后运行指数 T-1 爬虫，补齐 public/data/index_bars.csv 等指数数据
+name: Index T-1 sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 北京时间 18:30；等待中证/国证当日数据发布后再跑。
+    - cron: "30 10 * * 1-5"
+
+concurrency:
+  group: index-t1-sync
+  cancel-in-progress: true
+
+jobs:
+  sync-index-data:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Sync index price / total return series
+        run: python scripts/index_data_sync/sync_a_share_dividend_indices.py
+
+      - name: Sync H30269 RedRocket DID
+        run: python scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
+
+      - name: Commit index data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/data/index_bars.csv public/data/indices.csv public/data/index_tracking_etfs.csv
+          if git diff --staged --quiet; then
+            echo "No changes to index data"
+          else
+            git commit -m "chore(data): sync index t-1 data"
+            git push
+          fi

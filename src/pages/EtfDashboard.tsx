@@ -18,21 +18,118 @@ import { useStrategyRegistry } from "../context/StrategyRegistryContext";
 import { buildTrades } from "../lib/backtest";
 import { buildPriceIndicatorRows, mergeTradeMarkers } from "../lib/backtestChartSeries";
 import { computeWindowedBacktest } from "../lib/backtestRange";
-import { attachNavToRounds, buildRoundTrips, computeBacktestSummary, findOpenBuy } from "../lib/backtestSummary";
-import { buildSpreadSeries, bondAnchorForEtf } from "../lib/dividend";
+import {
+  attachNavToRounds,
+  buildRoundTrips,
+  computeBacktestSummary,
+  findOpenBuy,
+  type BacktestSummary,
+} from "../lib/backtestSummary";
 import { indicatorValueLabelAtDate, strategyPercentileContext } from "../lib/indicatorPercentile";
 import { getParamVariants } from "../lib/paramVariants";
+import { variantMonitorCompact, variantOptionLabel } from "../lib/strategyLabels";
 import {
-  type Signal,
   computeSignals,
   latestSignal,
   mergeIntraday1345,
+  usesBollStrategy,
+  usesMaCustomStrategy,
   usesRsiStrategy,
 } from "../lib/strategy";
+import type { TradePoint } from "../types";
 
-type TabId = "backtest" | "intraday" | "ledger" | "dividend" | "hk" | "methodology";
+type TabId = "backtest" | "intraday" | "ledger" | "methodology";
 
 const MIN_WINDOW_BARS = 25;
+
+/** 对比策略买卖点颜色（与当前绿/红三角区分） */
+const COMPARE_MARKER_COLORS = [
+  { buy: "#ea580c", sell: "#9a3412" },
+  { buy: "#7c3aed", sell: "#4c1d95" },
+  { buy: "#0ea5e9", sell: "#0c4a6e" },
+] as const;
+
+/** 多策略时：买卖点相对收盘价的纵向错位比例（买向上、卖向下），避免叠在同一点 */
+const MARK_STAGGER_BASE = 0.0028;
+const MARK_STAGGER_STEP = 0.0045;
+
+function legendElide(s: string, max = 28): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+type CompareTooltipStrat = { key: string; label: string; summary: BacktestSummary };
+
+function PriceStrategyCompareTooltip({
+  active,
+  payload,
+  primaryLabel,
+  primarySummary,
+  compares,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: Record<string, unknown> }>;
+  primaryLabel: string;
+  primarySummary: BacktestSummary | null;
+  compares: CompareTooltipStrat[];
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload as { date?: string; price?: number } | undefined;
+  if (!row?.date) return null;
+  const sumLines = (s: BacktestSummary) => (
+    <ul className="mt-1 list-inside list-disc text-zinc-600">
+      <li>策略收益 {s.strategyReturnPct}%</li>
+      <li>最大回撤 {s.maxDrawdownPct}%</li>
+      <li>胜率 {(s.winRate * 100).toFixed(1)}%</li>
+      <li>完整轮次 {s.roundCount}</li>
+    </ul>
+  );
+  return (
+    <div className="max-w-[17rem] rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-[11px] shadow-lg">
+      <p className="font-mono font-semibold text-zinc-900">{row.date}</p>
+      <p className="mt-0.5 text-zinc-700">
+        收盘 {typeof row.price === "number" ? row.price.toFixed(4) : "—"}
+      </p>
+      <div className="mt-2 space-y-2 border-t border-zinc-100 pt-2">
+        <div>
+          <p className="font-semibold text-indigo-800">当前 · {primaryLabel}</p>
+          {primarySummary ? sumLines(primarySummary) : <p className="mt-1 text-zinc-400">—</p>}
+        </div>
+        {compares.map((c, i) => (
+          <div key={c.key}>
+            <p className="font-semibold text-amber-950">对比{i + 1} · {c.label}</p>
+            {sumLines(c.summary)}
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 border-t border-zinc-100 pt-1.5 text-[10px] leading-snug text-zinc-500">
+        上列为当前时间窗内回测摘要；买卖点形状：三角=当前，方块/圆=对比。多选时标记沿价格纵向略错位，便于区分。
+      </p>
+    </div>
+  );
+}
+
+function CompareBuyMarker({ cx, cy, fill }: { cx?: number; cy?: number; fill: string }) {
+  if (cx == null || cy == null) return null;
+  return (
+    <rect
+      x={cx - 4.5}
+      y={cy - 4.5}
+      width={9}
+      height={9}
+      transform={`rotate(45 ${cx} ${cy})`}
+      fill={fill}
+      stroke="#fff"
+      strokeWidth={1}
+    />
+  );
+}
+
+function CompareSellMarker({ cx, cy, fill }: { cx?: number; cy?: number; fill: string }) {
+  if (cx == null || cy == null) return null;
+  return <circle cx={cx} cy={cy} r={5} fill={fill} stroke="#fff" strokeWidth={1} />;
+}
 
 function clampWindowIndices(n: number, start: number, end: number): { i0: number; i1: number } {
   if (n <= 0) return { i0: 0, i1: 0 };
@@ -48,15 +145,20 @@ function clampWindowIndices(n: number, start: number, end: number): { i0: number
 
 export function EtfDashboardPage() {
   const { code } = useParams<{ code: string }>();
-  const { getEtf, bondByDate } = useDataSource();
+  const { getEtf, getIndex, indexTracking } = useDataSource();
   const { entries: registeredStrategies } = useStrategyRegistry();
   const etf = code ? getEtf(code) : undefined;
 
-  const isDividend = etf?.meta.product_kind === "红利_含股息分红";
   const isCashflow = etf?.meta.product_kind === "现金流类";
-  const hasScope = Boolean(etf?.meta.dividend_market_scope);
-  const showDividendModule = Boolean(isDividend && hasScope);
-  const showHk = Boolean(isDividend && etf?.meta.dividend_market_scope === "港股红利");
+
+  const trackingIndexCode = useMemo(() => {
+    if (!etf?.meta.code) return null;
+    return indexTracking.find((row) => row.etf_code === etf.meta.code)?.index_code ?? null;
+  }, [indexTracking, etf?.meta.code]);
+  const trackingIndexName = useMemo(
+    () => (trackingIndexCode ? getIndex(trackingIndexCode)?.meta.name ?? null : null),
+    [getIndex, trackingIndexCode]
+  );
 
   const [tab, setTab] = useState<TabId>("backtest");
 
@@ -71,21 +173,17 @@ export function EtfDashboardPage() {
     setVariantKey(v[0]?.key ?? "");
   }, [etf, registeredStrategies]);
 
-  const [intraVariantKey, setIntraVariantKey] = useState("");
-  useEffect(() => {
-    if (!etf) return;
-    setIntraVariantKey(getParamVariants(etf, registeredStrategies)[0]?.key ?? "");
-  }, [etf?.meta.code, etf, registeredStrategies]);
-
   const activeVariant = useMemo(() => {
     if (!variants.length) return undefined;
     return variants.find((x) => x.key === variantKey) ?? variants[0];
   }, [variants, variantKey]);
 
-  const intraVariant = useMemo(() => {
-    if (!variants.length) return undefined;
-    return variants.find((x) => x.key === intraVariantKey) ?? variants[0];
-  }, [variants, intraVariantKey]);
+  /** 价格图对比策略（最多 3 条，与当前策略互斥） */
+  const [compareKeys, setCompareKeys] = useState<string[]>([]);
+  useEffect(() => {
+    if (!activeVariant) return;
+    setCompareKeys((keys) => keys.filter((k) => k !== activeVariant.key));
+  }, [activeVariant?.key]);
 
   const closeSignals = useMemo(
     () =>
@@ -97,7 +195,7 @@ export function EtfDashboardPage() {
   const fullTrades = useMemo(
     () =>
       etf && activeVariant
-        ? buildTrades(etf.bars, closeSignals, activeVariant.paramVersion, activeVariant.strategyId)
+        ? buildTrades(etf.bars, closeSignals, activeVariant.paramVersion, activeVariant.strategyId, activeVariant.params)
         : [],
     [etf, activeVariant, closeSignals]
   );
@@ -133,6 +231,18 @@ export function EtfDashboardPage() {
   const backtestTrades = winBt?.tradesWin ?? [];
   const rawRounds = useMemo(() => buildRoundTrips(backtestTrades), [backtestTrades]);
   const rounds = useMemo(() => attachNavToRounds(rawRounds), [rawRounds]);
+  const openInWindow = useMemo(() => findOpenBuy(backtestTrades), [backtestTrades]);
+  const floatOpenPct = useMemo(() => {
+    if (!openInWindow || !winBt?.barsWin.length) return null;
+    const last = winBt.barsWin[winBt.barsWin.length - 1]!.close;
+    return Math.round(((last - openInWindow.price) / openInWindow.price) * 10000) / 100;
+  }, [openInWindow, winBt]);
+  const openHoldDays = useMemo(() => {
+    if (!openInWindow || !winBt?.barsWin.length) return null;
+    const buyIdx = winBt.barsWin.findIndex((b) => b.date === openInWindow.date);
+    if (buyIdx < 0) return null;
+    return winBt.barsWin.length - 1 - buyIdx;
+  }, [openInWindow, winBt]);
   const backSummary = useMemo(
     () =>
       etf && winBt ? computeBacktestSummary(winBt.barsWin, backtestTrades, rounds) : null,
@@ -154,6 +264,8 @@ export function EtfDashboardPage() {
   );
 
   const rsiMode = Boolean(activeVariant && usesRsiStrategy(activeVariant.strategyId));
+  const maCustomMode = Boolean(activeVariant && usesMaCustomStrategy(activeVariant.strategyId));
+  const bollMode = Boolean(activeVariant && usesBollStrategy(activeVariant.strategyId));
   const rsiOb = chartRows[0]?.rsiOverbought;
   const rsiOs = chartRows[0]?.rsiOversold;
 
@@ -178,22 +290,70 @@ export function EtfDashboardPage() {
     [etf, fullTrades, fullRounds]
   );
 
-  const spreadRows = useMemo(
-    () => (etf ? buildSpreadSeries(etf, bondByDate) : []),
-    [etf, bondByDate]
-  );
+  const compareProfiles = useMemo(() => {
+    if (!etf || !winBt || !activeVariant) return [];
+    const barsWin = winBt.barsWin;
+    if (!barsWin.length) return [];
+    const out: { key: string; label: string; trades: TradePoint[]; summary: BacktestSummary }[] = [];
+    for (const key of compareKeys.slice(0, 3)) {
+      if (key === activeVariant.key) continue;
+      const v = variants.find((x) => x.key === key);
+      if (!v) continue;
+      const sig = computeSignals(barsWin, v.params, v.strategyId);
+      const trades = buildTrades(barsWin, sig, v.paramVersion, v.strategyId, v.params);
+      const rds = attachNavToRounds(buildRoundTrips(trades));
+      out.push({
+        key,
+        label: variantMonitorCompact(v),
+        trades,
+        summary: computeBacktestSummary(barsWin, trades, rds),
+      });
+    }
+    return out;
+  }, [etf, winBt, activeVariant, compareKeys, variants]);
+
+  const primaryLegendShort = activeVariant ? variantMonitorCompact(activeVariant) : "";
 
   const priceChartRows = useMemo(() => {
-    const hasSpread = spreadRows.length > 0;
-    const m = new Map(spreadRows.map((r) => [r.date, r.spreadPct]));
-    return chartMerged.map((row) => ({
-      date: row.date,
-      price: row.price,
-      buyMark: row.buyMark,
-      sellMark: row.sellMark,
-      spread: hasSpread ? m.get(row.date) : undefined,
-    }));
-  }, [chartMerged, spreadRows]);
+    const buySets = compareProfiles.map((p) => new Set(p.trades.filter((t) => t.side === "BUY").map((t) => t.date)));
+    const sellSets = compareProfiles.map((p) => new Set(p.trades.filter((t) => t.side === "SELL").map((t) => t.date)));
+    const stagger = compareProfiles.length > 0;
+    return chartMerged.map((row) => {
+      const p = row.price;
+      const o: Record<string, unknown> = {
+        date: row.date,
+        price: p,
+      };
+      if (stagger) {
+        o.buyMarkY = row.buyMark != null ? p * (1 + MARK_STAGGER_BASE) : undefined;
+        o.sellMarkY = row.sellMark != null ? p * (1 - MARK_STAGGER_BASE) : undefined;
+        for (let i = 0; i < compareProfiles.length; i++) {
+          const f = MARK_STAGGER_BASE + (i + 1) * MARK_STAGGER_STEP;
+          o[`buyCmp${i}Y`] = buySets[i]!.has(row.date) ? p * (1 + f) : undefined;
+          o[`sellCmp${i}Y`] = sellSets[i]!.has(row.date) ? p * (1 - f) : undefined;
+        }
+      } else {
+        o.buyMarkY = row.buyMark;
+        o.sellMarkY = row.sellMark;
+        for (let i = 0; i < compareProfiles.length; i++) {
+          o[`buyCmp${i}Y`] = buySets[i]!.has(row.date) ? p : undefined;
+          o[`sellCmp${i}Y`] = sellSets[i]!.has(row.date) ? p : undefined;
+        }
+      }
+      return o;
+    });
+  }, [chartMerged, compareProfiles]);
+
+  /** 与下方 Brush 共用：左轴宽 + 占位，各子图对齐 */
+  const chartLayout = useMemo(() => {
+    const axisL = 52;
+    return {
+      axisL,
+      marginPrice: { top: 8, bottom: 22, left: 8, right: 12 } as const,
+      marginStrategy: { top: 8, bottom: 22, left: 8, right: 12 } as const,
+      marginBrush: { top: 2, bottom: 2, left: 8 + axisL, right: 12 } as const,
+    };
+  }, []);
 
   const lastClose = etf?.bars[etf.bars.length - 1]?.close ?? 1;
   const [snapClose, setSnapClose] = useState(1);
@@ -206,18 +366,23 @@ export function EtfDashboardPage() {
     return mergeIntraday1345(etf.bars, snapClose);
   }, [etf, snapClose]);
 
-  const intraSignals = useMemo((): Signal[] => {
-    if (!etf || !intraVariant) return [];
-    return computeSignals(mergedForIntra, intraVariant.params, intraVariant.strategyId);
-  }, [mergedForIntra, etf, intraVariant]);
-
-  const intraPct = useMemo(
-    () =>
-      etf && intraVariant && mergedForIntra.length
-        ? strategyPercentileContext(etf.bars, intraVariant.params, intraVariant.strategyId, mergedForIntra)
-        : null,
-    [etf, intraVariant, mergedForIntra]
-  );
+  const intradayRows = useMemo(() => {
+    if (!etf?.bars.length) return [];
+    return variants.map((v) => {
+      const sigs = computeSignals(mergedForIntra, v.params, v.strategyId);
+      const sig = latestSignal(sigs);
+      const pctCtx = strategyPercentileContext(etf.bars, v.params, v.strategyId, mergedForIntra);
+      const p = pctCtx?.percentile;
+      let alert: string | null = null;
+      if (p != null) {
+        if (p <= 18) alert = "临近买";
+        else if (p <= 32) alert = "靠近买区";
+        else if (p >= 82) alert = "临近卖";
+        else if (p >= 68) alert = "靠近卖区";
+      }
+      return { v, sig, pctCtx, alert };
+    });
+  }, [etf, variants, mergedForIntra]);
 
   const closeZoneHint = useMemo(
     () =>
@@ -227,32 +392,15 @@ export function EtfDashboardPage() {
     [etf, activeVariant]
   );
 
-  const anchor = etf ? bondAnchorForEtf(etf) : null;
-
   const windowLabel =
     winBt && winBt.barsWin.length > 0
       ? `${winBt.barsWin[0].date} ~ ${winBt.barsWin[winBt.barsWin.length - 1].date}（${winBt.barsWin.length} 根 K 线）`
       : "";
 
-  const tripleData = spreadRows.map((r) => ({
-    date: r.date,
-    股息率: r.divYieldPct,
-    国债: r.bondYieldPct,
-    利差: r.spreadPct,
-  }));
-
-  const spreadPriceData = spreadRows.map((r) => ({
-    date: r.date,
-    价格: r.price,
-    利差: r.spreadPct,
-  }));
-
   const tabs: { id: TabId; label: string; hide?: boolean }[] = [
     { id: "backtest", label: "回测与买卖点" },
     { id: "intraday", label: "今日盘中信号" },
     { id: "ledger", label: "信号台账" },
-    { id: "dividend", label: "股息与利差", hide: !showDividendModule },
-    { id: "hk", label: "港股现金流", hide: !showHk },
     { id: "methodology", label: "编制说明" },
   ];
 
@@ -261,7 +409,7 @@ export function EtfDashboardPage() {
       <div className="rounded-3xl border border-zinc-100 bg-white p-12 text-center shadow-sm">
         <p className="text-zinc-500">未找到标的</p>
         <Link to="/" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline">
-          返回总览
+          返回 ETF总览
         </Link>
       </div>
     );
@@ -272,10 +420,28 @@ export function EtfDashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div>
           <Link to="/" className="text-xs font-medium text-indigo-600 hover:underline">
-            ← 总览
+            ← ETF总览
           </Link>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900">{etf.meta.name}</h2>
           <p className="mt-1 font-mono text-sm text-zinc-500">{etf.meta.code}</p>
+          {trackingIndexCode && (
+            <p className="mt-1 text-xs text-zinc-600">
+              跟踪指数：
+              <Link
+                to={`/indices/${encodeURIComponent(trackingIndexCode)}`}
+                className="ml-1 font-mono text-indigo-600 hover:underline"
+              >
+                {trackingIndexCode}
+              </Link>
+              {trackingIndexName ? <span className="ml-1 text-zinc-500">· {trackingIndexName}</span> : null}
+              <Link
+                to={`/indices/${encodeURIComponent(trackingIndexCode)}`}
+                className="ml-2 text-indigo-600 hover:underline"
+              >
+                指数详情 →
+              </Link>
+            </p>
+          )}
         </div>
         <div className="rounded-2xl border border-zinc-100 bg-white px-5 py-4 text-sm shadow-sm max-w-md">
           <p className="text-xs text-zinc-400">临近买入 / 卖出区间提示</p>
@@ -284,17 +450,11 @@ export function EtfDashboardPage() {
           </p>
           {closeZoneHint && (
             <p className="mt-1 text-xs text-zinc-600">
-              {closeZoneHint.metricName} = {closeZoneHint.metricValue} · 历史分位{" "}
+              {closeZoneHint.metricName} = {closeZoneHint.metricValue} · 标尺{" "}
               <span className="font-mono font-semibold">{closeZoneHint.percentile}%</span>
-              <span className="text-zinc-400">（买入提示 ≤20%，卖出提示 ≥80%）</span>
+              <span className="text-zinc-400"> · 0 买侧 100 卖侧</span>
             </p>
           )}
-          <p className="text-xs text-zinc-400 mt-2">
-            param {activeVariant?.paramVersion ?? etf.meta.param_version}
-            {variants.length > 1 && (
-              <span className="text-zinc-300"> · {variants.length} 组可切换</span>
-            )}
-          </p>
           <p className="text-xs text-zinc-500 mt-2 border-t border-zinc-100 pt-2">
             最新收盘（全序列）持仓状态：<span className="font-semibold text-zinc-800">{latestGlobalPosition}</span>
             <span className="text-zinc-400"> · 与下方时间窗内「窗口末」可能不同</span>
@@ -322,7 +482,7 @@ export function EtfDashboardPage() {
       {isCashflow && (
         <div className="rounded-3xl border border-amber-100 bg-amber-50/60 p-6 text-sm text-amber-950">
           <strong className="font-semibold">现金流类产品</strong>
-          ：与「股票股息率 − 国债」红利利差模块互斥；以下为占位说明。正式环境可接入分配率、现金流日历等字段。
+          ：以下为占位说明。正式环境可接入分配率、现金流日历等字段。
         </div>
       )}
 
@@ -330,81 +490,48 @@ export function EtfDashboardPage() {
         <section className="space-y-6">
           {variants.length > 0 && (
             <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm">
-              <label className="block text-xs font-medium uppercase tracking-wide text-zinc-400">
-                策略参数
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                  策略参数
+                </label>
+                <Link
+                  to={`/registry?etf=${encodeURIComponent(etf.meta.code)}`}
+                  className="text-xs font-medium text-indigo-600 hover:underline"
+                >
+                  策略回测与注册 →
+                </Link>
+              </div>
               <select
-                className="mt-2 w-full max-w-md rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-900"
+                className="mt-2 w-full max-w-xl rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-900"
                 value={activeVariant?.key ?? ""}
                 onChange={(e) => setVariantKey(e.target.value)}
               >
                 {variants.map((v) => (
                   <option key={v.key} value={v.key}>
-                    {v.label} · {v.strategyId}
+                    {variantMonitorCompact(v)}
                   </option>
                 ))}
               </select>
-              <p className="mt-2 text-xs text-zinc-500">
-                切换后回测区按该组参数重算；收益与买卖统计以<strong>下方时间条所选区间</strong>为准（指标向左带预热）。基准为区间内买入持有（首尾收盘）。
-              </p>
+              <p className="mt-1.5 text-xs text-zinc-500">切换后回测与下图按该方案重算；统计口径为下方时间窗。</p>
             </div>
           )}
 
           {backSummary && winBt && (
-            <div className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
-              <h3 className="text-sm font-semibold text-zinc-900">策略汇总（当前时间窗）</h3>
-              <p className="mt-1 text-xs font-mono text-zinc-600">{windowLabel}</p>
-              <p className="mt-2 text-xs text-zinc-500 leading-relaxed">
-                收益：区间内已平仓按复利滚动；若窗口<strong>最后一天</strong>仍为持仓，按当日收盘对未平部分做市值。基准为窗口<strong>首根 K 收盘买入、持有至末根 K 收盘</strong>。
-              </p>
-              <div className="mt-5 space-y-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">收益与基准</p>
-                  <p className="mt-1 text-[10px] text-zinc-400">
-                    策略累计收益 = 按成交重建的<strong>每日收盘权益曲线</strong>首尾变化，与下方「最大回撤 / 年化波动」同源。
-                  </p>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <Stat label="策略累计收益" value={`${backSummary.strategyReturnPct}%`} />
-                    <Stat label="买入持有（基准）" value={`${backSummary.buyHoldReturnPct}%`} />
-                    <Stat label="相对基准（超额）" value={`${backSummary.excessReturnPct}%`} />
-                    <Stat label="最大回撤" value={`${backSummary.maxDrawdownPct}%`} />
-                    <Stat label="年化波动（日收益）" value={`${backSummary.annualVolPct}%`} />
-                    <Stat label="胜率（按已平仓卖）" value={`${(backSummary.winRate * 100).toFixed(1)}%`} />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">交易统计（与完整轮次对齐）</p>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <Stat label="完整买卖轮次" value={String(backSummary.roundCount)} />
-                    <Stat
-                      label="已平仓 · 买 / 卖"
-                      hint="每轮各 1 笔"
-                      value={`${backSummary.pairedBuyCount} / ${backSummary.pairedSellCount}`}
-                    />
-                    <Stat
-                      label="未完成买入"
-                      hint="最后一笔为买且尚未在窗内卖出"
-                      value={backSummary.pendingBuyCount > 0 ? "1（持仓中）" : "0"}
-                    />
-                    <Stat
-                      label="流水笔数（审计）"
-                      hint="含未配对买；与轮次不同时见上"
-                      value={`买 ${backSummary.rawBuyCount} · 卖 ${backSummary.rawSellCount}`}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">节奏与状态</p>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <Stat label="平均持仓天数（已平仓轮）" value={String(backSummary.avgHoldDays)} />
-                    <Stat label="平均空仓天数（轮次之间）" value={String(backSummary.avgFlatDays)} />
-                    <Stat
-                      label="窗口末 / 全序列收盘"
-                      hint="窗口末：所选区间内最后一根 K 之后是否仍持仓；全序列见顶栏"
-                      value={`${backSummary.position} / ${latestGlobalPosition}`}
-                    />
-                  </div>
-                </div>
+            <div className="rounded-2xl border border-zinc-100 bg-gradient-to-b from-zinc-50/80 to-white p-4 shadow-sm">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">策略汇总</h3>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                <Stat compact label="策略收益" value={`${backSummary.strategyReturnPct}%`} />
+                <Stat compact label="基准" value={`${backSummary.buyHoldReturnPct}%`} />
+                <Stat compact label="超额" value={`${backSummary.excessReturnPct}%`} />
+                <Stat compact label="最大回撤" value={`${backSummary.maxDrawdownPct}%`} />
+                <Stat compact label="年化波动" value={`${backSummary.annualVolPct}%`} />
+                <Stat compact label="胜率" value={`${(backSummary.winRate * 100).toFixed(1)}%`} />
+                <Stat compact label="轮次" value={String(backSummary.roundCount)} />
+                <Stat compact label="已平买/卖" value={`${backSummary.pairedBuyCount}/${backSummary.pairedSellCount}`} />
+                <Stat compact label="未平买" value={backSummary.pendingBuyCount > 0 ? "持有" : "无"} />
+                <Stat compact label="流水" value={`${backSummary.rawBuyCount}/${backSummary.rawSellCount}`} />
+                <Stat compact label="均持/空仓天" value={`${backSummary.avgHoldDays} / ${backSummary.avgFlatDays}`} />
+                <Stat compact label="窗末/全序" value={`${backSummary.position}/${latestGlobalPosition}`} />
               </div>
             </div>
           )}
@@ -440,7 +567,7 @@ export function EtfDashboardPage() {
                       <td className="px-4 py-2 font-mono">{backSummary.strategyReturnPct}%</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2">买入持有（基准）</td>
+                      <td className="px-4 py-2">基准·买入持有</td>
                       <td className="px-4 py-2 font-mono">{fullSummary.buyHoldReturnPct}%</td>
                       <td className="px-4 py-2 font-mono">{backSummary.buyHoldReturnPct}%</td>
                     </tr>
@@ -450,9 +577,14 @@ export function EtfDashboardPage() {
                       <td className="px-4 py-2 font-mono">{backSummary.maxDrawdownPct}%</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2">年化波动（日收益）</td>
+                      <td className="px-4 py-2">年化波动</td>
                       <td className="px-4 py-2 font-mono">{fullSummary.annualVolPct}%</td>
                       <td className="px-4 py-2 font-mono">{backSummary.annualVolPct}%</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2">胜率</td>
+                      <td className="px-4 py-2 font-mono">{(fullSummary.winRate * 100).toFixed(1)}%</td>
+                      <td className="px-4 py-2 font-mono">{(backSummary.winRate * 100).toFixed(1)}%</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2">完整买卖轮次</td>
@@ -479,89 +611,288 @@ export function EtfDashboardPage() {
             </details>
           )}
 
-          <ChartCard
-            title="价格、利差与买卖点"
-            subtitle={`左轴：收盘；右轴：名义股息率 − 锚国债（%）；买卖点与 K 线对齐 · 下方 Brush（至少 ${MIN_WINDOW_BARS} 根 K 线）`}
-          >
-            <ResponsiveContainer width="100%" height={280}>
-              <ComposedChart
-                data={priceChartRows}
-                margin={{ top: 8, right: spreadRows.length > 0 ? 50 : 8, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={28} />
-                <YAxis yAxisId="left" domain={["auto", "auto"]} tick={{ fontSize: 11 }} width={52} />
-                {spreadRows.length > 0 && (
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    domain={["auto", "auto"]}
-                    tick={{ fontSize: 10 }}
-                    width={44}
-                    label={{ value: "利差%", angle: 90, position: "insideRight", fill: "#0f766e", fontSize: 10 }}
-                  />
-                )}
-                <Tooltip
-                  contentStyle={{ borderRadius: 12, border: "1px solid #e4e4e7" }}
-                  formatter={(value: number, name: string) => {
-                    if (value == null || Number.isNaN(value)) return [null, name];
-                    if (name === "利差") return [`${Number(value).toFixed(2)}%`, name];
-                    return [typeof value === "number" ? Number(value).toFixed(4) : value, name];
-                  }}
-                />
-                <Legend />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="price"
-                  stroke="#4f46e5"
-                  dot={false}
-                  strokeWidth={2}
-                  name="收盘"
-                  isAnimationActive={false}
-                />
-                {spreadRows.length > 0 && (
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="spread"
-                    stroke="#0d9488"
-                    dot={false}
-                    strokeWidth={1.5}
-                    name="利差"
-                    connectNulls
-                    isAnimationActive={false}
-                  />
-                )}
-                <Scatter
-                  yAxisId="left"
-                  name="买"
-                  dataKey="buyMark"
-                  fill="#059669"
-                  shape={(p: { cx?: number; cy?: number }) => <BuyMarker cx={p.cx} cy={p.cy} />}
-                />
-                <Scatter
-                  yAxisId="left"
-                  name="卖"
-                  dataKey="sellMark"
-                  fill="#b91c1c"
-                  shape={(p: { cx?: number; cy?: number }) => <SellMarker cx={p.cx} cy={p.cy} />}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-            {spreadRows.length === 0 && (
-              <p className="mt-2 text-xs text-zinc-500">
-                当前标的无红利利差数据（非红利品类或未配置国债锚），仅展示价格与买卖点。
-              </p>
-            )}
-
-            {barCount > MIN_WINDOW_BARS && brushData.length > 0 && (
-              <div className="mt-4 rounded-xl border border-zinc-100 bg-zinc-50/80 px-2 py-2">
-                <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-                  全序列时间窗（拖动两端或整体平移）
+          <div className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm space-y-3">
+            <h3 className="text-sm font-semibold text-zinc-900">价格与买卖点 · 策略指标</h3>
+            {variants.length > 1 && activeVariant ? (
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50/90 px-3 py-2">
+                <p className="text-xs font-medium text-zinc-800">对比策略（可选，最多 3 个）</p>
+                <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">
+                  仅在<strong>上方价格图</strong>叠加买卖点（与下方 Brush 时间窗一致）；多选时买点<strong>略高于</strong>收盘、卖点<strong>略低于</strong>收盘并<strong>按策略分层错位</strong>，避免叠在同一点；浮窗内指标仍以<strong>真实收盘</strong>计算。
                 </p>
+                <div className="mt-2 flex max-h-28 flex-wrap gap-x-3 gap-y-1.5 overflow-y-auto">
+                  {variants
+                    .filter((v) => v.key !== activeVariant.key)
+                    .map((v) => {
+                      const on = compareKeys.includes(v.key);
+                      const atCap = compareKeys.length >= 3 && !on;
+                      return (
+                        <label
+                          key={v.key}
+                          className={`inline-flex cursor-pointer items-center gap-1.5 text-[11px] ${atCap ? "cursor-not-allowed opacity-40" : ""}`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="rounded border-zinc-300 text-indigo-600 accent-indigo-600"
+                            checked={on}
+                            disabled={atCap}
+                            onChange={() => {
+                              setCompareKeys((prev) => {
+                                if (prev.includes(v.key)) return prev.filter((k) => k !== v.key);
+                                if (prev.length >= 3) return prev;
+                                return [...prev, v.key];
+                              });
+                            }}
+                          />
+                          <span className="text-zinc-800">{variantMonitorCompact(v)}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-col gap-2">
+              <div className="min-h-0 rounded-lg border border-zinc-100/80 p-1">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart
+                    syncId="etfbt"
+                    data={priceChartRows}
+                    margin={chartLayout.marginPrice}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={28} />
+                    <YAxis yAxisId="left" domain={["auto", "auto"]} tick={{ fontSize: 11 }} width={chartLayout.axisL} />
+                    <Tooltip
+                      content={(tooltipProps) => (
+                        <PriceStrategyCompareTooltip
+                          {...tooltipProps}
+                          primaryLabel={activeVariant ? variantMonitorCompact(activeVariant) : "—"}
+                          primarySummary={backSummary}
+                          compares={compareProfiles.map((p) => ({
+                            key: p.key,
+                            label: p.label,
+                            summary: p.summary,
+                          }))}
+                        />
+                      )}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="price"
+                      stroke="#4f46e5"
+                      dot={false}
+                      strokeWidth={2}
+                      name="收盘"
+                      isAnimationActive={false}
+                    />
+                    <Scatter
+                      yAxisId="left"
+                      name={
+                        compareProfiles.length > 0
+                          ? `买｜${legendElide(primaryLegendShort)}`
+                          : "买"
+                      }
+                      dataKey="buyMarkY"
+                      fill="#059669"
+                      shape={(p: { cx?: number; cy?: number }) => <BuyMarker cx={p.cx} cy={p.cy} />}
+                    />
+                    <Scatter
+                      yAxisId="left"
+                      name={
+                        compareProfiles.length > 0
+                          ? `卖｜${legendElide(primaryLegendShort)}`
+                          : "卖"
+                      }
+                      dataKey="sellMarkY"
+                      fill="#b91c1c"
+                      shape={(p: { cx?: number; cy?: number }) => <SellMarker cx={p.cx} cy={p.cy} />}
+                    />
+                    {compareProfiles.map((cp, i) => {
+                      const col = COMPARE_MARKER_COLORS[i] ?? COMPARE_MARKER_COLORS[0]!;
+                      return (
+                        <Scatter
+                          key={`cmp-buy-${cp.key}`}
+                          yAxisId="left"
+                          name={`买｜${legendElide(cp.label)}`}
+                          dataKey={`buyCmp${i}Y`}
+                          fill={col.buy}
+                          shape={(p: { cx?: number; cy?: number }) => (
+                            <CompareBuyMarker cx={p.cx} cy={p.cy} fill={col.buy} />
+                          )}
+                        />
+                      );
+                    })}
+                    {compareProfiles.map((cp, i) => {
+                      const col = COMPARE_MARKER_COLORS[i] ?? COMPARE_MARKER_COLORS[0]!;
+                      return (
+                        <Scatter
+                          key={`cmp-sell-${cp.key}`}
+                          yAxisId="left"
+                          name={`卖｜${legendElide(cp.label)}`}
+                          dataKey={`sellCmp${i}Y`}
+                          fill={col.sell}
+                          shape={(p: { cx?: number; cy?: number }) => (
+                            <CompareSellMarker cx={p.cx} cy={p.cy} fill={col.sell} />
+                          )}
+                        />
+                      );
+                    })}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="min-h-0 rounded-lg border border-zinc-100/80 p-1">
+                <ResponsiveContainer width="100%" height={260}>
+                  <ComposedChart syncId="etfbt" data={chartMerged} margin={chartLayout.marginStrategy}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={28} />
+                    <YAxis
+                      domain={rsiMode ? [0, 100] : ["auto", "auto"]}
+                      tick={{ fontSize: 11 }}
+                      width={chartLayout.axisL}
+                    />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 12, border: "1px solid #e4e4e7" }}
+                      formatter={(value: number, name: string) => {
+                        if (value == null || Number.isNaN(value)) return [null, name];
+                        if (name === "RSI") return [Number(value).toFixed(2), name];
+                        return [typeof value === "number" ? Number(value).toFixed(4) : value, name];
+                      }}
+                    />
+                    <Legend />
+                    {rsiMode && rsiOb != null && rsiOs != null && (
+                      <>
+                        <ReferenceLine
+                          y={rsiOb}
+                          stroke="#fca5a5"
+                          strokeDasharray="5 5"
+                          label={{ value: `超买 ${rsiOb}`, fill: "#b91c1c", fontSize: 10 }}
+                        />
+                        <ReferenceLine
+                          y={rsiOs}
+                          stroke="#86efac"
+                          strokeDasharray="5 5"
+                          label={{ value: `超卖 ${rsiOs}`, fill: "#047857", fontSize: 10 }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="rsi"
+                          stroke="#7c3aed"
+                          dot={false}
+                          strokeWidth={2}
+                          name="RSI"
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                      </>
+                    )}
+                    {bollMode && (
+                      <>
+                        <Line
+                          type="monotone"
+                          dataKey="price"
+                          stroke="#18181b"
+                          dot={false}
+                          strokeWidth={1.5}
+                          name="收盘"
+                          isAnimationActive={false}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="bbUpper"
+                          stroke="#94a3b8"
+                          dot={false}
+                          strokeWidth={1}
+                          name="布林上"
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="bbMid"
+                          stroke="#cbd5e1"
+                          strokeDasharray="4 4"
+                          dot={false}
+                          strokeWidth={1}
+                          name="布林中"
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="bbLower"
+                          stroke="#94a3b8"
+                          dot={false}
+                          strokeWidth={1}
+                          name="布林下"
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                        <Scatter
+                          name="买"
+                          dataKey="buyMark"
+                          fill="#059669"
+                          shape={(p: { cx?: number; cy?: number }) => <BuyMarker cx={p.cx} cy={p.cy} />}
+                        />
+                        <Scatter
+                          name="卖"
+                          dataKey="sellMark"
+                          fill="#b91c1c"
+                          shape={(p: { cx?: number; cy?: number }) => <SellMarker cx={p.cx} cy={p.cy} />}
+                        />
+                      </>
+                    )}
+                    {!rsiMode && !bollMode && (
+                      <>
+                        {maCustomMode && (
+                          <Line
+                            type="monotone"
+                            dataKey="price"
+                            stroke="#a1a1aa"
+                            dot={false}
+                            strokeWidth={1}
+                            name="收盘"
+                            isAnimationActive={false}
+                          />
+                        )}
+                        <Line
+                          type="monotone"
+                          dataKey="maFast"
+                          stroke="#f59e0b"
+                          dot={false}
+                          strokeWidth={1.5}
+                          name={maCustomMode ? "MA（自定义）" : "MA 快"}
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                        {!maCustomMode && (
+                          <Line
+                            type="monotone"
+                            dataKey="maSlow"
+                            stroke="#64748b"
+                            dot={false}
+                            strokeWidth={1.5}
+                            name="MA 慢"
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                        )}
+                      </>
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {barCount > MIN_WINDOW_BARS && brushData.length > 0 && (
+              <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-2 py-2">
+                <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                  时间窗 · 拖动 Brush 两端或平移
+                </p>
+                {windowLabel ? (
+                  <p className="mb-2 px-1 text-[11px] font-mono text-zinc-600">当前：{windowLabel}</p>
+                ) : null}
                 <ResponsiveContainer width="100%" height={56}>
-                  <ComposedChart data={brushData} margin={{ top: 2, right: 8, left: 0, bottom: 2 }}>
+                  <ComposedChart syncId="etfbt" data={brushData} margin={chartLayout.marginBrush}>
                     <XAxis dataKey="date" hide />
                     <YAxis hide domain={["auto", "auto"]} />
                     <Line
@@ -593,184 +924,97 @@ export function EtfDashboardPage() {
               </div>
             )}
             {barCount > 0 && barCount <= MIN_WINDOW_BARS && (
-              <p className="mt-3 text-xs text-zinc-500">当前序列过短，不展示时间窗 Brush（至少需多于 {MIN_WINDOW_BARS} 根 K 线）。</p>
+              <p className="text-xs text-zinc-500">当前序列过短，不展示时间窗 Brush（至少需多于 {MIN_WINDOW_BARS} 根 K 线）。</p>
             )}
-          </ChartCard>
-
-          <ChartCard
-            title="策略指标"
-            subtitle={rsiMode ? "RSI 与阈值（与回测信号同源）" : "快慢均线（与回测信号同源）"}
-          >
-            <ResponsiveContainer width="100%" height={rsiMode ? 220 : 200}>
-              <ComposedChart data={chartRows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={28} />
-                <YAxis
-                  domain={rsiMode ? [0, 100] : ["auto", "auto"]}
-                  tick={{ fontSize: 11 }}
-                  width={rsiMode ? 36 : 48}
-                />
-                <Tooltip
-                  contentStyle={{ borderRadius: 12, border: "1px solid #e4e4e7" }}
-                  formatter={(value: number, name: string) => {
-                    if (value == null || Number.isNaN(value)) return [null, name];
-                    if (name === "RSI") return [Number(value).toFixed(2), name];
-                    return [typeof value === "number" ? Number(value).toFixed(4) : value, name];
-                  }}
-                />
-                <Legend />
-                {rsiMode && rsiOb != null && rsiOs != null && (
-                  <>
-                    <ReferenceLine
-                      y={rsiOb}
-                      stroke="#fca5a5"
-                      strokeDasharray="5 5"
-                      label={{ value: `超买 ${rsiOb}`, fill: "#b91c1c", fontSize: 10 }}
-                    />
-                    <ReferenceLine
-                      y={rsiOs}
-                      stroke="#86efac"
-                      strokeDasharray="5 5"
-                      label={{ value: `超卖 ${rsiOs}`, fill: "#047857", fontSize: 10 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="rsi"
-                      stroke="#7c3aed"
-                      dot={false}
-                      strokeWidth={2}
-                      name="RSI"
-                      connectNulls
-                      isAnimationActive={false}
-                    />
-                  </>
-                )}
-                {!rsiMode && (
-                  <>
-                    <Line
-                      type="monotone"
-                      dataKey="maFast"
-                      stroke="#f59e0b"
-                      dot={false}
-                      strokeWidth={1.5}
-                      name="MA 快"
-                      connectNulls
-                      isAnimationActive={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="maSlow"
-                      stroke="#64748b"
-                      dot={false}
-                      strokeWidth={1.5}
-                      name="MA 慢"
-                      connectNulls
-                      isAnimationActive={false}
-                    />
-                  </>
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
+          </div>
           <div className="rounded-3xl border border-zinc-100 bg-white overflow-hidden shadow-sm">
-            <div className="border-b border-zinc-100 px-6 py-4">
-              <h3 className="text-sm font-semibold text-zinc-900">明细数据（按完整轮次）</h3>
+            <div className="border-b border-zinc-100 px-6 py-3">
+              <h3 className="text-sm font-semibold text-zinc-900">明细数据</h3>
               <p className="mt-1 text-xs text-zinc-500">
-                净值列为策略复利净值（每轮平仓后滚动）；单轮收益率为该轮买卖价差收益。
+                已平仓轮次 + 窗口内买入后尚未卖出的持有；净值为策略复利。已平仓行按<strong>买入日升序</strong>排列；MA 自定义的<strong>卖触发</strong>列按持仓内逐日规则与信号一致，标出本笔首次触发的「止盈」「回撤」或「止盈+回撤（同日）」。
               </p>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500">
                   <tr>
-                    <th className="px-4 py-3">轮次</th>
+                    <th className="px-4 py-3">类型</th>
                     <th className="px-4 py-3">买入日</th>
                     <th className="px-4 py-3">卖出日</th>
                     <th className="px-4 py-3">买入净值</th>
                     <th className="px-4 py-3">卖出净值</th>
-                    <th className="px-4 py-3">买点触发</th>
-                    <th className="px-4 py-3">卖点触发</th>
-                    <th className="px-4 py-3">单轮收益 %</th>
+                    <th className="px-4 py-3">买触发</th>
+                    <th className="px-4 py-3">卖触发</th>
+                    <th className="px-4 py-3">收益 %</th>
                     <th className="px-4 py-3">持仓天数</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {rounds.length === 0 ? (
+                  {rounds.length === 0 && !openInWindow ? (
                     <tr>
                       <td colSpan={9} className="px-4 py-8 text-center text-zinc-500">
-                        暂无完整买卖轮次
+                        暂无已平仓轮次或持仓记录
                       </td>
                     </tr>
                   ) : (
-                    [...rounds].reverse().map((r) => (
-                      <tr key={r.round} className="hover:bg-zinc-50/80">
-                        <td className="px-4 py-2.5 font-mono text-zinc-600">{r.round}</td>
-                        <td className="px-4 py-2.5 font-mono text-zinc-600">{r.buyDate}</td>
-                        <td className="px-4 py-2.5 font-mono text-zinc-600">{r.sellDate}</td>
-                        <td className="px-4 py-2.5">{r.buyNav}</td>
-                        <td className="px-4 py-2.5">{r.sellNav}</td>
-                        <td className="px-4 py-2.5 text-zinc-700 max-w-[200px] truncate" title={r.buyTrigger}>
-                          {r.buyTrigger}
-                        </td>
-                        <td className="px-4 py-2.5 text-zinc-700 max-w-[200px] truncate" title={r.sellTrigger}>
-                          {r.sellTrigger}
-                        </td>
-                        <td className="px-4 py-2.5 font-medium">{r.pnlPct}%</td>
-                        <td className="px-4 py-2.5">{r.holdDays}</td>
-                      </tr>
-                    ))
+                    <>
+                      {[...rounds].sort((a, b) => a.buyDate.localeCompare(b.buyDate)).map((r) => (
+                        <tr key={r.round} className="hover:bg-zinc-50/80">
+                          <td className="px-4 py-2.5 font-mono text-zinc-600">第 {r.round} 轮</td>
+                          <td className="px-4 py-2.5 font-mono text-zinc-600">{r.buyDate}</td>
+                          <td className="px-4 py-2.5 font-mono text-zinc-600">{r.sellDate}</td>
+                          <td className="px-4 py-2.5">{r.buyNav}</td>
+                          <td className="px-4 py-2.5">{r.sellNav}</td>
+                          <td className="px-4 py-2.5 text-zinc-700 max-w-[160px] truncate" title={r.buyTrigger}>
+                            {r.buyTrigger}
+                          </td>
+                          <td className="px-4 py-2.5 text-zinc-700 max-w-[160px] truncate" title={r.sellTrigger}>
+                            {r.sellTrigger}
+                          </td>
+                          <td className="px-4 py-2.5 font-medium">{r.pnlPct}%</td>
+                          <td className="px-4 py-2.5">{r.holdDays}</td>
+                        </tr>
+                      ))}
+                      {openInWindow && (
+                        <tr className="bg-amber-50/50 hover:bg-amber-50/80">
+                          <td className="px-4 py-2.5 font-medium text-amber-900">持有</td>
+                          <td className="px-4 py-2.5 font-mono text-zinc-600">{openInWindow.date}</td>
+                          <td className="px-4 py-2.5 font-mono text-zinc-400">—</td>
+                          <td className="px-4 py-2.5">
+                            {rounds.length ? rounds[rounds.length - 1]!.sellNav : 1}
+                          </td>
+                          <td className="px-4 py-2.5">—</td>
+                          <td className="px-4 py-2.5 text-zinc-700 max-w-[160px] truncate" title={openInWindow.reason}>
+                            {openInWindow.reason}
+                          </td>
+                          <td className="px-4 py-2.5 text-zinc-400">—</td>
+                          <td className="px-4 py-2.5 font-medium text-amber-900">
+                            {floatOpenPct != null ? `${floatOpenPct >= 0 ? "+" : ""}${floatOpenPct}%` : "—"}
+                          </td>
+                          <td className="px-4 py-2.5">{openHoldDays ?? "—"}</td>
+                        </tr>
+                      )}
+                    </>
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
-
-          <div className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
-            <h3 className="text-sm font-semibold text-zinc-900">最近买卖点（流水）</h3>
-            <ul className="mt-4 divide-y divide-zinc-100 text-sm">
-              {backtestTrades.slice(-8).map((t) => (
-                <li key={`${t.date}-${t.side}`} className="flex flex-wrap justify-between gap-2 py-3">
-                  <span className="font-mono text-zinc-500">{t.date}</span>
-                  <span className={t.side === "BUY" ? "font-semibold text-emerald-700" : "font-semibold text-red-700"}>
-                    {t.side}
-                  </span>
-                  <span className="text-zinc-600">{t.reason}</span>
-                  {t.pnlPct != null && <span className="text-zinc-500">盈亏 {t.pnlPct}%</span>}
-                </li>
-              ))}
-            </ul>
           </div>
         </section>
       )}
 
       {tab === "intraday" && (
         <section className="space-y-6">
-          <div className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm space-y-5">
+          <div className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm space-y-6">
             <div>
               <h3 className="text-lg font-semibold text-zinc-900">今日盘中信号</h3>
-              <p className="mt-1 text-sm text-zinc-500">
-                选择策略参数后，用「模拟最新价」替换当日最后一根 K 的收盘，重算指标；<strong>分位数</strong>为当前指标值在<strong>历史全日样本</strong>（不含当日原收盘）中的经验分位。买入提示 ≤20%，卖出提示 ≥80%。
+              <p className="mt-2 text-sm text-zinc-600 leading-relaxed">
+                拖动滑条改写<strong>当日最后一根 K 的收盘</strong>，对下表<strong>每一套策略</strong>重算收盘信号与<strong>标尺 %</strong>（指标在策略买、卖阈值之间的线性位置，非历史经验分位）。
               </p>
             </div>
-            {variants.length > 0 && (
-              <div>
-                <label className="block text-xs font-medium uppercase tracking-wide text-zinc-400">策略参数</label>
-                <select
-                  className="mt-2 w-full max-w-md rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm font-medium text-zinc-900"
-                  value={intraVariant?.key ?? ""}
-                  onChange={(e) => setIntraVariantKey(e.target.value)}
-                >
-                  {variants.map((v) => (
-                    <option key={v.key} value={v.key}>
-                      {v.label} · {v.strategyId}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="text-sm text-zinc-600">
-                模拟最新价（当日最后一根 K）
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="min-w-[200px] flex-1 text-sm text-zinc-600">
+                模拟收盘（当日最后一根 K）
                 <input
                   type="range"
                   min={lastClose * 0.95}
@@ -778,7 +1022,7 @@ export function EtfDashboardPage() {
                   step={0.001}
                   value={snapClose ?? lastClose}
                   onChange={(e) => setSnapClose(Number(e.target.value))}
-                  className="block w-full mt-2 accent-indigo-600"
+                  className="mt-2 block w-full accent-indigo-600"
                 />
               </label>
               <button
@@ -788,31 +1032,76 @@ export function EtfDashboardPage() {
               >
                 随机模拟价
               </button>
+              <p className="font-mono text-xl font-semibold text-indigo-700">{(snapClose ?? lastClose).toFixed(4)}</p>
             </div>
-            <p className="font-mono text-2xl font-semibold text-indigo-700">{(snapClose ?? lastClose).toFixed(4)}</p>
-            {intraPct && (
-              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-5 py-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-indigo-800/80">指标分位与区间</p>
-                <p className="mt-2 text-lg font-semibold text-indigo-950">{intraPct.hint}</p>
-                <p className="mt-2 text-sm text-indigo-900/90">
-                  {intraPct.metricName} = <span className="font-mono font-semibold">{intraPct.metricValue}</span>
-                  <span className="text-zinc-600"> · 历史分位 </span>
-                  <span className="font-mono font-semibold">{intraPct.percentile}%</span>
-                </p>
+            {!variants.length ? (
+              <p className="text-sm text-zinc-500">无可用策略参数。</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-zinc-100">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    <tr>
+                      <th className="px-4 py-3">策略</th>
+                      <th className="px-4 py-3">今日信号</th>
+                      <th className="px-4 py-3">标尺位置</th>
+                      <th className="px-4 py-3">指标</th>
+                      <th className="px-4 py-3">区间提示</th>
+                      <th className="px-4 py-3">临近提醒</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {intradayRows.map(({ v, sig, pctCtx, alert }) => (
+                      <tr key={v.key} className="hover:bg-zinc-50/80">
+                        <td className="px-4 py-2.5 font-medium text-zinc-900">{variantOptionLabel(v)}</td>
+                        <td className="px-4 py-2.5">
+                          <span
+                            className={
+                              sig === "BUY"
+                                ? "font-semibold text-emerald-700"
+                                : sig === "SELL"
+                                  ? "font-semibold text-red-700"
+                                  : "text-zinc-600"
+                            }
+                          >
+                            {sig}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-zinc-800">
+                          {pctCtx != null ? `${pctCtx.percentile}%` : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-zinc-600">
+                          {pctCtx ? (
+                            <>
+                              {pctCtx.metricName} = <span className="font-mono">{pctCtx.metricValue}</span>
+                            </>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-zinc-600">{pctCtx?.hint ?? "—"}</td>
+                        <td className="px-4 py-2.5 text-xs">
+                          {alert ? (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-900">
+                              {alert}
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
-            <p className="text-sm text-zinc-600">
-              离散信号（BUY/SELL/HOLD）：<span className="font-semibold text-zinc-900">{latestSignal(intraSignals)}</span>
-            </p>
-            <p className="text-xs text-amber-800 bg-amber-50 rounded-xl px-3 py-2">
-              演示用途：正式环境应由服务端在固定时点写入快照价；分位阈值（20% / 80%）可按产品再调参。
-            </p>
+            <p className="text-xs text-zinc-500">提醒：标尺约 ≤32% 或 ≥68% 时标黄。</p>
           </div>
         </section>
       )}
 
       {tab === "ledger" && (
         <section className="rounded-3xl border border-zinc-100 bg-white overflow-hidden shadow-sm">
+          <div className="max-h-[28rem] overflow-y-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-zinc-50 text-left text-xs font-semibold uppercase tracking-wide text-zinc-500">
               <tr>
@@ -823,7 +1112,7 @@ export function EtfDashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {fullTrades.slice(-12).map((t, i) => (
+              {[...fullTrades].reverse().map((t, i) => (
                 <tr key={`${t.date}-${t.side}-${i}`} className="hover:bg-zinc-50/80">
                   <td className="px-6 py-3 font-mono text-zinc-600">{t.date}</td>
                   <td className="px-6 py-3 font-medium">{t.side}</td>
@@ -837,91 +1126,7 @@ export function EtfDashboardPage() {
               ))}
             </tbody>
           </table>
-        </section>
-      )}
-
-      {tab === "dividend" && showDividendModule && (
-        <section className="space-y-6">
-          <div className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm text-sm text-zinc-600">
-            <p>
-              名义股息率 <strong>{etf.meta.div_yield_nominal_pct}%</strong> · 来源{" "}
-              <strong>{etf.meta.div_yield_source}</strong>
-              {anchor && (
-                <>
-                  {" "}
-                  · 锚 <strong>{anchor === "CN_10Y" ? "中国 10Y" : "美国 10Y"}</strong>
-                </>
-              )}
-            </p>
           </div>
-          <ChartCard title="股息率、国债收益率与利差" subtitle="解释层，不参与信号">
-            <ResponsiveContainer width="100%" height={300}>
-              <ComposedChart data={tripleData.slice(-120)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={20} />
-                <YAxis tick={{ fontSize: 11 }} width={40} />
-                <Tooltip contentStyle={{ borderRadius: 12 }} />
-                <Legend />
-                <Line type="monotone" dataKey="股息率" stroke="#4f46e5" dot={false} strokeWidth={2} />
-                <Line type="monotone" dataKey="国债" stroke="#71717a" dot={false} strokeWidth={1.5} />
-                <Line type="monotone" dataKey="利差" stroke="#0d9488" dot={false} strokeWidth={2} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-          <ChartCard title="利差与价格" subtitle="双轴 · V1 必含">
-            <ResponsiveContainer width="100%" height={320}>
-              <ComposedChart data={spreadPriceData.slice(-120)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} minTickGap={20} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} width={44} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} width={44} />
-                <Tooltip contentStyle={{ borderRadius: 12 }} />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="价格" stroke="#18181b" dot={false} strokeWidth={2} />
-                <Line yAxisId="right" type="monotone" dataKey="利差" stroke="#6366f1" dot={false} strokeWidth={2} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </section>
-      )}
-
-      {tab === "hk" && showHk && (
-        <section className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm space-y-4 text-sm">
-          <h3 className="text-lg font-semibold text-zinc-900">港股税后股息（解释层）</h3>
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-zinc-400">通道</dt>
-              <dd className="font-medium">{etf.meta.investor_channel}</dd>
-            </div>
-            <div>
-              <dt className="text-zinc-400">名义 / 税后（估）</dt>
-              <dd className="font-medium">
-                {etf.meta.div_yield_nominal_pct}% / {etf.meta.div_yield_after_tax_est_pct}%
-              </dd>
-            </div>
-            <div>
-              <dt className="text-zinc-400">币种</dt>
-              <dd className="font-medium">{etf.meta.fx_ccy}</dd>
-            </div>
-          </dl>
-          <p className="text-zinc-500 text-xs leading-relaxed">{etf.meta.tax_assumption_note}</p>
-          {anchor === "US_10Y" && etf.meta.div_yield_after_tax_est_pct != null && (
-            <p className="text-xs text-zinc-600">
-              税后相对美国 10Y 利差（示意）：
-              <span className="font-semibold text-indigo-700">
-                {(etf.meta.div_yield_after_tax_est_pct - (spreadRows[spreadRows.length - 1]?.bondYieldPct ?? 0)).toFixed(2)}%
-              </span>
-            </p>
-          )}
-          <ul className="flex flex-wrap gap-3">
-            {etf.meta.doc_links?.map((l) => (
-              <li key={l.href}>
-                <a href={l.href} className="text-indigo-600 text-xs font-medium hover:underline" target="_blank" rel="noreferrer">
-                  {l.label}
-                </a>
-              </li>
-            ))}
-          </ul>
         </section>
       )}
 
@@ -934,13 +1139,10 @@ export function EtfDashboardPage() {
             </summary>
             <div className="mt-6 space-y-4 text-sm text-zinc-600 leading-relaxed">
               <p>
-                <strong>价格指数与全收益</strong>：展示回测与绩效时须标明对标净值/价格指数/全收益指数，三者不可混用。红利长期回报中股息再投资占比较高。
+                <strong>价格指数与全收益</strong>：展示回测与绩效时须标明对标净值/价格指数/全收益指数，三者不可混用。
               </p>
               <p>
                 <strong>调样与权重</strong>：定期调样可能带来短期净值波动；本区仅作解释，不修改已注册策略参数。
-              </p>
-              <p>
-                <strong>防价值陷阱</strong>：关注连续分红、股利支付率区间、盈利质量；高股息若来自盈利下滑需警惕。
               </p>
               <p className="text-xs text-zinc-400">本产品不展示折溢价、跟踪误差（按产品决策排除）。</p>
             </div>
@@ -951,7 +1153,26 @@ export function EtfDashboardPage() {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function Stat({
+  label,
+  value,
+  hint,
+  compact,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <div className="rounded-lg border border-zinc-100/90 bg-white px-2.5 py-2 shadow-sm">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">{label}</p>
+        <p className="mt-0.5 truncate text-sm font-semibold tabular-nums text-zinc-900">{value}</p>
+        {hint ? <p className="mt-0.5 text-[9px] leading-snug text-zinc-400">{hint}</p> : null}
+      </div>
+    );
+  }
   return (
     <div className="rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm">
       <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</p>
@@ -982,23 +1203,5 @@ function SellMarker({ cx, cy }: { cx?: number; cy?: number }) {
       stroke="#fef2f2"
       strokeWidth={1}
     />
-  );
-}
-
-function ChartCard({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
-      <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
-      {subtitle && <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>}
-      <div className="mt-4">{children}</div>
-    </div>
   );
 }

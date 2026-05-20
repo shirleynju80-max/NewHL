@@ -8,8 +8,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { BondSeriesPoint, EtfDefinition } from "../types";
-import { buildCsvBundle, readFilesAsBundle } from "../data/csvLoader";
+import type { BondSeriesPoint, EtfDefinition, IndexDefinition, IndexTrackingRow } from "../types";
+import {
+  buildCsvBundle,
+  expandBondsToBarDates,
+  mergeBondSeries,
+  parseBondsFileDualPurpose,
+  readFilesAsBundle,
+  withIndexCsvSafe,
+  type AppDataBundle,
+  type CsvMergeOptions,
+} from "../data/csvLoader";
 import { bondByDate as mockBondByDate, etfDefinitions as mockEtfDefinitions } from "../data/mock";
 
 type SourceKind = "mock" | "csv" | "csv_public";
@@ -17,39 +26,113 @@ type SourceKind = "mock" | "csv" | "csv_public";
 type Ctx = {
   definitions: EtfDefinition[];
   bondByDate: Record<string, BondSeriesPoint>;
+  indices: IndexDefinition[];
+  indexTracking: IndexTrackingRow[];
+  indexCsvError: string | null;
   sourceKind: SourceKind;
   sourceLabel: string;
   loadError: string | null;
+  reloadingPublicCsv: boolean;
   loadFromDownloads: (files: FileList | File[]) => Promise<void>;
   resetToMock: () => void;
+  reloadPublicCsv: () => Promise<void>;
   getEtf: (code: string) => EtfDefinition | undefined;
+  getIndex: (code: string) => IndexDefinition | undefined;
 };
 
 const DataSourceContext = createContext<Ctx | null>(null);
 
-async function tryFetchPublicCsv(): Promise<{ definitions: EtfDefinition[]; bondByDate: Record<string, BondSeriesPoint> } | null> {
-  const base = import.meta.env.BASE_URL || "/";
-  const prefix = base.endsWith("/") ? base : `${base}/`;
-  const urls = ["etfs.csv", "bars.csv", "bonds.csv", "etf_params.csv"].map(
-    (f) => `${prefix}data/${f}`
-  );
+async function fetchTextIfOk(url: string): Promise<string | null> {
   try {
-    const res = await Promise.all(urls.map((u) => fetch(u, { cache: "no-store" })));
-    if (!res.every((r) => r.ok)) return null;
-    const [etfs, bars, bonds, params] = await Promise.all(res.map((r) => r.text()));
-    const bundle = buildCsvBundle(etfs, bars, bonds, params);
-    return bundle;
+    const r = await fetch(url, { cache: "no-store" });
+    if (!r.ok) return null;
+    return await r.text();
   } catch {
     return null;
+  }
+}
+
+type PublicCsvLoadResult =
+  | { status: "ok"; bundle: AppDataBundle; indexCsvError: string | null }
+  | { status: "missing" }
+  | { status: "error"; message: string };
+
+function allBundleDates(bundle: AppDataBundle): string[] {
+  const dates = new Set<string>();
+  for (const d of bundle.definitions) {
+    for (const b of d.bars) dates.add(b.date);
+  }
+  for (const ix of bundle.indices) {
+    for (const b of ix.bars) dates.add(b.date);
+  }
+  return [...dates].sort();
+}
+
+function bondMapForBundle(
+  bundle: AppDataBundle,
+  bondsText: string,
+  bondsMoreText?: string
+): Record<string, BondSeriesPoint> {
+  const main = parseBondsFileDualPurpose(bondsText).yieldCurve;
+  const more = bondsMoreText?.trim() ? parseBondsFileDualPurpose(bondsMoreText).yieldCurve : [];
+  const series = main.length && more.length ? mergeBondSeries(main, more) : more.length ? more : main;
+  return expandBondsToBarDates(series, allBundleDates(bundle));
+}
+
+function withBondMap(bundle: AppDataBundle, bondByDate: Record<string, BondSeriesPoint>): AppDataBundle {
+  return { ...bundle, bondByDate };
+}
+
+async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
+  const bust = `_t=${Date.now()}`;
+  const base = import.meta.env.BASE_URL || "/";
+  const prefix = base.endsWith("/") ? base : `${base}/`;
+  const u = (f: string) => `${prefix}data/${f}?${bust}`;
+  try {
+    const [re, rb, rp, rbd] = await Promise.all([
+      fetch(u("etfs.csv"), { cache: "no-store" }),
+      fetch(u("bars.csv"), { cache: "no-store" }),
+      fetch(u("etf_params.csv"), { cache: "no-store" }),
+      fetch(u("bonds.csv"), { cache: "no-store" }),
+    ]);
+    const etfs = re.ok ? await re.text() : "";
+    const bars = rb.ok ? await rb.text() : "";
+    const params = rp.ok ? await rp.text() : "";
+    const bonds = rbd.ok ? await rbd.text() : "";
+    if (!rb.ok || !bars.trim()) return { status: "missing" };
+    const merge: CsvMergeOptions = {};
+    const em = await fetchTextIfOk(`${prefix}data/etfsmore.csv?${bust}`);
+    const bm = await fetchTextIfOk(`${prefix}data/barsmore.csv?${bust}`);
+    const bom = await fetchTextIfOk(`${prefix}data/bondsmore.csv?${bust}`);
+    const fb = await fetchTextIfOk(`${prefix}data/fund_bars.csv?${bust}`);
+    if (em?.trim()) merge.etfsMore = em;
+    if (bm?.trim()) merge.barsMore = bm;
+    if (bom?.trim()) merge.bondsMore = bom;
+    if (fb?.trim()) merge.fundBars = fb;
+    const hasMerge = Boolean(merge.etfsMore || merge.barsMore || merge.bondsMore || merge.fundBars);
+    const bundle = buildCsvBundle(etfs, bars, bonds, params, hasMerge ? merge : undefined);
+    const ix = await fetchTextIfOk(`${prefix}data/indices.csv?${bust}`);
+    const ib = await fetchTextIfOk(`${prefix}data/index_bars.csv?${bust}`);
+    const it = await fetchTextIfOk(`${prefix}data/index_tracking_etfs.csv?${bust}`);
+    const { bundle: parsed, indexCsvError } = withIndexCsvSafe(bundle, ix ?? "", ib ?? "", it ?? "");
+    const full = withBondMap(parsed, bondMapForBundle(parsed, bonds, bom ?? undefined));
+    return { status: "ok" as const, bundle: full, indexCsvError };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return { status: "error", message };
   }
 }
 
 export function DataSourceProvider({ children }: { children: ReactNode }) {
   const [definitions, setDefinitions] = useState<EtfDefinition[]>(mockEtfDefinitions);
   const [bondMap, setBondMap] = useState<Record<string, BondSeriesPoint>>(mockBondByDate);
+  const [indices, setIndices] = useState<IndexDefinition[]>([]);
+  const [indexTracking, setIndexTracking] = useState<IndexTrackingRow[]>([]);
+  const [indexCsvError, setIndexCsvError] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<SourceKind>("mock");
   const [sourceLabel, setSourceLabel] = useState<string>("内置示例数据");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadingPublicCsv, setReloadingPublicCsv] = useState(false);
   const userTouchedRef = useRef(false);
 
   const getEtf = useCallback(
@@ -57,15 +140,24 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     [definitions]
   );
 
+  const getIndex = useCallback(
+    (code: string) => indices.find((d) => d.meta.index_code === code),
+    [indices]
+  );
+
   const loadFromDownloads = useCallback(async (files: FileList | File[]) => {
-    userTouchedRef.current = true;
     setLoadError(null);
+    setIndexCsvError(null);
     try {
-      const bundle = await readFilesAsBundle(files);
+      const { bundle, indexCsvError: idxErr } = await readFilesAsBundle(files);
       setDefinitions(bundle.definitions);
       setBondMap(bundle.bondByDate);
+      setIndices(bundle.indices);
+      setIndexTracking(bundle.indexTracking);
+      setIndexCsvError(idxErr);
       setSourceKind("csv");
       setSourceLabel("本机 CSV（下载等目录）");
+      userTouchedRef.current = true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLoadError(msg);
@@ -76,18 +168,59 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     userTouchedRef.current = false;
     setDefinitions(mockEtfDefinitions);
     setBondMap(mockBondByDate);
+    setIndices([]);
+    setIndexTracking([]);
+    setIndexCsvError(null);
     setSourceKind("mock");
     setSourceLabel("内置示例数据");
     setLoadError(null);
+  }, []);
+
+  const reloadPublicCsv = useCallback(async () => {
+    setReloadingPublicCsv(true);
+    setLoadError(null);
+    setIndexCsvError(null);
+    try {
+      const pub = await tryFetchPublicCsv();
+      if (pub.status === "missing") {
+        setLoadError("public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。");
+        return;
+      }
+      if (pub.status === "error") {
+        setLoadError(`重新加载 public/data 失败：${pub.message}`);
+        return;
+      }
+      userTouchedRef.current = false;
+      setDefinitions(pub.bundle.definitions);
+      setBondMap(pub.bundle.bondByDate);
+      setIndices(pub.bundle.indices);
+      setIndexTracking(pub.bundle.indexTracking);
+      setIndexCsvError(pub.indexCsvError);
+      setSourceKind("csv_public");
+      setSourceLabel("public/data/*.csv");
+    } finally {
+      setReloadingPublicCsv(false);
+    }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const pub = await tryFetchPublicCsv();
-      if (cancelled || !pub || userTouchedRef.current) return;
-      setDefinitions(pub.definitions);
-      setBondMap(pub.bondByDate);
+      if (cancelled || userTouchedRef.current) return;
+      if (pub.status === "missing") return;
+      if (pub.status === "error") {
+        setLoadError(
+          `自动加载 public/data 失败：${pub.message}。当前仍为内置 3 只示例；请保证 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`
+        );
+        return;
+      }
+      setLoadError(null);
+      setIndexCsvError(pub.indexCsvError);
+      setDefinitions(pub.bundle.definitions);
+      setBondMap(pub.bundle.bondByDate);
+      setIndices(pub.bundle.indices);
+      setIndexTracking(pub.bundle.indexTracking);
       setSourceKind("csv_public");
       setSourceLabel("public/data/*.csv");
     })();
@@ -100,14 +233,35 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     () => ({
       definitions,
       bondByDate: bondMap,
+      indices,
+      indexTracking,
+      indexCsvError,
       sourceKind,
       sourceLabel,
       loadError,
+      reloadingPublicCsv,
       loadFromDownloads,
       resetToMock,
+      reloadPublicCsv,
       getEtf,
+      getIndex,
     }),
-    [definitions, bondMap, sourceKind, sourceLabel, loadError, loadFromDownloads, resetToMock, getEtf]
+    [
+      definitions,
+      bondMap,
+      indices,
+      indexTracking,
+      indexCsvError,
+      sourceKind,
+      sourceLabel,
+      loadError,
+      reloadingPublicCsv,
+      loadFromDownloads,
+      resetToMock,
+      reloadPublicCsv,
+      getEtf,
+      getIndex,
+    ]
   );
 
   return <DataSourceContext.Provider value={value}>{children}</DataSourceContext.Provider>;
