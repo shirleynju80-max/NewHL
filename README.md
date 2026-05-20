@@ -2,6 +2,11 @@
 
 Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白、Indigo 强调、DM Sans + Noto Sans SC。
 
+## 当前状态
+
+生产站：<https://newhl-dashboard.pages.dev/>  
+项目状态、协作边界和下一步以 **[docs/project-status.md](docs/project-status.md)** 为准。README 下方保留功能说明、数据口径和 CSV 表结构。
+
 ## 功能（对照计划）
 
 - **参数注册**：MA / RSI / 布林带多 `variant_id`，策略引用展示。
@@ -9,21 +14,19 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
 - **现金流类标的**：红利利差与港股模块隐藏，占位说明。
 - **总览页 · 标的对比**：勾选 2 个及以上标的（或指数，只要在 `bars.csv` 中有列），在**重合交易日**上对比买入持有的**年化收益**、**最大回撤**、**年化波动**、**收益/回撤比（类 Calmar）**，以及日收益的 **Pearson 相关性矩阵**。
 
-数据为 `src/data/mock.ts` 生成的示例序列，可替换为真实行情与参数表。
+本地 mock 仍保留作兜底；当前主数据来自 `public/data/*.csv`，生产环境后续可切到 Worker `/api/bundle`。
 
 ## 未完成事项梳理
 
-按当前文档与代码状态，项目主流程已能用 mock / CSV 跑通，但还有这些明确的待办：
+当前状态以 [docs/project-status.md](docs/project-status.md) 为准。简表如下：
 
 | 优先级 | 模块 | 当前状态 | 下一步 |
 |--------|------|----------|--------|
-| P0 | 真实数据接入 | 仍是纯前端读取 mock / CSV；`src/config/env.ts` 与 `src/data/dataEnrichment.ts` 只做预留。 | 确定行情、国债、股息率数据源与鉴权方式，新增 `src/api/` 拉数层，并统一错误、缓存、刷新策略。 |
-| P0 | 数据授权与合规 | 文档已提示权限风险，但没有登录、权限边界或数据展示授权校验。 | 明确二次展示/公网访问授权；若对外服务，增加后端聚合与用户鉴权。 |
-| P1 | 布林带策略 | 参数类型和 CSV 列已存在；`strategy_id` 含 `boll` 时当前仍走 MA 分支。 | 在 `src/lib/strategy.ts` 增加布林带买卖规则，并让回测、分位、图表指标同步展示。 |
-| P1 | 现金流类标的 | 红利利差模块已隐藏，但页面仍是占位说明。 | 定义分配率、现金流日历、久期/波动等字段与图表，再接 CSV/API。 |
-| P1 | 盘中实时联动 | 有模拟价与 `mergeIntraday1345` 类逻辑，但没有真实快照源和交易日历服务。 | 服务端定时写入当日 partial bar 或提供快照 API，前端复用现有信号计算。 |
-| P2 | 指数数据 | 指数 CSV 已可选加载；解析失败不阻断主表。 | 补齐 `indices.csv`、`index_bars.csv`、`index_tracking_etfs.csv` 的正式数据与编制说明链接。 |
-| P2 | 自动同步链路 | ETF 实时爬虫与指数 T-1 爬虫已接入 GitHub Actions；TickFlow workflow 已停用，仅保留脚本作备用数据源。 | 手动 `workflow_dispatch` 验证 `realtime-crawler.yml` 与 `index-t1-sync.yml`，并补失败告警/监控。 |
+| P0 | 生产站 UI 设计评审 | Pages 已上线，主页面已可访问。 | 继续检查首页、指数页、详情页首屏密度、移动端和表格可读性。 |
+| P0 | 数据加载验收 | 静态 CSV 可用；前端已支持 Worker API 失败回退静态 CSV。 | R2 开通后验证 Worker `/api/bundle`。 |
+| P0 | GitHub Actions 验证 | ETF 实时爬虫、指数 T-1 爬虫 workflow 已存在。 | 手动 `workflow_dispatch` 验证能提交数据变更。 |
+| P1 | R2 / Worker 上线 | Worker 代码与上传脚本已存在；R2 未开通。 | 用户绑卡后执行 `npm run r2:upload` / `npm run worker:deploy`。 |
+| P1 | 国际指数历史行情 | S&P / 富时部分指数缺可靠历史行情。 | 接入授权下载或用户提供 CSV。 |
 
 ### 每日更新与「历史 + 当日实时」如何联动（你需要提供什么）
 

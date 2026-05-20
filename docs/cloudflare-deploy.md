@@ -78,7 +78,7 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 
 仓库已包含：
 
-- [.github/workflows/cloudflare-r2-upload.yml](../.github/workflows/cloudflare-r2-upload.yml)：将 `public/data/*.csv` 上传到 R2；可在 TickFlow / 实时 / 指数同步成功后自动触发，或手动 `workflow_dispatch`。
+- [.github/workflows/cloudflare-r2-upload.yml](../.github/workflows/cloudflare-r2-upload.yml)：将 `public/data/*.csv` 上传到 R2；可在实时 / 指数同步成功后自动触发，或手动 `workflow_dispatch`。
 - [.github/workflows/cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml)：手动构建并 `pages deploy`（更推荐在 Cloudflare Dashboard 连接 Git 自动构建）。
 
 所需 Secrets：
