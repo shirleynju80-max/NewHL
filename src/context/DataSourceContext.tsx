@@ -44,6 +44,10 @@ type Ctx = {
 
 const DataSourceContext = createContext<Ctx | null>(null);
 
+function sourceLabelForPublic(apiError?: string): string {
+  return apiError ? "public/data/*.csv（数据 API 回退）" : "public/data/*.csv";
+}
+
 async function fetchTextIfOk(url: string): Promise<string | null> {
   try {
     const r = await fetch(url, { cache: "no-store" });
@@ -222,6 +226,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
     setIndexCsvError(null);
     try {
+      let apiError: string | null = null;
       const api = await tryFetchApiData();
       if (api.status === "ok") {
         userTouchedRef.current = false;
@@ -235,16 +240,23 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (api.status === "error") {
-        setLoadError(`重新加载数据 API 失败：${api.message}`);
-        return;
+        apiError = api.message;
       }
       const pub = await tryFetchPublicCsv();
       if (pub.status === "missing") {
-        setLoadError("public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。");
+        setLoadError(
+          apiError
+            ? `数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空，无法加载数据。`
+            : "public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。"
+        );
         return;
       }
       if (pub.status === "error") {
-        setLoadError(`重新加载 public/data 失败：${pub.message}`);
+        setLoadError(
+          apiError
+            ? `数据 API 失败：${apiError}；重新加载 public/data 也失败：${pub.message}`
+            : `重新加载 public/data 失败：${pub.message}`
+        );
         return;
       }
       userTouchedRef.current = false;
@@ -254,7 +266,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setIndexTracking(pub.bundle.indexTracking);
       setIndexCsvError(pub.indexCsvError);
       setSourceKind("csv_public");
-      setSourceLabel("public/data/*.csv");
+      setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
     } finally {
       setReloadingPublicCsv(false);
     }
@@ -264,6 +276,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setPublicCsvAutoLoading(true);
+      let apiError: string | null = null;
       const api = await tryFetchApiData();
       if (cancelled) return;
       if (userTouchedRef.current) {
@@ -283,9 +296,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (api.status === "error") {
-        setLoadError(`自动加载数据 API 失败：${api.message}。当前使用内置示例数据。`);
-        setPublicCsvAutoLoading(false);
-        return;
+        apiError = api.message;
       }
       const pub = await tryFetchPublicCsv();
       if (cancelled) return;
@@ -294,12 +305,17 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (pub.status === "missing") {
+        if (apiError) {
+          setLoadError(`自动加载数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空。当前使用内置示例数据。`);
+        }
         setPublicCsvAutoLoading(false);
         return;
       }
       if (pub.status === "error") {
         setLoadError(
-          `自动加载 public/data 失败：${pub.message}。当前使用内置示例数据；请确认 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`
+          apiError
+            ? `自动加载数据 API 失败：${apiError}；public/data 也失败：${pub.message}。当前使用内置示例数据。`
+            : `自动加载 public/data 失败：${pub.message}。当前使用内置示例数据；请确认 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`
         );
         setPublicCsvAutoLoading(false);
         return;
@@ -311,7 +327,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setIndices(pub.bundle.indices);
       setIndexTracking(pub.bundle.indexTracking);
       setSourceKind("csv_public");
-      setSourceLabel("public/data/*.csv");
+      setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
       setPublicCsvAutoLoading(false);
     })();
     return () => {

@@ -50,7 +50,7 @@ function fmtAnn(row: SeriesOverviewRow | null, win: "all" | "y1" | "y3" | "y5"):
 }
 
 export function IndicesListPage() {
-  const { indices, sourceLabel, indexTracking } = useDataSource();
+  const { indices, sourceLabel, indexTracking, publicCsvAutoLoading } = useDataSource();
   /** 默认勾选 A股红利；空集 = 显示全部类型 */
   const [catSet, setCatSet] = useState<Set<IndexCategory>>(() => new Set(["A股红利"]));
   const [inc, setInc] = useState<InceptionFilter>("all");
@@ -102,23 +102,35 @@ export function IndicesListPage() {
       const ca = ia === -1 ? 99 : ia;
       const cb = ib === -1 ? 99 : ib;
       if (ca !== cb) return ca - cb;
+      if (a.barDays === 0 && b.barDays > 0) return 1;
+      if (a.barDays > 0 && b.barDays === 0) return -1;
       return a.def.meta.name.localeCompare(b.def.meta.name, "zh-Hans-CN");
     });
     return list;
   }, [indices, catSet, inc]);
 
   return (
-    <div className="space-y-10">
-      <header>
-        <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">了解指数</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          汇总与绩效<strong>仅使用 index_bars.csv 中的指数序列</strong>（全收益 tri_close）；无指数行情则不填指标。当前数据：{sourceLabel}
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">了解指数</h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            汇总与绩效仅使用指数序列（全收益 tri_close）；跟踪产品只作跳转，不混入指标计算。
+          </p>
+        </div>
+        <p className="text-xs text-zinc-500">
+          {rows.length} 个指数 · {sourceLabel}
         </p>
       </header>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm space-y-5">
+      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm space-y-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <h2 className="text-lg font-semibold text-zinc-900">指数信息汇总</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900">指数信息汇总</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              有行情 {rows.filter((r) => r.barDays > 0).length} 个，待接入 {rows.filter((r) => r.barDays === 0).length} 个。
+            </p>
+          </div>
           <button
             type="button"
             onClick={selectAllCategories}
@@ -128,7 +140,7 @@ export function IndicesListPage() {
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-2xl border border-zinc-100 bg-zinc-50/60 p-4 sm:flex-row sm:items-end sm:gap-6">
+        <div className="flex flex-col gap-3 rounded-lg border border-zinc-100 bg-zinc-50/60 p-4 sm:flex-row sm:items-end sm:gap-6">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-zinc-600">指数类型（多选）</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -170,8 +182,19 @@ export function IndicesListPage() {
           指标定义与<strong>ETF总览 · 标的概览</strong>一致（252 交易日/年、区间复利年化等），且<strong>仅基于指数 tri_close</strong>，不使用 ETF 行情近似。
         </p>
 
-        {indices.length === 0 ?
-          <p className="text-sm text-zinc-500">暂无指数 CSV。</p>
+        {publicCsvAutoLoading ?
+          <p className="rounded-lg border border-zinc-100 bg-zinc-50 px-4 py-6 text-sm text-zinc-500">
+            正在加载指数数据...
+          </p>
+        : indices.length === 0 ?
+          <p className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-6 text-sm text-amber-900">
+            暂无指数 CSV。请确认 `public/data/indices.csv` 与 `public/data/index_bars.csv` 已随构建发布。
+          </p>
+        : rows.length === 0 ? (
+          <p className="rounded-lg border border-zinc-100 bg-zinc-50 px-4 py-6 text-sm text-zinc-500">
+            当前筛选条件下没有指数。
+          </p>
+        )
         : (
           <div className="grid gap-3">
             {rows.map(({ def, barDays, overview }) => {
@@ -179,7 +202,7 @@ export function IndicesListPage() {
               return (
                 <div
                   key={def.meta.index_code}
-                  className="group rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-md"
+                  className="group rounded-lg border border-zinc-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-md"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -188,6 +211,11 @@ export function IndicesListPage() {
                         <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-600 group-hover:border-indigo-200 group-hover:bg-white">
                           {def.meta.category}
                         </span>
+                        {barDays === 0 ? (
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                            行情待接入
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-1 font-mono text-xs text-zinc-500">
                         {def.meta.index_code} · 成立日 {def.meta.inception_date ?? "—"} · {barDays} 个指数交易日
