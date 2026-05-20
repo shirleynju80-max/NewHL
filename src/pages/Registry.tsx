@@ -303,7 +303,7 @@ export function RegistryPage() {
   };
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {toast && (
         <div
           className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm text-emerald-900 shadow-lg"
@@ -320,7 +320,7 @@ export function RegistryPage() {
         </p>
       </header>
 
-      <details className="rounded-2xl border border-indigo-100 bg-gradient-to-b from-indigo-50/30 to-white p-4 shadow-sm open:ring-1 open:ring-indigo-100">
+      <details className="rounded-lg border border-indigo-100 bg-gradient-to-b from-indigo-50/30 to-white p-4 shadow-sm open:ring-1 open:ring-indigo-100">
         <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden flex flex-wrap items-center justify-between gap-2 text-sm">
           <span>
             <span className="mr-1.5 text-zinc-400">▸</span>
@@ -337,7 +337,7 @@ export function RegistryPage() {
             {etfDefinitions.map((etf) => {
               const vars = getParamVariants(etf, entries);
               return (
-                <div key={etf.meta.code} className="rounded-xl border border-zinc-100 bg-white/90 p-3 shadow-sm">
+                <div key={etf.meta.code} className="rounded-lg border border-zinc-100 bg-white/90 p-3 shadow-sm">
                   <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-100 pb-2">
                     <div>
                       <p className="font-mono text-[10px] text-indigo-600">{etf.meta.code}</p>
@@ -386,7 +386,7 @@ export function RegistryPage() {
         )}
       </details>
 
-      <details className="group rounded-2xl border border-zinc-100 bg-zinc-50/40 p-5 text-sm text-zinc-600">
+      <details className="group rounded-lg border border-zinc-100 bg-zinc-50/40 p-5 text-sm text-zinc-600">
         <summary className="cursor-pointer list-none font-medium text-zinc-800 [&::-webkit-details-marker]:hidden">
           <span className="mr-2 text-zinc-400 group-open:rotate-90 inline-block transition">▸</span>
           查看数据源中的标的与参数版本摘要
@@ -403,7 +403,7 @@ export function RegistryPage() {
         </ul>
       </details>
 
-      <section className="rounded-3xl border border-zinc-200/80 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-zinc-200/80 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-100 pb-5">
           <div>
             <h3 className="text-base font-semibold text-zinc-900">回测数据与参数搜索</h3>
@@ -414,7 +414,7 @@ export function RegistryPage() {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
             <input
               type="radio"
               name="reg-ds"
@@ -427,7 +427,7 @@ export function RegistryPage() {
             />
             当前数据源 K 线（与看板一致）
           </label>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
             <input
               type="radio"
               name="reg-ds"
@@ -454,7 +454,7 @@ export function RegistryPage() {
             <button
               type="button"
               onClick={() => barsInputRef.current?.click()}
-              className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
+              className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
             >
               选择 bars.csv
             </button>
@@ -467,7 +467,7 @@ export function RegistryPage() {
                   setBarsErr(null);
                   setGridErr(null);
                 }}
-                className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 清除上传
               </button>
@@ -476,7 +476,7 @@ export function RegistryPage() {
           </div>
         )}
 
-        {selectableCodes.length > 0 && (
+        {selectableCodes.length > 0 ? (
           <div className="mt-5">
             <label className="text-xs font-medium text-zinc-600">回测标的</label>
             <select
@@ -503,9 +503,15 @@ export function RegistryPage() {
               </p>
             )}
           </div>
+        ) : (
+          <p className="mt-5 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {dataMode === "bundle"
+              ? "当前数据源没有可回测标的，请先确认 public/data 已加载。"
+              : "请先上传包含 etf_code/date/open/high/low/close 的 bars.csv。"}
+          </p>
         )}
 
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-sm">
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-sm">
           <span className="font-semibold text-zinc-900">训练 / 验证切分（时间序）</span>
           <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
             训练集占比
@@ -528,7 +534,7 @@ export function RegistryPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">参数搜索范围（网格枚举）</p>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-5">
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-5">
               <h4 className="text-sm font-semibold text-zinc-900">RSI</h4>
               <p className="mt-1 text-xs text-zinc-500">超卖上穿买、超买下穿卖；可勾选日/周线。</p>
               <div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-700">
@@ -570,7 +576,7 @@ export function RegistryPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-5">
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-5">
               <h4 className="text-sm font-semibold text-zinc-900">布林带</h4>
               <p className="mt-1 text-xs text-zinc-500">下轨外回归买入、上轨外回归卖出；可勾选日/周线。</p>
               <div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-700">
@@ -603,10 +609,10 @@ export function RegistryPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-5 lg:col-span-2">
+            <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-5 lg:col-span-2">
               <h4 className="text-sm font-semibold text-zinc-900">MA</h4>
               <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-xl border border-zinc-100 bg-white/80 p-4">
+                <div className="rounded-lg border border-zinc-100 bg-white/80 p-4">
                   <p className="text-xs font-medium text-zinc-800">金叉</p>
                   <p className="mt-0.5 text-[11px] text-zinc-500">短均线上穿长均线买，反之为卖。</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -630,7 +636,7 @@ export function RegistryPage() {
                     </label>
                   </div>
                 </div>
-                <div className="rounded-xl border border-zinc-100 bg-white/80 p-4">
+                <div className="rounded-lg border border-zinc-100 bg-white/80 p-4">
                   <p className="text-xs font-medium text-zinc-800">自定义</p>
                   <p className="mt-0.5 text-[11px] text-zinc-500">上穿均线买；卖=止盈或回撤（先到先卖）。</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -668,7 +674,7 @@ export function RegistryPage() {
           <button
             type="button"
             onClick={() => setSearchForm(formFromDefaults())}
-            className="rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+            className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
           >
             恢复默认搜索范围
           </button>
@@ -676,7 +682,7 @@ export function RegistryPage() {
             type="button"
             disabled={!barsForRun || barsForRun.length < 40 || gridBusy}
             onClick={() => void runBacktest()}
-            className="rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
           >
             {gridBusy ? "回测计算中…" : "执行回测"}
           </button>
@@ -686,7 +692,7 @@ export function RegistryPage() {
         {gridErr && <p className="mt-4 text-sm text-red-700">{gridErr}</p>}
       </section>
 
-      <section className="rounded-3xl border-2 border-indigo-200 bg-white p-8 shadow-md ring-1 ring-indigo-100">
+      <section className="rounded-lg border-2 border-indigo-200 bg-white p-6 shadow-md ring-1 ring-indigo-100">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h3 className="text-xl font-semibold tracking-tight text-zinc-900">
@@ -733,7 +739,7 @@ export function RegistryPage() {
 
         {gridResult && (
           <>
-            <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50/80 px-4 py-3">
+            <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/80 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">基础统计 · 买入持有</p>
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
                 <div>

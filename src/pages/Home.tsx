@@ -139,7 +139,7 @@ function PoolSection({
   const allSelected = codes.length > 0 && codes.every((c) => compareCodes.includes(c));
 
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-zinc-50/40 p-3">
+    <div className="rounded-lg border border-zinc-100 bg-zinc-50/40 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-baseline gap-2">
           <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
@@ -169,7 +169,7 @@ function PoolSection({
             return (
               <li
                 key={e.meta.code}
-                className={`flex gap-1.5 rounded-lg border py-1.5 px-2 transition ${
+                className={`flex gap-1.5 rounded-md border py-1.5 px-2 transition ${
                   checked ? "border-indigo-300 bg-indigo-50/50" : "border-zinc-100 bg-white"
                 }`}
               >
@@ -445,11 +445,17 @@ export function HomePage() {
   }, [compareCodes.length, compareResult, fullCompareResult]);
 
   return (
-    <div className="space-y-10">
-      <header>
-        <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">ETF总览</h1>
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">ETF总览</h1>
+          <p className="mt-1 text-sm text-zinc-500">标的池、收益风险对比与相关性矩阵。</p>
+        </div>
+        <p className="text-xs text-zinc-500">
+          {definitions.length} 只 ETF · {sourceLabel}
+        </p>
       </header>
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-zinc-900">看板摘要</h2>
           <p className="text-xs text-zinc-500">先看结论，再下钻明细</p>
@@ -459,7 +465,7 @@ export function HomePage() {
             <a
               key={card.title}
               href={card.href}
-              className={`rounded-2xl border px-4 py-3 transition hover:shadow-sm ${
+              className={`rounded-lg border px-4 py-3 transition hover:shadow-sm ${
                 card.tone === "good"
                   ? "border-emerald-200 bg-emerald-50/70"
                   : card.tone === "warn"
@@ -474,7 +480,7 @@ export function HomePage() {
           ))}
         </div>
       </section>
-      <section id="etf-pool" className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm">
+      <section id="etf-pool" className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-semibold text-zinc-900">ETF标的池</h2>
           <p className="text-xs text-zinc-500">
@@ -516,7 +522,7 @@ export function HomePage() {
         )}
       </section>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm">
+      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-zinc-900">标的概览</h2>
@@ -554,7 +560,7 @@ export function HomePage() {
               <p className="mt-1 text-xs text-zinc-500">
                 当前按<strong>{currentWindowLabel}</strong>口径计算；<strong>区间收益</strong>=窗口首尾收盘涨跌；<strong>年化收益</strong>按 252 交易日由区间复利折算；<strong>最大回撤</strong>为区间内峰值到谷底；<strong>年化波动</strong>为日收益样本标准差×√252；<strong>夏普(简)</strong>=年化÷年化波动；<strong>卡玛</strong>≈年化÷|最大回撤|。
               </p>
-              <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-100">
+              <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-100">
                 <table className="w-full table-fixed text-left text-[11px] leading-tight sm:text-xs">
                   <colgroup>
                     <col className="w-[3.75rem]" />
@@ -668,7 +674,7 @@ export function HomePage() {
                 </table>
               </div>
               {overviewDualData.length > 0 && (
-                <div className="mt-6 rounded-xl border border-zinc-100 bg-zinc-50/50 p-4">
+                <div className="mt-6 rounded-lg border border-zinc-100 bg-zinc-50/50 p-4">
                   <h4 className="text-xs font-semibold text-zinc-800">{currentWindowLabel} · 年化收益与最大回撤（%）</h4>
                   <p className="mt-0.5 text-[10px] text-zinc-500">
                     与上表同窗口；紫柱=年化收益（越高越好），粉柱=最大回撤（越低越好）。
@@ -748,7 +754,7 @@ export function HomePage() {
                 </p>
               )}
               {compareResult.correlation && (
-                <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-100">
+                <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-100">
                   <table className="w-full min-w-[240px] table-fixed text-center text-[11px] sm:text-xs">
                     <colgroup>
                       <col className="w-[3.5rem]" />

@@ -32,6 +32,7 @@ type Ctx = {
   sourceKind: SourceKind;
   sourceLabel: string;
   loadError: string | null;
+  publicCsvAutoLoading: boolean;
   reloadingPublicCsv: boolean;
   loadFromDownloads: (files: FileList | File[]) => Promise<void>;
   resetToMock: () => void;
@@ -132,6 +133,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
   const [sourceKind, setSourceKind] = useState<SourceKind>("mock");
   const [sourceLabel, setSourceLabel] = useState<string>("内置示例数据");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [publicCsvAutoLoading, setPublicCsvAutoLoading] = useState(true);
   const [reloadingPublicCsv, setReloadingPublicCsv] = useState(false);
   const userTouchedRef = useRef(false);
 
@@ -206,13 +208,22 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setPublicCsvAutoLoading(true);
       const pub = await tryFetchPublicCsv();
-      if (cancelled || userTouchedRef.current) return;
-      if (pub.status === "missing") return;
+      if (cancelled) return;
+      if (userTouchedRef.current) {
+        setPublicCsvAutoLoading(false);
+        return;
+      }
+      if (pub.status === "missing") {
+        setPublicCsvAutoLoading(false);
+        return;
+      }
       if (pub.status === "error") {
         setLoadError(
-          `自动加载 public/data 失败：${pub.message}。当前仍为内置 3 只示例；请保证 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`
+          `自动加载 public/data 失败：${pub.message}。当前使用内置示例数据；请确认 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`
         );
+        setPublicCsvAutoLoading(false);
         return;
       }
       setLoadError(null);
@@ -223,6 +234,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setIndexTracking(pub.bundle.indexTracking);
       setSourceKind("csv_public");
       setSourceLabel("public/data/*.csv");
+      setPublicCsvAutoLoading(false);
     })();
     return () => {
       cancelled = true;
@@ -239,6 +251,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       sourceKind,
       sourceLabel,
       loadError,
+      publicCsvAutoLoading,
       reloadingPublicCsv,
       loadFromDownloads,
       resetToMock,
@@ -255,6 +268,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       sourceKind,
       sourceLabel,
       loadError,
+      publicCsvAutoLoading,
       reloadingPublicCsv,
       loadFromDownloads,
       resetToMock,

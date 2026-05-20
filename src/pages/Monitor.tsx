@@ -98,7 +98,7 @@ function MonitorPoolSection({
   const allSelected = codes.length > 0 && codes.every((c) => selectedCodes.includes(c));
 
   return (
-    <div className="rounded-2xl border border-zinc-100 bg-zinc-50/40 p-3">
+    <div className="rounded-lg border border-zinc-100 bg-zinc-50/40 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-baseline gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">{title}</h4>
@@ -125,7 +125,7 @@ function MonitorPoolSection({
             return (
               <li
                 key={e.meta.code}
-                className={`rounded-lg border py-1.5 px-2 transition ${
+                className={`rounded-md border py-1.5 px-2 transition ${
                   checked ? "border-indigo-300 bg-indigo-50/60" : "border-zinc-100 bg-white"
                 }`}
               >
@@ -272,7 +272,7 @@ export function MonitorPage() {
 
   return (
     <div className="space-y-8">
-      <header className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm">
+      <header className="rounded-lg border border-zinc-100 bg-white p-6 shadow-sm">
         <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">今日盘中信号</h2>
         <p className="mt-2 text-sm text-zinc-600 max-w-3xl leading-relaxed">
           对纳入监控的标的，列出<strong>全部可切换策略</strong>在「昨收全日 K + 下方模拟收盘」合成下的<strong>标尺与提醒</strong>（本表<strong>不展示</strong>单日 BUY/SELL：空仓时易被误读为「今日应卖」）。
@@ -282,16 +282,10 @@ export function MonitorPage() {
         <p className="mt-2 text-xs text-zinc-500">
           参考时点默认 13:45，与单标的页合成规则一致。标尺 ≤20% / ≥80% 为贴近买、卖侧；中间区为「临近/靠近」提醒。
         </p>
-        <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-xs text-zinc-700">
-          <p className="font-medium text-zinc-900">远程行情校验（Web → API）</p>
+        <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-xs text-zinc-700">
+          <p className="font-medium text-zinc-900">盘中数据来源与校验</p>
           <p className="mt-1 leading-relaxed text-zinc-600">
-            <strong>没有内置固定网页</strong>，浏览器内也<strong>不能</strong>对东财/新浪等站点自动爬虫（跨域与合规限制）。你需要自己在服务端或网关实现拉数，再把本页指向你的接口。
-          </p>
-          <p className="mt-2 leading-relaxed text-zinc-600">
-            在环境变量里配置 <code className="rounded bg-white px-1">VITE_QUOTE_WEB_URL</code>（优先）与{" "}
-            <code className="rounded bg-white px-1">VITE_QUOTE_API_URL</code>（可选 <code className="rounded bg-white px-1">VITE_QUOTE_API_KEY</code>
-            ）；GET 形如 <code className="rounded bg-white px-1">?code=510300</code>，响应 JSON 须含数组{" "}
-            <code className="rounded bg-white px-1">bars</code>（与本地 bars 相同字段）。拉取后与本地 CSV <strong>重叠交易日收盘</strong>比对，不一致会列在下方。
+            默认读取 <code className="rounded bg-white px-1">bars.csv + barsmore.csv</code>。GitHub Actions 的实时爬虫会在 11:00 / 14:00 写入当日快照；本页只负责基于当前 CSV 重算标尺。下方按钮用于接入自有行情网关后的重叠日期一致性校验。
           </p>
           <button
             type="button"
@@ -334,7 +328,7 @@ export function MonitorPage() {
         </div>
       </header>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-lg font-semibold text-zinc-900">监控标的</h3>
           <p className="text-sm text-zinc-500">已选 {pref.codes.length} / {definitions.length} 只</p>
@@ -364,7 +358,7 @@ export function MonitorPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm">
+      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <h3 className="text-lg font-semibold text-zinc-900">全策略信号与标尺</h3>
         {rowGroups.length === 0 ? (
           <p className="mt-4 text-sm text-zinc-500">请至少勾选一只标的。</p>
