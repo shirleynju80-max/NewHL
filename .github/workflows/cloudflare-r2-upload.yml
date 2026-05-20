@@ -5,7 +5,7 @@ name: Cloudflare R2 upload
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["TickFlow sync bars", "Realtime crawler", "Index T-1 sync"]
+    workflows: ["Realtime crawler", "Index T-1 sync"]
     types: [completed]
 
 jobs:

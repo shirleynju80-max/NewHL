@@ -23,7 +23,7 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
 | P1 | 现金流类标的 | 红利利差模块已隐藏，但页面仍是占位说明。 | 定义分配率、现金流日历、久期/波动等字段与图表，再接 CSV/API。 |
 | P1 | 盘中实时联动 | 有模拟价与 `mergeIntraday1345` 类逻辑，但没有真实快照源和交易日历服务。 | 服务端定时写入当日 partial bar 或提供快照 API，前端复用现有信号计算。 |
 | P2 | 指数数据 | 指数 CSV 已可选加载；解析失败不阻断主表。 | 补齐 `indices.csv`、`index_bars.csv`、`index_tracking_etfs.csv` 的正式数据与编制说明链接。 |
-| P2 | 自动同步链路 | TickFlow 脚本与 `.github/workflows/tickflow-sync.yml` 已存在，可工作日盘后增量同步 `bars.csv`。 | 配好 `TICKFLOW_API_KEY` Secret 后做一次手动 `workflow_dispatch` 验证，并补失败告警/监控。 |
+| P2 | 自动同步链路 | ETF 实时爬虫与指数 T-1 爬虫已接入 GitHub Actions；TickFlow workflow 已停用，仅保留脚本作备用数据源。 | 手动 `workflow_dispatch` 验证 `realtime-crawler.yml` 与 `index-t1-sync.yml`，并补失败告警/监控。 |
 
 ### 每日更新与「历史 + 当日实时」如何联动（你需要提供什么）
 
@@ -40,12 +40,11 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
 
 **联动原则（简短）**：历史以 **收盘库** 为准；实时以 **带时间戳的快照** 覆盖「当日最后一根 K」的收盘（或单独字段由后端下发「partial bar」），前端用同一套 `computeSignals` / 分位逻辑重算即可。若你愿意提供 **OpenAPI 文档或示例 JSON**，可在后续迭代中增加 `src/api/` 拉数层，替换 `mock`/`CSV` 入口。
 
-### TickFlow 定时同步 `bars.csv`（可选）
+### ETF 数据同步
 
-- **GitHub Actions**：工作流 [.github/workflows/tickflow-sync.yml](.github/workflows/tickflow-sync.yml) 在工作日约北京时间 16:40 拉取日 K，合并写入 `public/data/bars.csv`；有变更时自动 `git push`。请在仓库 **Settings → Secrets and variables → Actions** 中配置 `TICKFLOW_API_KEY`（勿提交到代码或聊天）。
-- **标的列表**：若 CI 检出环境里没有 `public/data/etfs.csv`（例如该文件仍被 gitignore），脚本会改用已入库的 [scripts/tickflow_sync/sync_etfs.csv](scripts/tickflow_sync/sync_etfs.csv)；也可通过环境变量 `TICKFLOW_ETFS_CSV` 指向任意含 `code` 列的 CSV。可选列 `tickflow_symbol` 可写死如 `510300.SH`，否则按 6 位代码推断 `.SH` / `.SZ`。
-- **本地执行**：`pip install -r scripts/tickflow_sync/requirements.txt`，再 `export TICKFLOW_API_KEY='…'` 后运行 `python3 scripts/tickflow_sync/sync_bars.py`。无 Key 时可用 `python3 scripts/tickflow_sync/sync_bars.py --free`（仅 TickFlow 免费档历史日 K）。环境变量 `TICKFLOW_KLINE_COUNT` 控制每只标的拉取根数（默认 3000；**增量**时通常 120～400 足够）。`TICKFLOW_ADJUST` 默认 `forward`（前复权）。
-- **增量默认**：脚本**只追加**各标的在 `bars.csv` 中已有 **最大 `date` 之后** 的 TickFlow 日 K，**不覆盖**历史行（与东方财富主数据一致）。若需用 TickFlow 覆盖重叠历史，显式传 `--full-refresh`（慎用）。
+- **当前主链路**：工作流 [.github/workflows/realtime-crawler.yml](.github/workflows/realtime-crawler.yml) 在工作日北京时间 11:00、14:00 运行，写入 `public/data/barsmore.csv`。前端按 `bars.csv + barsmore.csv` 合并，同一 `etf_code + date` 以后者覆盖。
+- **历史补缺与校验**：手动运行 `python scripts/realtime_crawler/sync_etf_realtime.py` 会尝试补齐历史日 K，并校验今年以来来源数据与本地重合日期 OHLC 是否一致；默认定时模式使用 `--skip-history`，只更新实时 quote。
+- **备用链路**：TickFlow workflow 已停用，不再需要配置 `TICKFLOW_API_KEY`。相关脚本仍保留在 [scripts/tickflow_sync/](scripts/tickflow_sync/) 中，仅作为公开接口不可用时的备用数据源。
 
 ### 实时爬虫（ETF 定点刷新）
 
@@ -66,7 +65,7 @@ Vite + React + TypeScript + Tailwind + Recharts。UI 取向：浅灰底、留白
   - `python scripts/index_data_sync/sync_a_share_dividend_indices.py`
   - `python scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py`
 - **写入文件**：`public/data/index_bars.csv`、`public/data/indices.csv`、`public/data/index_tracking_etfs.csv`。
-- **复权口径**：TickFlow 侧由 `TICKFLOW_ADJUST` 控制；默认前复权。若回测必须与东财某一口径严格一致，仍以 CSV 主数据为准，仅用增量补新交易日。
+- **指数实时口径**：当前不做指数盘中实时值。部分交易所主指数可通过新浪 quote 取到盘中数据，但 H30269、930955 等策略指数没有稳定可验证的实时 quote；项目暂以官方 T-1 数据为准，避免用 ETF proxy 冒充指数实时值。
 
 ## 对外访问（Web 部署）
 
