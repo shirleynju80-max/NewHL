@@ -20,8 +20,9 @@ import {
   type CsvMergeOptions,
 } from "../data/csvLoader";
 import { bondByDate as mockBondByDate, etfDefinitions as mockEtfDefinitions } from "../data/mock";
+import { configuredDataApiBaseUrl, fetchApiCsvBundle, type ApiCsvFiles } from "../api/dataBundle";
 
-type SourceKind = "mock" | "csv" | "csv_public";
+type SourceKind = "mock" | "csv" | "csv_public" | "api";
 
 type Ctx = {
   definitions: EtfDefinition[];
@@ -58,6 +59,11 @@ type PublicCsvLoadResult =
   | { status: "missing" }
   | { status: "error"; message: string };
 
+type ApiDataLoadResult =
+  | { status: "ok"; bundle: AppDataBundle; indexCsvError: string | null; label: string }
+  | { status: "missing" }
+  | { status: "error"; message: string };
+
 function allBundleDates(bundle: AppDataBundle): string[] {
   const dates = new Set<string>();
   for (const d of bundle.definitions) {
@@ -82,6 +88,39 @@ function bondMapForBundle(
 
 function withBondMap(bundle: AppDataBundle, bondByDate: Record<string, BondSeriesPoint>): AppDataBundle {
   return { ...bundle, bondByDate };
+}
+
+function apiMergeOptions(files: ApiCsvFiles): CsvMergeOptions | undefined {
+  const merge: CsvMergeOptions = {};
+  if (files.etfsMore?.trim()) merge.etfsMore = files.etfsMore;
+  if (files.barsMore?.trim()) merge.barsMore = files.barsMore;
+  if (files.bondsMore?.trim()) merge.bondsMore = files.bondsMore;
+  if (files.fundBars?.trim()) merge.fundBars = files.fundBars;
+  return merge.etfsMore || merge.barsMore || merge.bondsMore || merge.fundBars ? merge : undefined;
+}
+
+function parseApiFiles(files: ApiCsvFiles): { bundle: AppDataBundle; indexCsvError: string | null } {
+  const base = buildCsvBundle(files.etfs ?? "", files.bars ?? "", files.bonds ?? "", files.etfParams ?? "", apiMergeOptions(files));
+  return withIndexCsvSafe(base, files.indices ?? "", files.indexBars ?? "", files.indexTrackingEtfs ?? "");
+}
+
+async function tryFetchApiData(): Promise<ApiDataLoadResult> {
+  const apiBaseUrl = configuredDataApiBaseUrl();
+  if (!apiBaseUrl) return { status: "missing" };
+  try {
+    const payload = await fetchApiCsvBundle(apiBaseUrl);
+    if (!payload) return { status: "missing" };
+    const { bundle, indexCsvError } = parseApiFiles(payload.files);
+    const full = withBondMap(bundle, bondMapForBundle(bundle, payload.files.bonds ?? "", payload.files.bondsMore));
+    return {
+      status: "ok",
+      bundle: full,
+      indexCsvError,
+      label: payload.generatedAt ? `数据 API · ${payload.generatedAt.slice(0, 10)}` : "数据 API",
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
@@ -183,6 +222,22 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
     setIndexCsvError(null);
     try {
+      const api = await tryFetchApiData();
+      if (api.status === "ok") {
+        userTouchedRef.current = false;
+        setDefinitions(api.bundle.definitions);
+        setBondMap(api.bundle.bondByDate);
+        setIndices(api.bundle.indices);
+        setIndexTracking(api.bundle.indexTracking);
+        setIndexCsvError(api.indexCsvError);
+        setSourceKind("api");
+        setSourceLabel(api.label);
+        return;
+      }
+      if (api.status === "error") {
+        setLoadError(`重新加载数据 API 失败：${api.message}`);
+        return;
+      }
       const pub = await tryFetchPublicCsv();
       if (pub.status === "missing") {
         setLoadError("public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。");
@@ -209,6 +264,29 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setPublicCsvAutoLoading(true);
+      const api = await tryFetchApiData();
+      if (cancelled) return;
+      if (userTouchedRef.current) {
+        setPublicCsvAutoLoading(false);
+        return;
+      }
+      if (api.status === "ok") {
+        setLoadError(null);
+        setIndexCsvError(api.indexCsvError);
+        setDefinitions(api.bundle.definitions);
+        setBondMap(api.bundle.bondByDate);
+        setIndices(api.bundle.indices);
+        setIndexTracking(api.bundle.indexTracking);
+        setSourceKind("api");
+        setSourceLabel(api.label);
+        setPublicCsvAutoLoading(false);
+        return;
+      }
+      if (api.status === "error") {
+        setLoadError(`自动加载数据 API 失败：${api.message}。当前使用内置示例数据。`);
+        setPublicCsvAutoLoading(false);
+        return;
+      }
       const pub = await tryFetchPublicCsv();
       if (cancelled) return;
       if (userTouchedRef.current) {

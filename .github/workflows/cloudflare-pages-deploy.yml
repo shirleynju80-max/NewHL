@@ -1,0 +1,31 @@
+# 可选：用 Cloudflare Pages 直连 Git 构建时，本 workflow 仅作手动触发备份。
+# 推荐在 Cloudflare Dashboard 连接 GitHub 并配置 VITE_DATA_API_BASE_URL。
+name: Cloudflare Pages deploy (manual)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install and build
+        env:
+          VITE_DATA_API_BASE_URL: ${{ secrets.VITE_DATA_API_BASE_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=newhl-dashboard

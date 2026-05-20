@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "worker:deploy": "npm --prefix workers/data-api run deploy",
+    "r2:upload": "bash scripts/cloudflare/upload_public_data_to_r2.sh",
     "backtest:cn-div": "tsx scripts/backtest_grid/run_scope_top5.ts --scope A股红利 --top 5",
     "backtest:cn-div:one": "tsx scripts/backtest_grid/run_scope_top5.ts --scope A股红利 --top 5 --code"
   },

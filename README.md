@@ -81,16 +81,35 @@ docker run -p 8080:80 dividend-dashboard
 
 浏览器访问 `http://<服务器IP>:8080`。生产环境建议在容器前加 **HTTPS 反向代理**（如 Caddy / Traefik / 云负载均衡）并绑定域名。
 
-### 方式 B：静态托管（Vercel / Netlify / OSS + CDN）
+### 方式 B：Cloudflare Pages + Worker + R2（推荐公网）
+
+数据不直接暴露为静态 `/data/*.csv`，由 Worker 从 R2 提供 `/api/bundle`；前端通过 `VITE_DATA_API_BASE_URL` 拉取。
+
+完整步骤见 **[docs/cloudflare-deploy.md](docs/cloudflare-deploy.md)**。本地常用命令：
+
+```bash
+# 1) 上传 CSV 到 R2（需 wrangler login）
+npm run r2:upload
+
+# 2) 发布 Worker
+npm run worker:deploy
+
+# 3) Pages 构建时在环境变量中设置 VITE_DATA_API_BASE_URL
+npm run build
+```
+
+GitHub Actions 可选：`cloudflare-r2-upload.yml`（数据同步后上传 R2）、`cloudflare-pages-deploy.yml`（手动 Pages 部署）。
+
+### 方式 C：其他静态托管（Vercel / Netlify / OSS + CDN）
 
 ```bash
 npm run build
 # 将 dist/ 目录上传到托管方指定根路径
 ```
 
-若站点不在域名根路径，构建前设置 `VITE_BASE_PATH=/你的子路径/` 再执行 `npm run build`。
+若站点不在域名根路径，构建前设置 `VITE_BASE_PATH=/你的子路径/` 再执行 `npm run build`。未配置 `VITE_DATA_API_BASE_URL` 时，构建产物仍会尝试读取 `public/data/bars.csv`（仓库内仅 bars 纳入版本库）。
 
-### 方式 C：临时对外演示
+### 方式 D：临时对外演示
 
 ```bash
 npm run build

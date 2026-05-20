@@ -20,7 +20,7 @@ export function Layout() {
     reloadingPublicCsv,
     publicCsvAutoLoading,
   } = useDataSource();
-  const shownSource = publicCsvAutoLoading ? "正在加载 public/data/*.csv" : sourceLabel;
+  const shownSource = publicCsvAutoLoading ? "正在加载数据…" : sourceLabel;
   return (
     <div className="min-h-screen flex flex-col">
       {loadError && (
@@ -53,7 +53,7 @@ export function Layout() {
                 disabled={reloadingPublicCsv || publicCsvAutoLoading}
                 className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
               >
-                {reloadingPublicCsv || publicCsvAutoLoading ? "加载中..." : "刷新 public/data"}
+                {reloadingPublicCsv || publicCsvAutoLoading ? "加载中..." : "刷新数据"}
               </button>
             </p>
           </div>

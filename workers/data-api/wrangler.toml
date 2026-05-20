@@ -1,0 +1,13 @@
+name = "newhl-data-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-20"
+
+# Set after creating the bucket:
+# wrangler r2 bucket create newhl-data
+[[r2_buckets]]
+binding = "DATA_BUCKET"
+bucket_name = "newhl-data"
+
+[vars]
+# Use "*" while testing. For production, set this to your Pages URL or custom domain.
+ALLOWED_ORIGIN = "*"
