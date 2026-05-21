@@ -1,9 +1,9 @@
 # 项目状态与交接
 
-更新时间：2026-05-21（RedRocket 股息率写入 CSV 后更新交接）  
-当前主协作分支：`cursor/overview-monitor-registry-tickflow`  
-最新提交：见 `git log -1`（UI `3b26d2e` → 交接 `7070031` → 股息率 CSV 待本条提交）  
-生产站：<https://newhl-dashboard.pages.dev/>（**仍为改版前构建**，见 P0 验收记录）
+更新时间：2026-05-21（新版已合并 `main`）  
+当前默认分支：`main`（已合并 `cursor/overview-monitor-registry-tickflow` + `origin/main` TickFlow 历史）  
+最新提交：见 `git log -1` on `main`  
+生产站：<https://newhl-dashboard.pages.dev/>（若 Cloudflare 绑 `main` 自动构建，合并 push 后可能更新为「价值底仓配置台」）
 
 ## 当前结论
 
