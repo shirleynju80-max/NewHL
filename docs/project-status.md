@@ -1,8 +1,9 @@
 # 项目状态与交接
 
-更新时间：2026-05-21  
+更新时间：2026-05-21（Cursor P0 验收后交接 Codex）  
 当前主协作分支：`cursor/overview-monitor-registry-tickflow`  
-生产站：<https://newhl-dashboard.pages.dev/>
+最新提交：`3b26d2e` — `feat: ship value desk product framework and P0 UI verification`  
+生产站：<https://newhl-dashboard.pages.dev/>（**仍为改版前构建**，见 P0 验收记录）
 
 ## 当前结论
 
@@ -75,25 +76,38 @@
 
 执行前先看本文件和 `git status`。如果发现已有未提交文件，先判断是否来自另一方工作；不要顺手格式化或重写无关文件。
 
-## 产品框架改版交接
+## 产品框架改版交接（Cursor → Codex）
 
-产品框架唯一依据：`docs/product-redesign.md`。
+产品框架唯一依据：`docs/product-redesign.md`。UI 接入示例：`docs/codex-handoff-ui.md`。
 
-本地已补齐配置层 helper：
+### Cursor 已在 `3b26d2e` 完成
 
-- `src/lib/configFramework.ts`
-  - 现金创造 / 股东回报两维度分类。
-  - 首页双卡片 snapshot：`buildHomeDimensionSnapshots`。
-  - 指数研究筛选：`CONFIG_DIMENSION_OPTIONS`、`filterIndicesByDimensionOption`、`indexStyleTags`。
-  - 产品落地分组：`groupEtfsForLanding`。
-  - 数据完整性标签：`indexDataAvailability`、`etfDataAvailability`、`dataAvailabilityLabel`、`dataAvailabilityTone`。
-  - 红利利差配置观察：`dividendAllocationObservation`。
-- `src/data/indexCsv.ts`
-  - 利差模块展示范围已收窄为 `A股红利` / `港股红利`，现金流维度 v1 不输出配置窗口。
-- `docs/codex-handoff-ui.md`
-  - Cursor UI 接入示例与文件边界说明。
+| 范围 | 文件 / 说明 |
+|------|-------------|
+| 配置层 helper | `src/lib/configFramework.ts`、`src/lib/dataFreshness.ts` |
+| 顶栏与品牌 | `src/components/Layout.tsx`、`index.html`（站点名「价值底仓配置台」） |
+| 配置总览 | `src/pages/Home.tsx` — 双维度卡片、`groupEtfsForLanding`、对比区 |
+| 指数研究 | `src/pages/IndicesListPage.tsx` — 一级维度 tab、风格/成立期筛选、完整性标签 |
+| 指数详情 | `src/pages/IndexDetailPage.tsx` — `dividendAllocationObservation`；**修复** CSV 未就绪时误 `Navigate` 到列表 |
+| 其它页面小改 | `Monitor.tsx`、`Registry.tsx`、`EtfDashboard.tsx` |
+| 利差 CSV 口径 | `src/data/indexCsv.ts` — 仅 `A股红利` / `港股红利` 展示利差模块 |
+| 指数数据 | `public/data/index_bars.csv`、`indices.csv`、`index_tracking_etfs.csv` 与同步脚本 |
+| 文档 | `docs/product-redesign.md`、`docs/codex-handoff-ui.md` |
 
-下一步按 `docs/product-redesign.md` §10.2：Cursor 先改 `Layout + Home`，接入上述 helper；之后再改 `IndicesListPage`。
+本地 `npm run build` 与浏览器走查已通过（见「P0 验收记录」）。**未**执行 Pages 部署、**未**在 GitHub 触发 workflow。
+
+### 建议 Codex 接手（按优先级）
+
+1. **GitHub Actions**：在仓库 Actions 页手动 `workflow_dispatch` 运行 `realtime-crawler.yml`、`index-t1-sync.yml`；确认 bot 能提交 `public/data/*.csv`（或记录失败日志）。
+2. **数据与口径**：H30269 等指数股息率序列若仍显示「缺股息率序列」，检查 `sync_h30269_dividend_yield_redrocket.py` 与 `index_bars` 列；勿用前向填充。
+3. **构建/文档**：`npm run build` 复验；按需更新 `docs/project-status.md` 中 P0 行状态。
+4. **勿重复**：不要重写 `configFramework` 或整块重做 `Home` / `IndicesListPage`，除非发现明确 bug。
+
+### 仍归 Cursor / 用户（非 Codex 默认）
+
+- Cloudflare Pages 部署：`npm run build && npx wrangler pages deploy dist --project-name=newhl-dashboard`
+- 生产站 UI/移动端复查
+- R2 绑卡后的 `npm run r2:upload`、`npm run worker:deploy`
 
 ## 当前本地注意事项
 
