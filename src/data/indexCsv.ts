@@ -135,12 +135,7 @@ export function bondAnchorForIndexMarket(market: IndexMarket): "CN_10Y" | "US_10
 }
 
 export function indexShowsSpread(category: IndexCategory): boolean {
-  return (
-    category === "A股红利" ||
-    category === "港股红利" ||
-    category === "现金流" ||
-    category === "价值"
-  );
+  return category === "A股红利" || category === "港股红利";
 }
 
 export type IndexValueMode = "tri" | "price";

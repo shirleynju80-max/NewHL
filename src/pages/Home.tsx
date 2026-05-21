@@ -13,6 +13,16 @@ import {
 import { useDataSource } from "../context/DataSourceContext";
 import type { EtfDefinition } from "../types";
 import {
+  buildHomeDimensionSnapshots,
+  CONFIG_DIMENSIONS,
+  ETF_LANDING_GROUPS,
+  filterIndicesByDimension,
+  groupEtfsForLanding,
+  siteDataIntegrityLine,
+  type ConfigDimensionId,
+  type DimensionCardSnapshot,
+} from "../lib/configFramework";
+import {
   compareDefinitions,
   type SeriesMetricBlock,
 } from "../lib/compareEtfs";
@@ -108,15 +118,76 @@ function buildCorrelationClusterOrder(correlation: number[][]): number[] {
 }
 
 function groupDefinitions(defs: EtfDefinition[]) {
-  const cn: EtfDefinition[] = [];
-  const hk: EtfDefinition[] = [];
-  const cf: EtfDefinition[] = [];
-  for (const d of defs) {
-    if (d.meta.product_kind === "现金流类") cf.push(d);
-    else if (d.meta.dividend_market_scope === "港股红利") hk.push(d);
-    else cn.push(d);
-  }
-  return { cn, hk, cf };
+  const landing = groupEtfsForLanding(defs);
+  return { cn: landing.cn, hk: landing.hk, cf: landing.cash, other: landing.other };
+}
+
+function dimensionCardToneClass(tone: DimensionCardSnapshot["tone"]) {
+  if (tone === "good") return "border-emerald-200/90 bg-gradient-to-b from-emerald-50/90 to-white";
+  if (tone === "warn") return "border-amber-200/90 bg-gradient-to-b from-amber-50/80 to-white";
+  return "border-zinc-200 bg-gradient-to-b from-zinc-50/80 to-white";
+}
+
+function DimensionOverviewCard({ card }: { card: DimensionCardSnapshot }) {
+  const dim = CONFIG_DIMENSIONS[card.dimension];
+  return (
+    <article className={`rounded-xl border p-5 shadow-sm ${dimensionCardToneClass(card.tone)}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">{dim.title}</p>
+      <p className="mt-0.5 text-sm text-zinc-500">{dim.subtitle}</p>
+      <h3 className="mt-3 text-xl font-semibold text-zinc-900">{card.statusTitle}</h3>
+      <p className="mt-1 text-sm text-zinc-600">{card.statusSubtitle}</p>
+      <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+        {card.stats.map((s) => (
+          <div key={s.label} className="rounded-lg border border-white/80 bg-white/70 px-3 py-2">
+            <dt className="text-[11px] text-zinc-500">{s.label}</dt>
+            <dd className="mt-0.5 font-semibold text-zinc-900">{s.value}</dd>
+            {s.note ? <dd className="text-[10px] text-zinc-400">{s.note}</dd> : null}
+          </div>
+        ))}
+      </dl>
+      <ul className="mt-4 space-y-1 text-xs leading-relaxed text-zinc-600">
+        {card.bullets.map((b) => (
+          <li key={b}>· {b}</li>
+        ))}
+      </ul>
+      <ul className="mt-4 space-y-2 border-t border-zinc-100/80 pt-3">
+        {card.highlightIndices.map((h) => (
+          <li key={h.code} className="text-xs">
+            <Link to={`/indices/${encodeURIComponent(h.code)}`} className="font-mono font-medium text-indigo-700 hover:underline">
+              {h.code}
+            </Link>
+            <span className="text-zinc-800"> {h.name}</span>
+            <p className="mt-0.5 text-[10px] text-zinc-500">{h.note}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-[11px] text-zinc-400">{card.integrity.label}</p>
+    </article>
+  );
+}
+
+function EtfLandingList({ title, subtitle, items }: { title: string; subtitle: string; items: EtfDefinition[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-zinc-100 bg-zinc-50/40 p-3">
+      <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
+      <p className="mt-0.5 text-xs text-zinc-500">{subtitle}</p>
+      <ul className="mt-2 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((e) => {
+          const start = e.bars.length ? [...e.bars].sort((a, b) => a.date.localeCompare(b.date))[0]!.date : "—";
+          return (
+            <li key={e.meta.code} className="rounded-md border border-zinc-100 bg-white px-2 py-1.5 text-xs">
+              <Link to={`/etf/${e.meta.code}`} className="font-mono text-indigo-700 hover:underline">
+                {e.meta.code}
+              </Link>
+              <p className="mt-0.5 line-clamp-2 font-medium text-zinc-900">{e.meta.name}</p>
+              <p className="mt-0.5 text-[10px] text-zinc-500">成立 {start}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 /** 总览一行一块：标题 + 该类全部标的（网格换行） */
@@ -206,7 +277,7 @@ function PoolSection({
 }
 
 export function HomePage() {
-  const { definitions, sourceLabel } = useDataSource();
+  const { definitions, indices, bondByDate, indexTracking } = useDataSource();
   const [compareCodes, setCompareCodes] = useState<string[]>([]);
   const compareInitRef = useRef(false);
 
@@ -331,6 +402,21 @@ export function HomePage() {
   }, [compareResult]);
 
   const groups = useMemo(() => groupDefinitions(definitions), [definitions]);
+  const dimensionSnapshots = useMemo(
+    () => buildHomeDimensionSnapshots({ indices, bondByDate, indexTracking }),
+    [indices, bondByDate, indexTracking]
+  );
+  const integrityLine = useMemo(() => siteDataIntegrityLine(indices, definitions), [indices, definitions]);
+  const candidateIndices = useMemo(
+    () =>
+      (["cash_creation", "shareholder_return"] as ConfigDimensionId[]).map((dim) => ({
+        dim,
+        list: filterIndicesByDimension(indices, dim)
+          .filter((ix) => ix.bars.length > 0)
+          .slice(0, 5),
+      })),
+    [indices]
+  );
   const atCapacity = compareCodes.length >= MAX_COMPARE;
   const summaryCards = useMemo<SummaryCard[]>(() => {
     const cards: SummaryCard[] = [
@@ -445,21 +531,124 @@ export function HomePage() {
   }, [compareCodes.length, compareResult, fullCompareResult]);
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-10">
+      <header className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">ETF总览</h1>
-          <p className="mt-1 text-sm text-zinc-500">标的池、收益风险对比与相关性矩阵。</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">配置总览</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">
+            从<strong>现金创造</strong>与<strong>股东回报</strong>两个维度，理解长期底仓该配什么、当前处于什么状态，再落到指数与产品。
+          </p>
         </div>
-        <p className="text-xs text-zinc-500">
-          {definitions.length} 只 ETF · {sourceLabel}
-        </p>
+        <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">{integrityLine}</p>
       </header>
+
+      <section className="rounded-xl border border-indigo-100 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-semibold text-zinc-900">同一根藤上的两朵花</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-600">
+          长期底仓的底气，来自企业持续创造现金的能力，和愿意回报股东的意愿。红利不是现金流的全部释放形式，但二者互补，共同构成价值配置框架。
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {(Object.keys(CONFIG_DIMENSIONS) as ConfigDimensionId[]).map((id) => (
+            <div key={id} className="rounded-lg border border-zinc-100 bg-zinc-50/60 px-4 py-3 text-sm text-zinc-700">
+              <p className="font-semibold text-zinc-900">{CONFIG_DIMENSIONS[id].title}</p>
+              <p className="mt-1 text-xs text-zinc-500">{CONFIG_DIMENSIONS[id].subtitle}</p>
+              <p className="mt-2 text-xs leading-relaxed">{CONFIG_DIMENSIONS[id].frameworkBlurb}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <DimensionOverviewCard card={dimensionSnapshots.cash_creation} />
+        <DimensionOverviewCard card={dimensionSnapshots.shareholder_return} />
+      </section>
+
+      <section id="candidate-indices" className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold text-zinc-900">候选指数</h2>
+          <Link to="/indices" className="text-xs font-medium text-indigo-600 hover:underline">
+            进入指数研究 →
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          {candidateIndices.map(({ dim, list }) => (
+            <div key={dim} className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-3">
+              <h3 className="text-sm font-semibold text-zinc-900">{CONFIG_DIMENSIONS[dim].title}</h3>
+              {list.length === 0 ?
+                <p className="mt-2 text-xs text-zinc-500">暂无可用行情，见数据完整性说明。</p>
+              : (
+                <ul className="mt-2 space-y-1.5">
+                  {list.map((ix) => (
+                    <li key={ix.meta.index_code}>
+                      <Link
+                        to={`/indices/${encodeURIComponent(ix.meta.index_code)}`}
+                        className="text-xs font-medium text-indigo-700 hover:underline"
+                      >
+                        {ix.meta.index_code} {ix.meta.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section id="product-landing" className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-900">产品落地</h2>
+          <p className="mt-1 text-xs text-zinc-500">按配置维度分组，不做短期收益排行榜；点击代码进入单标的页。</p>
+        </div>
+        <EtfLandingList
+          title={ETF_LANDING_GROUPS.cash_creation.title}
+          subtitle={ETF_LANDING_GROUPS.cash_creation.subtitle}
+          items={groups.cf}
+        />
+        <EtfLandingList
+          title={ETF_LANDING_GROUPS.shareholder_return_cn.title}
+          subtitle={ETF_LANDING_GROUPS.shareholder_return_cn.subtitle}
+          items={groups.cn}
+        />
+        <EtfLandingList
+          title={ETF_LANDING_GROUPS.shareholder_return_hk.title}
+          subtitle={ETF_LANDING_GROUPS.shareholder_return_hk.subtitle}
+          items={groups.hk}
+        />
+        {groups.other.length > 0 ?
+          <EtfLandingList title={ETF_LANDING_GROUPS.other.title} subtitle={ETF_LANDING_GROUPS.other.subtitle} items={groups.other} />
+        : null}
+      </section>
+
+      <section className="grid gap-3 sm:grid-cols-2">
+        <Link
+          to="/monitor"
+          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-indigo-200 hover:shadow-md"
+        >
+          <p className="text-sm font-semibold text-zinc-900">盘中观察</p>
+          <p className="mt-1 text-xs text-zinc-500">策略层 · 执行节奏与标尺提醒（可含择时规则）</p>
+        </Link>
+        <Link
+          to="/registry"
+          className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm transition hover:border-indigo-200 hover:shadow-md"
+        >
+          <p className="text-sm font-semibold text-zinc-900">策略研究</p>
+          <p className="mt-1 text-xs text-zinc-500">策略层 · 回测、参数与规则对照</p>
+        </Link>
+      </section>
+
+      <details className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-5">
+        <summary className="cursor-pointer list-none text-sm font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-zinc-400">▸</span>
+          高级：多标的收益对比与相关性（原 ETF 总览工具）
+        </summary>
+        <div className="mt-6 space-y-8">
       <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold text-zinc-900">看板摘要</h2>
-          <p className="text-xs text-zinc-500">先看结论，再下钻明细</p>
+          <h2 className="text-lg font-semibold text-zinc-900">对比摘要</h2>
+          <p className="text-xs text-zinc-500">勾选标的后生成</p>
         </div>
+        {summaryCards.length > 0 && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => (
             <a
@@ -479,14 +668,53 @@ export function HomePage() {
             </a>
           ))}
         </div>
+        )}
+        <nav
+          aria-label="对比步骤"
+          className="mt-4 flex flex-wrap items-center gap-2 text-xs text-zinc-600"
+        >
+          <span className="rounded-full bg-zinc-900 px-2.5 py-1 font-medium text-white">① 选标的</span>
+          <span className="text-zinc-300">→</span>
+          <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 font-medium">② 看收益风险</span>
+          <span className="text-zinc-300">→</span>
+          <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 font-medium">③ 看相关性</span>
+          <span className="text-zinc-400">（最多 {MAX_COMPARE} 只）</span>
+        </nav>
       </section>
       <section id="etf-pool" className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold text-zinc-900">ETF标的池</h2>
-          <p className="text-xs text-zinc-500">
-            {definitions.length} 只 · {sourceLabel}
-          </p>
+          <h2 className="text-lg font-semibold text-zinc-900">对比标的池</h2>
+          <p className="text-xs text-zinc-500">{definitions.length} 只可选</p>
         </div>
+        {compareCodes.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-zinc-500">已选 {compareCodes.length}/{MAX_COMPARE}</span>
+            {compareCodes.map((code) => {
+              const name = definitions.find((d) => d.meta.code === code)?.meta.name ?? code;
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => toggleCompare(code)}
+                  className="inline-flex max-w-[14rem] items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-900 hover:bg-indigo-100"
+                  title={name}
+                >
+                  <span className="font-mono">{code}</span>
+                  <span aria-hidden className="text-indigo-400">
+                    ×
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setCompareCodes([])}
+              className="text-xs text-zinc-500 hover:text-zinc-800 hover:underline"
+            >
+              清空
+            </button>
+          </div>
+        )}
         {atCapacity && (
           <p className="mt-2 text-xs text-amber-800">已选满 {MAX_COMPARE} 只，取消勾选后可再选。</p>
         )}
@@ -495,7 +723,7 @@ export function HomePage() {
         ) : (
           <div className="mt-6 flex flex-col gap-4">
             <PoolSection
-              title="A股红利"
+              title="股东回报 · A股红利"
               items={groups.cn}
               compareCodes={compareCodes}
               toggleCompare={toggleCompare}
@@ -503,7 +731,7 @@ export function HomePage() {
               atCapacity={atCapacity}
             />
             <PoolSection
-              title="港股红利"
+              title="股东回报 · 港股红利"
               items={groups.hk}
               compareCodes={compareCodes}
               toggleCompare={toggleCompare}
@@ -511,7 +739,7 @@ export function HomePage() {
               atCapacity={atCapacity}
             />
             <PoolSection
-              title="现金流类"
+              title="现金创造"
               items={groups.cf}
               compareCodes={compareCodes}
               toggleCompare={toggleCompare}
@@ -522,7 +750,7 @@ export function HomePage() {
         )}
       </section>
 
-      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
+      <section id="overview-metrics" className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-zinc-900">标的概览</h2>
@@ -555,7 +783,7 @@ export function HomePage() {
         )}
         {compareResult && (
           <div className="mt-8 space-y-8">
-            <div id="overview-metrics">
+            <div>
               <h3 className="text-sm font-semibold text-zinc-900">收益与波动</h3>
               <p className="mt-1 text-xs text-zinc-500">
                 当前按<strong>{currentWindowLabel}</strong>口径计算；<strong>区间收益</strong>=窗口首尾收盘涨跌；<strong>年化收益</strong>按 252 交易日由区间复利折算；<strong>最大回撤</strong>为区间内峰值到谷底；<strong>年化波动</strong>为日收益样本标准差×√252；<strong>夏普(简)</strong>=年化÷年化波动；<strong>卡玛</strong>≈年化÷|最大回撤|。
@@ -802,6 +1030,8 @@ export function HomePage() {
           </div>
         )}
       </section>
+        </div>
+      </details>
     </div>
   );
 }

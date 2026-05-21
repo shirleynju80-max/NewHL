@@ -399,7 +399,7 @@ export function EtfDashboardPage() {
 
   const tabs: { id: TabId; label: string; hide?: boolean }[] = [
     { id: "backtest", label: "回测与买卖点" },
-    { id: "intraday", label: "今日盘中信号" },
+    { id: "intraday", label: "盘中观察" },
     { id: "ledger", label: "信号台账" },
     { id: "methodology", label: "编制说明" },
   ];
@@ -409,7 +409,7 @@ export function EtfDashboardPage() {
       <div className="rounded-3xl border border-zinc-100 bg-white p-12 text-center shadow-sm">
         <p className="text-zinc-500">未找到标的</p>
         <Link to="/" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline">
-          返回 ETF总览
+          返回配置总览
         </Link>
       </div>
     );
@@ -420,7 +420,7 @@ export function EtfDashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div>
           <Link to="/" className="text-xs font-medium text-indigo-600 hover:underline">
-            ← ETF总览
+            ← 配置总览
           </Link>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900">{etf.meta.name}</h2>
           <p className="mt-1 font-mono text-sm text-zinc-500">{etf.meta.code}</p>
@@ -498,7 +498,7 @@ export function EtfDashboardPage() {
                   to={`/registry?etf=${encodeURIComponent(etf.meta.code)}`}
                   className="text-xs font-medium text-indigo-600 hover:underline"
                 >
-                  策略回测与注册 →
+                  策略研究 →
                 </Link>
               </div>
               <select
@@ -1007,7 +1007,7 @@ export function EtfDashboardPage() {
         <section className="space-y-6">
           <div className="rounded-3xl border border-zinc-100 bg-white p-8 shadow-sm space-y-6">
             <div>
-              <h3 className="text-lg font-semibold text-zinc-900">今日盘中信号</h3>
+              <h3 className="text-lg font-semibold text-zinc-900">盘中观察</h3>
               <p className="mt-2 text-sm text-zinc-600 leading-relaxed">
                 拖动滑条改写<strong>当日最后一根 K 的收盘</strong>，对下表<strong>每一套策略</strong>重算收盘信号与<strong>标尺 %</strong>（指标在策略买、卖阈值之间的线性位置，非历史经验分位）。
               </p>

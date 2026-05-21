@@ -40,13 +40,22 @@
 - 指数实时：暂不接入。沪深300、上证红利等少数交易所主指数可从新浪 quote 获取，但 H30269 等策略指数没有稳定可验证实时 quote；不要用 ETF proxy 冒充指数实时值。
 - 股息率：指数 DID 主要来自红色火箭；缺失日期保持为空，不做前向填充。
 
+## P0 验收记录（2026-05-21）
+
+| 项 | 结果 |
+|----|------|
+| UI 框架自测（本地 `npm run build` + `npm run dev`） | 通过：首页双维度卡片、指数研究一级/二级筛选与数据完整性标签、指数列表→详情→ETF 跳转；修复详情页在 CSV 加载完成前误重定向；控制台无数据加载错误。 |
+| 生产站静态 CSV（curl） | 通过：`/` 与 `/data/indices.csv` 均 HTTP 200；**尚未部署**本次 UI 改版（生产 HTML 标题仍为「红利 ETF 看板」）。 |
+| 同步脚本本地烟测 | ETF `sync_etf_realtime.py --dry-run` 通过（25 quote）；指数 `sync_a_share_dividend_indices.py` 可跑通。 |
+| GitHub Actions `workflow_dispatch` | **未执行**：本机无 `gh` / `GITHUB_TOKEN`；需在 GitHub Actions 页手动触发或安装 `gh` 后 `gh workflow run`。 |
+
 ## 待完成
 
 | 优先级 | 事项 | 状态 / 说明 |
 |--------|------|-------------|
-| P0 | 生产站 UI 设计评审 | 继续检查首页、指数页、指数详情、ETF 详情的首屏密度、移动端、表格可读性。 |
-| P0 | 数据加载验收 | 生产站静态 CSV 可用；R2 开通后需验证 Worker `/api/bundle`。 |
-| P0 | GitHub Actions 验证 | 手动跑 `realtime-crawler.yml`、`index-t1-sync.yml`，确认能提交数据变更。 |
+| P0 | 生产站 UI 设计评审 | 本地已验收；部署 Pages 后复查生产站首屏与移动端。 |
+| P0 | 数据加载验收 | 本地静态 CSV 通过；R2 开通后验证 Worker `/api/bundle`。 |
+| P0 | GitHub Actions 验证 | 本地脚本烟测通过；需在 GitHub 手动 `workflow_dispatch` 两条 workflow。 |
 | P1 | R2 / Worker 上线 | 用户绑卡开通 R2 后执行 `npm run r2:upload` 与 `npm run worker:deploy`。 |
 | P1 | 告警与失败可见性 | 数据 workflow 失败时目前没有通知机制。 |
 | P1 | 国际指数历史行情 | `SPCLLHCP.SPI`、`SPAHLVCP.SPI`、`FCFQCD` 仍缺可靠授权历史行情。 |
@@ -65,6 +74,26 @@
   - 对 Cursor 已部署/已改内容做状态确认，不重复部署，除非用户明确要求。
 
 执行前先看本文件和 `git status`。如果发现已有未提交文件，先判断是否来自另一方工作；不要顺手格式化或重写无关文件。
+
+## 产品框架改版交接
+
+产品框架唯一依据：`docs/product-redesign.md`。
+
+本地已补齐配置层 helper：
+
+- `src/lib/configFramework.ts`
+  - 现金创造 / 股东回报两维度分类。
+  - 首页双卡片 snapshot：`buildHomeDimensionSnapshots`。
+  - 指数研究筛选：`CONFIG_DIMENSION_OPTIONS`、`filterIndicesByDimensionOption`、`indexStyleTags`。
+  - 产品落地分组：`groupEtfsForLanding`。
+  - 数据完整性标签：`indexDataAvailability`、`etfDataAvailability`、`dataAvailabilityLabel`、`dataAvailabilityTone`。
+  - 红利利差配置观察：`dividendAllocationObservation`。
+- `src/data/indexCsv.ts`
+  - 利差模块展示范围已收窄为 `A股红利` / `港股红利`，现金流维度 v1 不输出配置窗口。
+- `docs/codex-handoff-ui.md`
+  - Cursor UI 接入示例与文件边界说明。
+
+下一步按 `docs/product-redesign.md` §10.2：Cursor 先改 `Layout + Home`，接入上述 helper；之后再改 `IndicesListPage`。
 
 ## 当前本地注意事项
 
@@ -101,4 +130,3 @@ python3 scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
 npm run r2:upload
 npm run worker:deploy
 ```
-

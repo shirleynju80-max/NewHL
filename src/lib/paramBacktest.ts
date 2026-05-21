@@ -95,7 +95,7 @@ export type GridSearchOptions = {
   trainRatio?: number;
 };
 
-/** 系统默认参数搜索范围（可在「策略回测与注册」页覆盖） */
+/** 系统默认参数搜索范围（可在「策略研究」页覆盖） */
 export type ParamSearchSnapshot = {
   maCrossFast: number[];
   maCrossSlow: number[];

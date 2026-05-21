@@ -1,11 +1,21 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDataSource } from "../context/DataSourceContext";
-import type { IndexCategory, IndexTrackingRow } from "../types";
+import type { IndexTrackingRow } from "../types";
 import { buildSeriesOverviewRowFromNav, type SeriesOverviewRow } from "../lib/compareEtfs";
+import {
+  CONFIG_DIMENSION_OPTIONS,
+  dataAvailabilityLabel,
+  dataAvailabilityTone,
+  filterIndicesByDimensionOption,
+  indexDataAvailability,
+  indexStyleTags,
+  indexToConfigDimension,
+  type ConfigDimensionFilter,
+} from "../lib/configFramework";
 
-const ALL_CATEGORIES: IndexCategory[] = ["A股红利", "港股红利", "现金流"];
-const CATEGORY_SORT_ORDER: IndexCategory[] = ALL_CATEGORIES;
+const STYLE_FILTER_OPTIONS = ["全部风格", "A股", "港股", "低波", "质量", "央企", "红利", "自由现金流"] as const;
+type StyleFilter = (typeof STYLE_FILTER_OPTIONS)[number];
 
 type InceptionFilter = "all" | "lt2015" | "y2015_2019" | "y2020_2024" | "ge2025" | "unknown";
 
@@ -50,29 +60,19 @@ function fmtAnn(row: SeriesOverviewRow | null, win: "all" | "y1" | "y3" | "y5"):
 }
 
 export function IndicesListPage() {
-  const { indices, sourceLabel, indexTracking, publicCsvAutoLoading } = useDataSource();
-  /** 默认勾选 A股红利；空集 = 显示全部类型 */
-  const [catSet, setCatSet] = useState<Set<IndexCategory>>(() => new Set(["A股红利"]));
+  const { indices, indexTracking, publicCsvAutoLoading } = useDataSource();
+  const [dimension, setDimension] = useState<ConfigDimensionFilter>("shareholder_return");
+  const [styleFilter, setStyleFilter] = useState<StyleFilter>("全部风格");
   const [inc, setInc] = useState<InceptionFilter>("all");
 
-  function toggleCategory(c: IndexCategory) {
-    setCatSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
-      return next;
-    });
-  }
-
-  function selectAllCategories() {
-    setCatSet(new Set());
-  }
-
-  const categoryCounts = useMemo(() => {
-    const counts = new Map<IndexCategory, number>();
+  const dimensionCounts = useMemo(() => {
+    const counts: Record<ConfigDimensionFilter, number> = { all: 0, cash_creation: 0, shareholder_return: 0 };
     for (const ix of indices) {
       if (!isListVisibleIndex(ix.meta.index_code)) continue;
-      counts.set(ix.meta.category, (counts.get(ix.meta.category) ?? 0) + 1);
+      const dim = indexToConfigDimension(ix.meta.category);
+      if (!dim) continue;
+      counts.all += 1;
+      counts[dim] += 1;
     }
     return counts;
   }, [indices]);
@@ -86,84 +86,88 @@ export function IndicesListPage() {
   }, [indexTracking]);
 
   const rows = useMemo(() => {
-    const list = indices
-      .filter((ix) => isListVisibleIndex(ix.meta.index_code))
-      .filter((ix) => (catSet.size === 0 ? true : catSet.has(ix.meta.category)))
+    const list = filterIndicesByDimensionOption(
+      indices.filter((ix) => isListVisibleIndex(ix.meta.index_code)),
+      dimension
+    )
       .filter((ix) => (inc === "all" ? true : inceptionBucket(ix.meta.inception_date) === inc))
+      .filter((ix) => {
+        if (styleFilter === "全部风格") return true;
+        return indexStyleTags(ix.meta).includes(styleFilter);
+      })
       .map((def) => {
         const nav = indexTriNav(def);
         const overview =
           nav ? buildSeriesOverviewRowFromNav(nav.closes, nav.dates, def.meta.index_code, def.meta.name) : null;
-        return { def, barDays: def.bars.length, overview };
+        return { def, barDays: def.bars.length, overview, tags: indexStyleTags(def.meta) };
       });
     list.sort((a, b) => {
-      const ia = CATEGORY_SORT_ORDER.indexOf(a.def.meta.category);
-      const ib = CATEGORY_SORT_ORDER.indexOf(b.def.meta.category);
-      const ca = ia === -1 ? 99 : ia;
-      const cb = ib === -1 ? 99 : ib;
-      if (ca !== cb) return ca - cb;
       if (a.barDays === 0 && b.barDays > 0) return 1;
       if (a.barDays > 0 && b.barDays === 0) return -1;
       return a.def.meta.name.localeCompare(b.def.meta.name, "zh-Hans-CN");
     });
     return list;
-  }, [indices, catSet, inc]);
+  }, [indices, dimension, styleFilter, inc]);
 
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">了解指数</h1>
-          <p className="mt-2 text-sm text-zinc-500">
-            汇总与绩效仅使用指数序列（全收益 tri_close）；跟踪产品只作跳转，不混入指标计算。
+          <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">指数研究</h1>
+          <p className="mt-2 text-sm text-zinc-500 max-w-2xl">
+            按配置维度研究指数：现金创造看长期质量底仓；股东回报可看股息率与利差。不做简单收益排行榜。
           </p>
         </div>
         <p className="text-xs text-zinc-500">
-          {rows.length} 个指数 · {sourceLabel}
+          当前 {rows.length} 个 · 有行情 {rows.filter((r) => r.barDays > 0).length} 个
         </p>
       </header>
 
       <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-900">指数信息汇总</h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              有行情 {rows.filter((r) => r.barDays > 0).length} 个，待接入 {rows.filter((r) => r.barDays === 0).length} 个。
-            </p>
+        <div>
+          <p className="text-xs font-medium text-zinc-600">一级维度</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDimension("all")}
+              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                dimension === "all" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+              }`}
+            >
+              全部（{dimensionCounts.all}）
+            </button>
+            {CONFIG_DIMENSION_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setDimension(opt.id)}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                  dimension === opt.id ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                }`}
+              >
+                {opt.title}（{dimensionCounts[opt.id]}）
+              </button>
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={selectAllCategories}
-            className="text-xs font-medium text-indigo-600 hover:underline"
-          >
-            类型重置为全部
-          </button>
         </div>
 
         <div className="flex flex-col gap-3 rounded-lg border border-zinc-100 bg-zinc-50/60 p-4 sm:flex-row sm:items-end sm:gap-6">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-zinc-600">指数类型（多选）</p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-              {ALL_CATEGORIES.map((c) => (
-                <label
-                  key={c}
-                  className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-zinc-800"
-                >
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 rounded border-zinc-300 text-indigo-600 accent-indigo-600"
-                    checked={catSet.has(c)}
-                    onChange={() => toggleCategory(c)}
-                  />
-                  <span>
-                    {c}（{categoryCounts.get(c) ?? 0}）
-                  </span>
-                </label>
+          <label className="flex w-full shrink-0 flex-col gap-1 text-sm sm:w-40">
+            <span className="text-xs font-medium text-zinc-600">二级风格</span>
+            <select
+              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900"
+              value={styleFilter}
+              onChange={(e) => setStyleFilter(e.target.value as StyleFilter)}
+            >
+              {STYLE_FILTER_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
-            </div>
-          </div>
+            </select>
+          </label>
           <label className="flex w-full shrink-0 flex-col gap-1 text-sm sm:w-44">
-            <span className="text-xs font-medium text-zinc-600">指数成立时间</span>
+            <span className="text-xs font-medium text-zinc-600">成立时间</span>
             <select
               className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900"
               value={inc}
@@ -179,7 +183,7 @@ export function IndicesListPage() {
         </div>
 
         <p className="text-xs text-zinc-500 leading-relaxed">
-          指标定义与<strong>ETF总览 · 标的概览</strong>一致（252 交易日/年、区间复利年化等），且<strong>仅基于指数 tri_close</strong>，不使用 ETF 行情近似。
+          绩效仅基于指数全收益 tri_close；红利类详情页可查看股息率与利差。高级多标的对比见配置总览底部折叠区。
         </p>
 
         {publicCsvAutoLoading ?
@@ -197,8 +201,10 @@ export function IndicesListPage() {
         )
         : (
           <div className="grid gap-3">
-            {rows.map(({ def, barDays, overview }) => {
+            {rows.map(({ def, barDays, overview, tags }) => {
               const primaryTrackingRow = primaryTrackingByIndex.get(def.meta.index_code);
+              const avail = indexDataAvailability(def);
+              const availTone = dataAvailabilityTone(avail);
               return (
                 <div
                   key={def.meta.index_code}
@@ -211,11 +217,25 @@ export function IndicesListPage() {
                         <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-600 group-hover:border-indigo-200 group-hover:bg-white">
                           {def.meta.category}
                         </span>
-                        {barDays === 0 ? (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                            行情待接入
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                            availTone === "good"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                              : availTone === "warn"
+                                ? "border-amber-200 bg-amber-50 text-amber-800"
+                                : "border-zinc-200 bg-zinc-100 text-zinc-600"
+                          }`}
+                        >
+                          {dataAvailabilityLabel(avail)}
+                        </span>
+                        {tags.slice(0, 4).map((t) => (
+                          <span
+                            key={t}
+                            className="rounded-full border border-indigo-100 bg-indigo-50/50 px-2 py-0.5 text-[10px] text-indigo-800"
+                          >
+                            {t}
                           </span>
-                        ) : null}
+                        ))}
                       </div>
                       <p className="mt-1 font-mono text-xs text-zinc-500">
                         {def.meta.index_code} · 成立日 {def.meta.inception_date ?? "—"} · {barDays} 个指数交易日

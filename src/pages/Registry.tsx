@@ -24,6 +24,66 @@ const TOP_N_OPTIONS = [2, 3, 5, 8, 10] as const;
 /** 训练集占比可选值（10% 步进，避免细粒度拖动触发重复全量网格） */
 const TRAIN_RATIO_PCT_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90] as const;
 
+type RegistryPreset = "shareholder_return" | "cash_creation";
+
+const REGISTRY_PRESET_META: Record<
+  RegistryPreset,
+  { label: string; indexCode: string; indexName: string; etfCode: string }
+> = {
+  shareholder_return: {
+    label: "股东回报",
+    indexCode: "H30269",
+    indexName: "中证红利低波动",
+    etfCode: "512890",
+  },
+  cash_creation: {
+    label: "现金创造",
+    indexCode: "980092",
+    indexName: "国证自由现金流",
+    etfCode: "159201",
+  },
+};
+
+function etfCodeForPreset(preset: RegistryPreset, codes: string[]): string {
+  const preferred = REGISTRY_PRESET_META[preset].etfCode;
+  if (codes.includes(preferred)) return preferred;
+  return codes[0] ?? "";
+}
+
+function RegistryResultSummary({ gridResult }: { gridResult: GridSearchOutcome }) {
+  const hints = noBeatBuyHoldHints(gridResult);
+  return (
+    <div className="mt-4 space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-4 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">回测摘要</p>
+      <p className="text-xs text-zinc-600">
+        买入持有 {gridResult.meta.buyHoldReturnPct}%（年化 {gridResult.meta.buyHoldAnnualPct}%）· 样本{" "}
+        {gridResult.meta.barCount} 日
+      </p>
+      {gridResult.globalRobustBest && (
+        <p className="text-xs text-sky-950">
+          <span className="font-semibold">☆ 验证集最优</span> — {gridResult.globalRobustBest.label} · 验证超额{" "}
+          {gridResult.globalRobustBest.excessValPct != null
+            ? `${gridResult.globalRobustBest.excessValPct > 0 ? "+" : ""}${gridResult.globalRobustBest.excessValPct}%`
+            : "—"}
+        </p>
+      )}
+      {gridResult.globalFullBest && (
+        <p className="text-xs text-amber-950">
+          <span className="font-semibold">★ 全样本最优</span> — {gridResult.globalFullBest.label} · 超额{" "}
+          {gridResult.globalFullBest.excessReturnPct > 0 ? "+" : ""}
+          {gridResult.globalFullBest.excessReturnPct}%
+        </p>
+      )}
+      {hints && (
+        <p className="text-xs text-rose-900">
+          {hints[0]}
+          {hints.length > 1 ? `（另有 ${hints.length - 1} 条说明，见详细结果）` : null}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function parseNumList(s: string): number[] {
   return s
     .split(/[,，\s]+/)
@@ -124,7 +184,7 @@ function snapshotFromForm(f: SearchForm): ParamSearchSnapshot {
 type DataSourceMode = "bundle" | "upload";
 
 export function RegistryPage() {
-  const { definitions: etfDefinitions, getEtf, sourceLabel } = useDataSource();
+  const { definitions: etfDefinitions, getEtf } = useDataSource();
   const { entries, addEntry, removeEntry } = useStrategyRegistry();
   const [searchParams] = useSearchParams();
 
@@ -141,6 +201,7 @@ export function RegistryPage() {
   const [topN, setTopN] = useState<number>(2);
   /** 训练集占全样本比例 %（5–95，默认 70 ≈ 7:3） */
   const [trainRatioPct, setTrainRatioPct] = useState(70);
+  const [registryPreset, setRegistryPreset] = useState<RegistryPreset>("shareholder_return");
   const skipTopNEffectRef = useRef(true);
 
   useEffect(() => {
@@ -205,6 +266,18 @@ export function RegistryPage() {
     return entries.filter((e) => e.etfCode === selectedCode);
   }, [dataMode, selectedCode, selectedInBundle, entries]);
 
+  const applyPreset = useCallback(
+    (preset: RegistryPreset) => {
+      setRegistryPreset(preset);
+      const code = etfCodeForPreset(preset, selectableCodes);
+      if (!code) return;
+      setSelectedCode(code);
+      setGridResult(null);
+      setGridErr(null);
+    },
+    [selectableCodes]
+  );
+
   useEffect(() => {
     if (!selectableCodes.length) {
       setSelectedCode("");
@@ -214,10 +287,15 @@ export function RegistryPage() {
     if (fromUrl && selectableCodes.includes(fromUrl)) {
       setSelectedCode(fromUrl);
       setDataMode("bundle");
+      if (fromUrl === REGISTRY_PRESET_META.cash_creation.etfCode) setRegistryPreset("cash_creation");
+      else if (fromUrl === REGISTRY_PRESET_META.shareholder_return.etfCode) setRegistryPreset("shareholder_return");
       return;
     }
-    setSelectedCode((c) => (c && selectableCodes.includes(c) ? c : selectableCodes[0]!));
-  }, [selectableCodes.join("|"), searchParams]);
+    setSelectedCode((c) => {
+      if (c && selectableCodes.includes(c)) return c;
+      return etfCodeForPreset(registryPreset, selectableCodes);
+    });
+  }, [selectableCodes.join("|"), searchParams, registryPreset]);
 
   const runBacktest = useCallback(() => {
     setGridErr(null);
@@ -235,6 +313,9 @@ export function RegistryPage() {
       const snap = snapshotFromForm(searchForm);
       const tr = Math.min(95, Math.max(5, trainRatioPct)) / 100;
       setGridResult(gridSearchTopParams(barsForRun, topN, snap, { trainRatio: tr }));
+      requestAnimationFrame(() => {
+        resultsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     } catch (e) {
       setGridErr(e instanceof Error ? e.message : String(e));
       setGridResult(null);
@@ -243,6 +324,7 @@ export function RegistryPage() {
     }
   }, [barsForRun, searchForm, dataMode, topN, trainRatioPct]);
 
+  const resultsSectionRef = useRef<HTMLDetailsElement | null>(null);
   const runBacktestRef = useRef(runBacktest);
   runBacktestRef.current = runBacktest;
 
@@ -314,104 +396,140 @@ export function RegistryPage() {
       )}
 
       <header>
-        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">策略回测与注册</h2>
+        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">策略研究</h2>
         <p className="mt-2 text-sm text-zinc-500 max-w-3xl leading-relaxed">
-          默认使用<strong>当前数据源</strong>中的日 K，与单标的页回测、交易明细使用同一套行情与参数解析。可将网格优选方案加入<strong>观测列表</strong>；加入后在看板「策略参数」中与表格里的各套方案并列，仅自己加入的条目可删除，数据源自带的默认方案不可删除。
+          策略层 · 在底仓之上验证交易规则（可含择时），<strong>不构成投资建议</strong>。首屏一键回测；参数网格与观测列表在下方高级区。
+        </p>
+        <p className="mt-2 text-xs text-zinc-400">
+          <Link to="/" className="font-medium text-indigo-600 hover:underline">
+            配置总览
+          </Link>
+          <span className="mx-2 text-zinc-300">·</span>
+          <Link to="/indices" className="font-medium text-indigo-600 hover:underline">
+            指数研究
+          </Link>
         </p>
       </header>
 
-      <details className="rounded-lg border border-indigo-100 bg-gradient-to-b from-indigo-50/30 to-white p-4 shadow-sm open:ring-1 open:ring-indigo-100">
-        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span>
-            <span className="mr-1.5 text-zinc-400">▸</span>
-            当前观测 <span className="font-normal text-zinc-500">（与看板下拉一致，默认折叠）</span>
-          </span>
-          <span className="text-xs font-normal text-zinc-400">{sourceLabel}</span>
-        </summary>
-        <p className="mt-2 text-xs text-zinc-500">灰标=数据源默认；蓝标=观测注册可删。</p>
-
-        {etfDefinitions.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-500">暂无标的定义。</p>
-        ) : (
-          <div className="mt-4 space-y-4">
-            {etfDefinitions.map((etf) => {
-              const vars = getParamVariants(etf, entries);
-              return (
-                <div key={etf.meta.code} className="rounded-lg border border-zinc-100 bg-white/90 p-3 shadow-sm">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-100 pb-2">
-                    <div>
-                      <p className="font-mono text-[10px] text-indigo-600">{etf.meta.code}</p>
-                      <p className="text-sm font-semibold text-zinc-900">{etf.meta.name}</p>
-                    </div>
-                    <Link to={`/etf/${etf.meta.code}`} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline">
-                      看板
-                    </Link>
-                  </div>
-                  <ul className="mt-2 space-y-1.5">
-                    {vars.map((v) => (
-                      <ObservationRow key={v.key} etfCode={etf.meta.code} variant={v} onRemoveRegistered={onRemoveVariant} />
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {uploadOnlyRegistered.length > 0 && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-            <h4 className="text-xs font-semibold text-amber-950">仅上传 CSV 出现的标的（未在数据源定义中）</h4>
-            <ul className="mt-2 space-y-1.5">
-              {uploadOnlyRegistered.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-100 bg-white px-2 py-1.5 text-xs"
-                >
-                  <div>
-                    <span className="font-mono text-indigo-600">{r.etfCode}</span>
-                    <span className="mx-1.5 text-zinc-300">|</span>
-                    <span className="font-medium text-zinc-900">{r.label}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeEntry(r.id)}
-                    className="rounded-full border border-red-200 px-2 py-0.5 text-[10px] text-red-700 hover:bg-red-50"
-                  >
-                    删除
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </details>
-
-      <details className="group rounded-lg border border-zinc-100 bg-zinc-50/40 p-5 text-sm text-zinc-600">
-        <summary className="cursor-pointer list-none font-medium text-zinc-800 [&::-webkit-details-marker]:hidden">
-          <span className="mr-2 text-zinc-400 group-open:rotate-90 inline-block transition">▸</span>
-          查看数据源中的标的与参数版本摘要
-        </summary>
-        <ul className="mt-4 max-h-40 space-y-2 overflow-y-auto text-xs">
-          {etfDefinitions.map((e) => (
-            <li key={e.meta.code} className="rounded-lg border border-zinc-100 bg-white px-3 py-2">
-              <span className="font-mono text-indigo-600">{e.meta.code}</span>
-              <span className="text-zinc-400"> · </span>
-              <span>{e.meta.name}</span>
-              <span className="text-zinc-500"> · 默认版本 {e.meta.param_version}</span>
-            </li>
-          ))}
-        </ul>
-      </details>
-
-      <section className="rounded-lg border border-zinc-200/80 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-100 pb-5">
-          <div>
-            <h3 className="text-base font-semibold text-zinc-900">回测数据与参数搜索</h3>
-            <p className="mt-1 max-w-2xl text-xs text-zinc-500">
-              先选行情来源与标的；参数范围为网格枚举用，默认折叠在下方卡片中。执行回测后请在下一大块「回测结果」中查看结论。
-            </p>
-          </div>
+      <section className="rounded-lg border border-indigo-100 bg-white p-5 shadow-sm ring-1 ring-indigo-50">
+        <p className="text-xs font-medium text-zinc-600">代表底仓（跟踪指数）</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(Object.keys(REGISTRY_PRESET_META) as RegistryPreset[]).map((key) => {
+            const meta = REGISTRY_PRESET_META[key];
+            const active = registryPreset === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => applyPreset(key)}
+                className={`rounded-full px-4 py-2 text-left text-sm transition ${
+                  active ? "bg-zinc-900 text-white shadow-sm" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                }`}
+              >
+                <span className="font-medium">{meta.label}</span>
+                <span className={`mt-0.5 block text-[11px] ${active ? "text-zinc-300" : "text-zinc-500"}`}>
+                  {meta.indexName}（{meta.indexCode}）
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {selectableCodes.length > 0 ? (
+          <div className="mt-4 flex flex-wrap items-end gap-4">
+            <label className="min-w-[12rem] flex-1 text-sm">
+              <span className="text-xs font-medium text-zinc-600">落地产品（ETF）</span>
+              <select
+                value={selectedCode}
+                onChange={(e) => {
+                  const code = e.target.value;
+                  setSelectedCode(code);
+                  setGridResult(null);
+                  setGridErr(null);
+                  if (code === REGISTRY_PRESET_META.cash_creation.etfCode) setRegistryPreset("cash_creation");
+                  else if (code === REGISTRY_PRESET_META.shareholder_return.etfCode) setRegistryPreset("shareholder_return");
+                }}
+                className="mt-1 block w-full max-w-md rounded-xl border border-zinc-200 px-3 py-2.5 font-mono text-sm"
+              >
+                {selectableCodes.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                    {getEtf(c)?.meta.name ? ` · ${getEtf(c)!.meta.name}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-zinc-600">
+              <span className="text-xs font-medium text-zinc-600">训练集占比</span>
+              <select
+                value={trainRatioPct}
+                onChange={(e) => setTrainRatioPct(Number(e.target.value))}
+                className="mt-1 block rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+              >
+                {TRAIN_RATIO_PCT_OPTIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {p}%
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        ) : (
+          <p className="mt-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            当前数据源没有可回测标的，请先在配置总览确认 public/data 已加载。
+          </p>
+        )}
+
+        {barsForRun && (
+          <p className="mt-2 text-xs text-zinc-500">
+            共 {barsForRun.length} 根日 K · 默认参数网格（RSI / 布林 / MA）· 训练 {trainRatioPct}%
+            {dataMode === "bundle" && selectedDef ? (
+              <span className="text-zinc-400"> · {strategyKindLabel(selectedDef.meta.strategy_id)}</span>
+            ) : null}
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={!barsForRun || barsForRun.length < 40 || gridBusy}
+            onClick={() => void runBacktest()}
+            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {gridBusy ? "回测计算中…" : "执行回测（默认网格）"}
+          </button>
+          <a href="#registry-config" className="text-xs font-medium text-indigo-600 hover:underline">
+            改参数搜索范围 ↓
+          </a>
+          {gridResult && (
+            <a href="#registry-results" className="text-xs font-medium text-indigo-600 hover:underline">
+              查看详细结果 ↓
+            </a>
+          )}
+        </div>
+
+        {gridErr && <p className="mt-3 text-sm text-red-700">{gridErr}</p>}
+
+        {gridResult && <RegistryResultSummary gridResult={gridResult} />}
+
+        {!gridResult && boardVerifySummary && selectedDef && (
+          <p className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-xs text-zinc-700">
+            看板 CSV 默认参数：策略 {boardVerifySummary.strategyReturnPct}% · 超额 {boardVerifySummary.excessReturnPct}% · 点击上方执行网格回测查看 Top 组合。
+          </p>
+        )}
+      </section>
+
+      <details
+        id="registry-config"
+        className="rounded-lg border border-zinc-200/80 bg-white p-5 shadow-sm"
+      >
+        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-zinc-400">▸</span>
+          ① 回测配置（高级 · 默认折叠）
+        </summary>
+        <p className="mt-2 text-xs text-zinc-500">
+          数据源、上传 CSV、训练验证切分与 RSI/布林/MA 参数网格。主按钮在首屏。
+        </p>
 
         <div className="mt-5 flex flex-wrap gap-3">
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
@@ -476,61 +594,7 @@ export function RegistryPage() {
           </div>
         )}
 
-        {selectableCodes.length > 0 ? (
-          <div className="mt-5">
-            <label className="text-xs font-medium text-zinc-600">回测标的</label>
-            <select
-              value={selectedCode}
-              onChange={(e) => {
-                setSelectedCode(e.target.value);
-                setGridResult(null);
-                setGridErr(null);
-              }}
-              className="mt-1 block max-w-md rounded-xl border border-zinc-200 px-3 py-2.5 font-mono text-sm"
-            >
-              {selectableCodes.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            {barsForRun && (
-              <p className="mt-2 text-xs text-zinc-500">
-                共 {barsForRun.length} 根日 K（回测至少需 40 根）
-                {dataMode === "bundle" && selectedDef && (
-                  <span className="text-zinc-400"> · 看板默认类型：{strategyKindLabel(selectedDef.meta.strategy_id)}</span>
-                )}
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="mt-5 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {dataMode === "bundle"
-              ? "当前数据源没有可回测标的，请先确认 public/data 已加载。"
-              : "请先上传包含 etf_code/date/open/high/low/close 的 bars.csv。"}
-          </p>
-        )}
-
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-sm">
-          <span className="font-semibold text-zinc-900">训练 / 验证切分（时间序）</span>
-          <label className="inline-flex items-center gap-2 text-xs text-zinc-700">
-            训练集占比
-            <select
-              value={trainRatioPct}
-              onChange={(e) => setTrainRatioPct(Number(e.target.value))}
-              className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
-            >
-              {TRAIN_RATIO_PCT_OPTIONS.map((p) => (
-                <option key={p} value={p}>
-                  {p}%
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="text-[11px] text-zinc-500">按 10% 步进；变更后请点击「执行回测」</span>
-        </div>
-
-        <div className="mt-8 space-y-5">
+        <div className="mt-6 space-y-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">参数搜索范围（网格枚举）</p>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -670,7 +734,7 @@ export function RegistryPage() {
             </div>
           </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="mt-6">
           <button
             type="button"
             onClick={() => setSearchForm(formFromDefaults())}
@@ -678,36 +742,31 @@ export function RegistryPage() {
           >
             恢复默认搜索范围
           </button>
-          <button
-            type="button"
-            disabled={!barsForRun || barsForRun.length < 40 || gridBusy}
-            onClick={() => void runBacktest()}
-            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {gridBusy ? "回测计算中…" : "执行回测"}
-          </button>
         </div>
         </div>
+      </details>
 
-        {gridErr && <p className="mt-4 text-sm text-red-700">{gridErr}</p>}
-      </section>
-
-      <section className="rounded-lg border-2 border-indigo-200 bg-white p-6 shadow-md ring-1 ring-indigo-100">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <details
+        id="registry-results"
+        ref={resultsSectionRef}
+        open={gridResult != null}
+        className="rounded-lg border-2 border-indigo-200 bg-white p-6 shadow-md ring-1 ring-indigo-100"
+      >
+        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-zinc-400">▸</span>
+          <span className="text-xl tracking-tight">
+            ② 详细回测结果
+            {selectedCode ? (
+              <>
+                {" · "}
+                <span className="font-mono text-lg text-indigo-700">{selectedCode}</span>
+              </>
+            ) : null}
+          </span>
+        </summary>
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h3 className="text-xl font-semibold tracking-tight text-zinc-900">
-              回测结果
-              {selectedCode ? (
-                <>
-                  {" · "}
-                  <span className="font-mono text-lg font-semibold text-indigo-700">{selectedCode}</span>
-                  {selectedDef?.meta.name ? (
-                    <span className="text-lg font-normal text-zinc-700"> · {selectedDef.meta.name}</span>
-                  ) : null}
-                </>
-              ) : null}
-            </h3>
-            <p className="mt-1 text-sm text-zinc-500">与单标的页摘要同源：按成交重建权益曲线后统计收益、回撤、买卖笔数与持仓节奏。</p>
+            <p className="text-sm text-zinc-500">与单标的页摘要同源：按成交重建权益曲线后统计收益、回撤、买卖笔数与持仓节奏。</p>
           </div>
           <label className="flex items-center gap-2 text-sm text-zinc-600">
             <span className="text-xs text-zinc-500">每类展示</span>
@@ -725,15 +784,13 @@ export function RegistryPage() {
                 </option>
               ))}
             </select>
-            <span className="text-xs text-zinc-400">变更后自动按当前范围重算（需已加载足够 K 线）</span>
+            <span className="text-xs text-zinc-400">变更后自动重算</span>
           </label>
         </div>
 
-        {!gridResult && boardVerifySummary && selectedDef && (
-          <p className="mt-6 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-[11px] text-zinc-800">
-            看板默认参数（CSV）：策略 {boardVerifySummary.strategyReturnPct}% · 超额 {boardVerifySummary.excessReturnPct}% · 回撤{" "}
-            {boardVerifySummary.maxDrawdownPct}% · 胜率 {(boardVerifySummary.winRate * 100).toFixed(1)}% · 轮次{" "}
-            {boardVerifySummary.roundCount}。执行网格回测后，将展示<strong>☆ 验证集最优</strong>与<strong>★ 全样本最优</strong>摘要。
+        {!gridResult && (
+          <p className="mt-6 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 px-4 py-8 text-center text-sm text-zinc-500">
+            在首屏选择代表底仓并点击「执行回测」后，此处展开 Top 组合表与买入持有对照。
           </p>
         )}
 
@@ -860,13 +917,75 @@ export function RegistryPage() {
             </div>
           </>
         )}
+      </details>
 
-        {!gridResult && !gridBusy && (
-          <p className="mt-8 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 px-4 py-8 text-center text-sm text-zinc-500">
-            选择行情与参数范围后，在上节点击「执行回测」。修改 Top N 后会自动按新条数重算；修改训练占比或参数范围后需再次点击「执行回测」。
-          </p>
+      <details
+        id="registry-observations"
+        className="rounded-lg border border-indigo-100 bg-gradient-to-b from-indigo-50/30 to-white p-4 shadow-sm"
+      >
+        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span>
+            <span className="mr-1.5 text-zinc-400">▸</span>
+            ③ 当前观测 <span className="font-normal text-zinc-500">（默认折叠）</span>
+          </span>
+        </summary>
+        <p className="mt-2 text-xs text-zinc-500">灰标=数据源默认；蓝标=观测注册可删。加入后可在单标的页策略参数下拉中选择。</p>
+
+        {etfDefinitions.length === 0 ? (
+          <p className="mt-3 text-sm text-zinc-500">暂无标的定义。</p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {etfDefinitions.map((etf) => {
+              const vars = getParamVariants(etf, entries);
+              return (
+                <div key={etf.meta.code} className="rounded-lg border border-zinc-100 bg-white/90 p-3 shadow-sm">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-100 pb-2">
+                    <div>
+                      <p className="font-mono text-[10px] text-indigo-600">{etf.meta.code}</p>
+                      <p className="text-sm font-semibold text-zinc-900">{etf.meta.name}</p>
+                    </div>
+                    <Link to={`/etf/${etf.meta.code}`} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline">
+                      看板
+                    </Link>
+                  </div>
+                  <ul className="mt-2 space-y-1.5">
+                    {vars.map((v) => (
+                      <ObservationRow key={v.key} etfCode={etf.meta.code} variant={v} onRemoveRegistered={onRemoveVariant} />
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
         )}
-      </section>
+
+        {uploadOnlyRegistered.length > 0 && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+            <h4 className="text-xs font-semibold text-amber-950">仅上传 CSV 出现的标的（未在数据源定义中）</h4>
+            <ul className="mt-2 space-y-1.5">
+              {uploadOnlyRegistered.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-100 bg-white px-2 py-1.5 text-xs"
+                >
+                  <div>
+                    <span className="font-mono text-indigo-600">{r.etfCode}</span>
+                    <span className="mx-1.5 text-zinc-300">|</span>
+                    <span className="font-medium text-zinc-900">{r.label}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeEntry(r.id)}
+                    className="rounded-full border border-red-200 px-2 py-0.5 text-[10px] text-red-700 hover:bg-red-50"
+                  >
+                    删除
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </details>
     </div>
   );
 }

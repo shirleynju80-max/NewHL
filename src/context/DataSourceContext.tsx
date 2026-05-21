@@ -45,7 +45,7 @@ type Ctx = {
 const DataSourceContext = createContext<Ctx | null>(null);
 
 function sourceLabelForPublic(apiError?: string): string {
-  return apiError ? "public/data/*.csv（数据 API 回退）" : "public/data/*.csv";
+  return apiError ? "站点数据（API 暂不可用）" : "站点数据";
 }
 
 async function fetchTextIfOk(url: string): Promise<string | null> {

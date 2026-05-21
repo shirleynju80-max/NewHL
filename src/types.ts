@@ -106,7 +106,7 @@ export type ParamStrategyVariant = {
 
 export type RegisteredStrategyKind = "ma" | "ma_custom" | "rsi" | "boll";
 
-/** 用户在「策略回测与注册」页加入注册的策略快照（localStorage 持久化） */
+/** 用户在「策略研究」页加入注册的策略快照（localStorage 持久化） */
 export type UserRegisteredStrategy = {
   id: string;
   etfCode: string;

@@ -272,60 +272,11 @@ export function MonitorPage() {
 
   return (
     <div className="space-y-8">
-      <header className="rounded-lg border border-zinc-100 bg-white p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">今日盘中信号</h2>
-        <p className="mt-2 text-sm text-zinc-600 max-w-3xl leading-relaxed">
-          对纳入监控的标的，列出<strong>全部可切换策略</strong>在「昨收全日 K + 下方模拟收盘」合成下的<strong>标尺与提醒</strong>（本表<strong>不展示</strong>单日 BUY/SELL：空仓时易被误读为「今日应卖」）。
-          <strong>标尺 %</strong>表示<strong>当前指标值在策略买、卖阈值之间</strong>的线性位置（0 贴近买侧参数，100 贴近卖侧），例如 RSI 在超卖–超买之间插值；布林在上下轨之间；MA 类在策略约定的价差或偏离带内——
-          <strong>不是</strong>历史样本经验分位。看具体买卖时点请打开单标的<strong>回测</strong>页。
+      <header className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
+        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">盘中观察</h2>
+        <p className="mt-2 text-sm text-zinc-600 max-w-2xl">
+          策略层 · 勾选监控标的后，表格展示各策略标尺与买卖侧提醒（非历史分位）。
         </p>
-        <p className="mt-2 text-xs text-zinc-500">
-          参考时点默认 13:45，与单标的页合成规则一致。标尺 ≤20% / ≥80% 为贴近买、卖侧；中间区为「临近/靠近」提醒。
-        </p>
-        <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/80 px-4 py-3 text-xs text-zinc-700">
-          <p className="font-medium text-zinc-900">盘中数据来源与校验</p>
-          <p className="mt-1 leading-relaxed text-zinc-600">
-            默认读取 <code className="rounded bg-white px-1">bars.csv + barsmore.csv</code>。GitHub Actions 的实时爬虫会在 11:00 / 14:00 写入当日快照；本页只负责基于当前 CSV 重算标尺。下方按钮用于接入自有行情网关后的重叠日期一致性校验。
-          </p>
-          <button
-            type="button"
-            disabled={syncBusy || pref.codes.length === 0}
-            onClick={() => void runRemoteSyncAll()}
-            className="mt-2 rounded-full bg-zinc-800 px-4 py-1.5 text-xs font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
-          >
-            {syncBusy ? "校验中…" : "对已选标的拉取并比对"}
-          </button>
-          {Object.keys(remoteSyncMsg).length > 0 && (
-            <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto font-mono text-[10px] text-zinc-600">
-              {pref.codes.map((c) =>
-                remoteSyncMsg[c] ? (
-                  <li key={c}>
-                    <span className="text-indigo-700">{c}</span> {remoteSyncMsg[c]}
-                  </li>
-                ) : null
-              )}
-            </ul>
-          )}
-        </div>
-        <div className="mt-6 flex flex-wrap items-end gap-4">
-          <label className="text-sm text-zinc-600">
-            参考更新时点
-            <input
-              type="time"
-              value={pref.updateHm}
-              onChange={(e) => setPrefPatch({ updateHm: e.target.value })}
-              className="mt-1 block rounded-xl border border-zinc-200 px-3 py-2 font-mono text-sm"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={runRefresh}
-            className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
-          >
-            刷新汇总时刻
-          </button>
-          {lastRun && <p className="text-xs text-zinc-400">上次点击：{lastRun}</p>}
-        </div>
       </header>
 
       <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm">
@@ -429,6 +380,65 @@ export function MonitorPage() {
           </div>
         )}
       </section>
+
+      <details className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-4 text-sm text-zinc-600">
+        <summary className="cursor-pointer list-none font-medium text-zinc-800 [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-zinc-400">▸</span>
+          标尺说明（默认折叠）
+        </summary>
+        <p className="mt-3 leading-relaxed">
+          对纳入监控的标的，列出全部可切换策略在「昨收全日 K + 模拟收盘」合成下的标尺与提醒。标尺 % 表示当前指标值在策略买、卖阈值之间的线性位置（0 贴近买侧，100
+          贴近卖侧），不是历史经验分位。参考时点默认 13:45；标尺 ≤20% / ≥80% 为贴近买、卖侧。
+        </p>
+        <div className="mt-4 flex flex-wrap items-end gap-4">
+          <label className="text-sm text-zinc-600">
+            参考更新时点
+            <input
+              type="time"
+              value={pref.updateHm}
+              onChange={(e) => setPrefPatch({ updateHm: e.target.value })}
+              className="mt-1 block rounded-xl border border-zinc-200 px-3 py-2 font-mono text-sm"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={runRefresh}
+            className="rounded-full bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+          >
+            刷新汇总时刻
+          </button>
+          {lastRun && <p className="text-xs text-zinc-400">上次点击：{lastRun}</p>}
+        </div>
+      </details>
+
+      <details className="rounded-lg border border-zinc-200 bg-white p-4 text-sm">
+        <summary className="cursor-pointer list-none font-medium text-zinc-800 [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-zinc-400">▸</span>
+          高级：外部行情校验（可选）
+        </summary>
+        <p className="mt-3 text-xs leading-relaxed text-zinc-600">
+          默认使用站点已发布的日 K 与盘中快照重算标尺。若已接入自有行情网关，可对已选标的拉取并比对重叠日期一致性。
+        </p>
+        <button
+          type="button"
+          disabled={syncBusy || pref.codes.length === 0}
+          onClick={() => void runRemoteSyncAll()}
+          className="mt-3 rounded-full bg-zinc-800 px-4 py-1.5 text-xs font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+        >
+          {syncBusy ? "校验中…" : "对已选标的拉取并比对"}
+        </button>
+        {Object.keys(remoteSyncMsg).length > 0 && (
+          <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto font-mono text-[10px] text-zinc-600">
+            {pref.codes.map((c) =>
+              remoteSyncMsg[c] ? (
+                <li key={c}>
+                  <span className="text-indigo-700">{c}</span> {remoteSyncMsg[c]}
+                </li>
+              ) : null
+            )}
+          </ul>
+        )}
+      </details>
     </div>
   );
 }

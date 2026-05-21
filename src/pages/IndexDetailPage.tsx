@@ -21,6 +21,7 @@ import {
   indexSeriesForMode,
   indexShowsSpread,
 } from "../data/indexCsv";
+import { dividendAllocationObservation } from "../lib/configFramework";
 import {
   METRIC_WINDOWS,
   buildMetricRow,
@@ -77,48 +78,6 @@ function percentileTone(v: number | null | undefined): string {
   return "低位";
 }
 
-function allocationTone(spread: number | null | undefined, divYield: number | null | undefined): { title: string; tone: string; body: string } {
-  const hasDivYield = typeof divYield === "number" && Number.isFinite(divYield);
-  if (typeof spread !== "number" || !Number.isFinite(spread)) {
-    return { title: "数据不足", tone: "border-zinc-200 bg-zinc-50 text-zinc-700", body: "当前缺少可对齐的股息率或国债收益率。" };
-  }
-  if (spread >= 2.5 || (hasDivYield && divYield >= 5.5 && spread >= 1.5)) {
-    return {
-      title: "配置窗口（性价比高）",
-      tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
-      body:
-        spread >= 2.5 ?
-          "红利相对债券的收益补偿较高，可作为提高关注度的配置参考。"
-        : "股息率处在较高位置，同时相对债券仍有一定收益补偿，可作为配置参考。",
-    };
-  }
-  if (spread < 1) {
-    if (hasDivYield && divYield >= 5) {
-      return {
-        title: "警惕（利差低但股息率高）",
-        tone: "border-amber-200 bg-amber-50 text-amber-900",
-        body: "股息率本身仍有吸引力，但相对债券的收益补偿不足，适合谨慎观察。",
-      };
-    }
-    return {
-      title: "警惕区（性价比弱）",
-      tone: "border-zinc-200 bg-zinc-50 text-zinc-700",
-      body: "红利相对债券的收益补偿较低，配置性价比参考意义偏弱。",
-    };
-  }
-  if (hasDivYield && divYield >= 5) {
-    return {
-      title: "股息率较高，利差中性",
-      tone: "border-amber-200 bg-amber-50 text-amber-900",
-      body: "股息率本身较高，但相对债券的吸引力处于中性状态，适合结合价格趋势继续观察。",
-    };
-  }
-  return {
-    title: "中性观察，结合趋势判断",
-    tone: "border-amber-200 bg-amber-50 text-amber-900",
-    body: "当前配置吸引力不极端，更适合结合价格位置、趋势和自身仓位继续观察。",
-  };
-}
 
 function dateShift(date: string, opts: { days?: number; months?: number; years?: number; ytd?: boolean }) {
   const d = new Date(`${date}T00:00:00`);
@@ -233,7 +192,7 @@ function MarketTooltip({ active, label, payload }: MarketTooltipProps) {
 export function IndexDetailPage() {
   const { indexCode: indexCodeParam } = useParams();
   const raw = indexCodeParam ? decodeURIComponent(indexCodeParam) : "";
-  const { getIndex, indices, indexTracking, bondByDate } = useDataSource();
+  const { getIndex, indices, indexTracking, bondByDate, publicCsvAutoLoading } = useDataSource();
   const def = raw ? getIndex(raw) : undefined;
   const [perfStartDateOverride, setPerfStartDateOverride] = useState<string | null>(null);
   const [perfEndDateOverride, setPerfEndDateOverride] = useState<string | null>(null);
@@ -391,9 +350,19 @@ export function IndexDetailPage() {
     const values = tripleData.flatMap((r) => [r.股息率, r.国债收益率, r.利差]).filter((v) => Number.isFinite(v));
     return Math.min(0, Math.floor(Math.min(...values, 0) - 0.5));
   }, [tripleData]);
-  const allocationAdvice = allocationTone(latestSpreadPoint?.spreadPct, latestSpreadPoint?.divYieldPct);
+  const allocationAdvice = dividendAllocationObservation(
+    latestSpreadPoint?.spreadPct,
+    latestSpreadPoint?.divYieldPct
+  );
 
   if (!def) {
+    if (raw && (publicCsvAutoLoading || indices.length === 0)) {
+      return (
+        <div className="rounded-lg border border-zinc-100 bg-zinc-50 px-4 py-8 text-sm text-zinc-500">
+          正在加载指数数据…
+        </div>
+      );
+    }
     return <Navigate to="/indices" replace />;
   }
 

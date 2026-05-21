@@ -45,8 +45,36 @@ CSI_TARGETS = [
     CsiTarget("930914", "H20914", "513530", market="H", category="港股红利"),
     CsiTarget("931233", "931233HKD210", "513910", market="H", category="港股红利"),
     CsiTarget("932365", "932365CNY010", "159232", category="现金流"),
+    CsiTarget("932366", "932366CNY010", "562080", category="现金流"),
+    CsiTarget("932367", "932367CNY010", "560120", category="现金流"),
+    CsiTarget("932368", "932368CNY010", "563990", category="现金流"),
     # 详情页对比基准。
     CsiTarget("000300", "H00300", "", category="宽基"),
+]
+
+
+CASHFLOW_SUMMARY_APPENDIX = {
+    "932365": "定位差异：以中证全指为宽样本空间，选取100只自由现金流率较高证券，覆盖面最广，更偏全市场现金流质量暴露。",
+    "932366": "定位差异：以沪深300为样本空间，选取50只自由现金流率较高证券，更偏大盘龙头中的现金流创造能力。",
+    "932367": "定位差异：以中证500为样本空间，选取50只自由现金流率较高证券，更偏中盘公司中的现金流质量与成长弹性。",
+    "932368": "定位差异：以中证800为样本空间，选取50只自由现金流率较高证券，覆盖沪深300与中证500，更偏大中盘核心池的现金流筛选。",
+}
+
+TRACKING_NOTES = {
+    "932365": "南方中证全指自由现金流ETF",
+    "932366": "华宝沪深300自由现金流ETF",
+    "932367": "华夏中证500自由现金流ETF",
+    "932368": "富国中证800自由现金流ETF",
+}
+
+EXTRA_TRACKING_ROWS = [
+    {"index_code": "931157", "etf_code": "007751", "note": "景顺长城沪港深红利成长低波A", "fee_pct": "", "product_type": "otc_fund"},
+    {"index_code": "932366", "etf_code": "563900", "note": "摩根沪深300自由现金流ETF", "fee_pct": ""},
+    {"index_code": "932368", "etf_code": "563580", "note": "万家中证800自由现金流ETF", "fee_pct": ""},
+    {"index_code": "932368", "etf_code": "516460", "note": "鹏华中证800自由现金流ETF", "fee_pct": ""},
+    {"index_code": "932368", "etf_code": "563680", "note": "汇添富中证800自由现金流ETF", "fee_pct": ""},
+    {"index_code": "932368", "etf_code": "159119", "note": "招商中证800自由现金流ETF", "fee_pct": ""},
+    {"index_code": "932368", "etf_code": "159229", "note": "广发中证800自由现金流ETF", "fee_pct": ""},
 ]
 
 
@@ -171,10 +199,13 @@ def fetch_basic_info(code: str) -> dict[str, Any]:
 def row_for_target(target: CsiTarget, basic: dict[str, Any]) -> dict[str, str]:
     name = basic.get("indexFullNameCn") or basic.get("indexShortNameCn") or target.code
     desc = basic.get("indexCnDesc") or ""
+    appendix = CASHFLOW_SUMMARY_APPENDIX.get(target.code)
+    if appendix:
+        desc = f"{desc} {appendix}".strip()
     weighting = basic.get("weightingType") or ""
     if not weighting:
-        # 中证接口常给空；从简介里保留可读口径。
-        weighting = "见指数简介/编制方案"
+        # 中证接口常给空；现金流指数在官网简介中明确以自由现金流率排序筛选。
+        weighting = "自由现金流率筛选" if target.category == "现金流" else "见指数简介/编制方案"
     return {
         "index_code": target.code,
         "name": name,
@@ -297,17 +328,18 @@ def sync_indices_meta() -> None:
 
 def sync_tracking() -> None:
     fields, rows = read_csv(TRACKING)
-    fieldnames = ["index_code", "etf_code", "note", "fee_pct"] + [
-        x for x in fields if x not in {"index_code", "etf_code", "note", "fee_pct"}
+    fieldnames = ["index_code", "etf_code", "note", "fee_pct", "product_type"] + [
+        x for x in fields if x not in {"index_code", "etf_code", "note", "fee_pct", "product_type"}
     ]
     replace_codes = {t.code for t in CSI_TARGETS} | {"000926", "931374", "SPCLLHCP.SPI"}
     kept = [row for row in rows if row.get("index_code") not in replace_codes]
     new_rows = [
-        {"index_code": t.code, "etf_code": t.tracking_etf, "note": "", "fee_pct": ""}
+        {"index_code": t.code, "etf_code": t.tracking_etf, "note": TRACKING_NOTES.get(t.code, ""), "fee_pct": ""}
         for t in CSI_TARGETS
         if t.tracking_etf
     ]
     new_rows.insert(3, {"index_code": "SPCLLHCP.SPI", "etf_code": "515450", "note": "待接入 S&P 历史行情", "fee_pct": ""})
+    new_rows.extend(EXTRA_TRACKING_ROWS)
     write_csv(TRACKING, fieldnames, new_rows + kept)
 
 

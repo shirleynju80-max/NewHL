@@ -1,17 +1,19 @@
+import { useMemo } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useDataSource } from "../context/DataSourceContext";
+import { latestTradeDate } from "../lib/dataFreshness";
 
 const nav = [
-  { to: "/", label: "ETF总览", match: (path: string) => path === "/" },
-  { to: "/indices", label: "了解指数", match: (path: string) => path.startsWith("/indices") },
-  { to: "/monitor", label: "盘中信号", match: (path: string) => path.startsWith("/monitor") },
-  { to: "/registry", label: "策略回测与注册", match: (path: string) => path.startsWith("/registry") },
+  { to: "/", label: "配置总览", match: (path: string) => path === "/" },
+  { to: "/indices", label: "指数研究", match: (path: string) => path.startsWith("/indices") },
+  { to: "/monitor", label: "盘中观察", match: (path: string) => path.startsWith("/monitor") },
+  { to: "/registry", label: "策略研究", match: (path: string) => path.startsWith("/registry") },
 ];
 
 export function Layout() {
   const loc = useLocation();
   const {
-    sourceLabel,
+    sourceKind,
     loadError,
     indexCsvError,
     definitions,
@@ -20,7 +22,13 @@ export function Layout() {
     reloadingPublicCsv,
     publicCsvAutoLoading,
   } = useDataSource();
-  const shownSource = publicCsvAutoLoading ? "正在加载数据…" : sourceLabel;
+  const dataDate = useMemo(() => latestTradeDate(definitions, indices), [definitions, indices]);
+  const statusLine = useMemo(() => {
+    if (publicCsvAutoLoading) return "正在加载数据…";
+    if (sourceKind === "mock") return "示例数据";
+    if (dataDate) return `数据截至 ${dataDate}`;
+    return "数据已加载";
+  }, [publicCsvAutoLoading, sourceKind, dataDate]);
   return (
     <div className="min-h-screen flex flex-col">
       {loadError && (
@@ -38,14 +46,14 @@ export function Layout() {
       <header className="border-b border-zinc-200/80 bg-white/90 backdrop-blur-sm sticky top-0 z-20">
         <div className="mx-auto max-w-7xl px-6 py-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-indigo-600">Dividend desk</p>
-            <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">红利 ETF 看板</h1>
-            <p className="text-sm text-zinc-500 mt-1">指数、产品、盘中信号与策略观察</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-indigo-600">Value desk</p>
+            <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">价值底仓配置台</h1>
+            <p className="text-sm text-zinc-500 mt-1">现金创造与股东回报 · 长期配置观察</p>
             <p className="text-xs text-zinc-400 mt-2 flex flex-wrap items-center gap-2">
-              <span>数据源：{shownSource}</span>
-              <span className="text-zinc-300">/</span>
+              <span>{statusLine}</span>
+              <span className="text-zinc-300">·</span>
               <span>ETF {definitions.length} 只</span>
-              <span className="text-zinc-300">/</span>
+              <span className="text-zinc-300">·</span>
               <span>指数 {indices.length} 个</span>
               <button
                 type="button"
