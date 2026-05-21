@@ -1,8 +1,8 @@
 # 项目状态与交接
 
-更新时间：2026-05-21（Cursor P0 验收后交接 Codex）  
+更新时间：2026-05-21（RedRocket 股息率写入 CSV 后更新交接）  
 当前主协作分支：`cursor/overview-monitor-registry-tickflow`  
-最新提交：`3b26d2e` — `feat: ship value desk product framework and P0 UI verification`  
+最新提交：见 `git log -1`（UI `3b26d2e` → 交接 `7070031` → 股息率 CSV 待本条提交）  
 生产站：<https://newhl-dashboard.pages.dev/>（**仍为改版前构建**，见 P0 验收记录）
 
 ## 当前结论
@@ -48,6 +48,7 @@
 | UI 框架自测（本地 `npm run build` + `npm run dev`） | 通过：首页双维度卡片、指数研究一级/二级筛选与数据完整性标签、指数列表→详情→ETF 跳转；修复详情页在 CSV 加载完成前误重定向；控制台无数据加载错误。 |
 | 生产站静态 CSV（curl） | 通过：`/` 与 `/data/indices.csv` 均 HTTP 200；**尚未部署**本次 UI 改版（生产 HTML 标题仍为「红利 ETF 看板」）。 |
 | 同步脚本本地烟测 | ETF `sync_etf_realtime.py --dry-run` 通过（25 quote）；指数 `sync_a_share_dividend_indices.py` 可跑通。 |
+| 指数股息率 CSV | **已写入** `index_bars.csv`：`sync_h30269_dividend_yield_redrocket.py` 已跑；H30269 649 个观测日有 `div_yield_nominal_pct`（最新 2026-05-20 → 4.8674%），与详情页利差图一致。 |
 | GitHub Actions `workflow_dispatch` | **未执行**：本机无 `gh` / `GITHUB_TOKEN`；需在 GitHub Actions 页手动触发或安装 `gh` 后 `gh workflow run`。 |
 
 ## 待完成
@@ -96,11 +97,18 @@
 
 本地 `npm run build` 与浏览器走查已通过（见「P0 验收记录」）。**未**执行 Pages 部署、**未**在 GitHub 触发 workflow。
 
+### Cursor 追加（股息率 CSV，待提交）
+
+- 已运行 `python3 scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py`，更新 `public/data/index_bars.csv`。
+- **口径**：红色火箭 DID 按观测日写入 `div_yield_nominal_pct` / `div_yield_redrocket_did_pct`；非观测日保持空，**禁止前向填充**。
+- **H30269**：649/4949 行有股息率；`2026-05-20` = 4.8674%（UI 显示约 4.87%）。
+- **注意**：`index-t1-sync` 若整表重写 `index_bars` 且不带股息率列，会冲掉本次写入；CI 应 **先 T-1 行情、再 RedRocket**，或 T-1 脚本只改 `tri_close`/`price_close`。
+
 ### 建议 Codex 接手（按优先级）
 
-1. **GitHub Actions**：在仓库 Actions 页手动 `workflow_dispatch` 运行 `realtime-crawler.yml`、`index-t1-sync.yml`；确认 bot 能提交 `public/data/*.csv`（或记录失败日志）。
-2. **数据与口径**：H30269 等指数股息率序列若仍显示「缺股息率序列」，检查 `sync_h30269_dividend_yield_redrocket.py` 与 `index_bars` 列；勿用前向填充。
-3. **构建/文档**：`npm run build` 复验；按需更新 `docs/project-status.md` 中 P0 行状态。
+1. **GitHub Actions**：手动 `workflow_dispatch` `realtime-crawler.yml`、`index-t1-sync.yml`；**`index-t1-sync` 跑完后务必再跑** `sync_h30269_dividend_yield_redrocket.py`（或把两步串进同一 workflow）。
+2. **workflow 顺序**：确认定时任务不会只用 T-1 脚本提交 `index_bars` 而导致股息率列再次全空。
+3. **构建/文档**：`npm run build` 复验；确认列表页 H30269 标签为「数据可用」而非「缺股息率序列」。
 4. **勿重复**：不要重写 `configFramework` 或整块重做 `Home` / `IndicesListPage`，除非发现明确 bug。
 
 ### 仍归 Cursor / 用户（非 Codex 默认）
