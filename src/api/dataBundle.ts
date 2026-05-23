@@ -7,6 +7,7 @@ export type ApiCsvFiles = {
   barsMore?: string;
   bondsMore?: string;
   fundBars?: string;
+  etfProducts?: string;
   indices?: string;
   indexBars?: string;
   indexTrackingEtfs?: string;

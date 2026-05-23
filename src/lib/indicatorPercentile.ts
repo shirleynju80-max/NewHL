@@ -1,3 +1,4 @@
+import { formatPctValue } from "./formatDisplay";
 import type { EtfParams, OhlcBar } from "../types";
 import { bollinger, closesFromBars, rsi, sma } from "./indicators";
 import {
@@ -56,9 +57,9 @@ function zoneFromPosition(pct: number): PercentileZone {
 }
 
 function hintFor(zone: PercentileZone, pct: number): string {
-  if (zone === "buy_hint") return `贴近买侧（标尺≤${BUY_PCT}%）`;
-  if (zone === "sell_hint") return `贴近卖侧（标尺≥${SELL_PCT}%）`;
-  return `中性（${pct}%）`;
+  if (zone === "buy_hint") return `贴近买侧（标尺≤${formatPctValue(BUY_PCT)}%）`;
+  if (zone === "sell_hint") return `贴近卖侧（标尺≥${formatPctValue(SELL_PCT)}%）`;
+  return `中性（${formatPctValue(pct)}%）`;
 }
 
 /**

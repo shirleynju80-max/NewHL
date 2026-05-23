@@ -1,3 +1,5 @@
+import type { SeriesMetricBlock, SeriesOverviewRow } from "./compareEtfs";
+
 export type DateValuePoint = { date: string; value: number };
 
 export type MetricWindowId = "mtd" | "m1" | "m3" | "ytd" | "y1" | "y3" | "y5" | "all";
@@ -158,6 +160,56 @@ export function buildMetricRow(id: string, label: string, series: DateValuePoint
     windows: Object.fromEntries(
       METRIC_WINDOWS.map((win) => [win.id, calcMetricBlock(sliceSeriesForWindow(series, win.id))])
     ) as Record<MetricWindowId, MetricBlock>,
+  };
+}
+
+const MIN_OVERVIEW_POINTS = 20;
+
+function metricBlockToSeriesBlock(mb: MetricBlock): SeriesMetricBlock | null {
+  if (mb.points < MIN_OVERVIEW_POINTS) return null;
+  if (
+    mb.annualReturnPct == null ||
+    mb.maxDrawdownPct == null ||
+    mb.annualVolPct == null ||
+    mb.totalReturnPct == null ||
+    !mb.startDate ||
+    !mb.endDate
+  ) {
+    return null;
+  }
+  const calmarLike = mb.calmar == null ? null : Math.round(mb.calmar * 100) / 100;
+  const sharpeLike =
+    mb.annualVolPct > 1e-6 ? Math.round((mb.annualReturnPct / mb.annualVolPct) * 100) / 100 : null;
+  return {
+    days: mb.points,
+    from: mb.startDate,
+    to: mb.endDate,
+    totalReturnPct: mb.totalReturnPct,
+    annualReturnPct: mb.annualReturnPct,
+    maxDrawdownPct: mb.maxDrawdownPct,
+    annualVolPct: mb.annualVolPct,
+    calmarLike,
+    sharpeLike,
+  };
+}
+
+/** 指数研究列表：与详情页指标表同一套日历窗口 + calcMetricBlock。 */
+export function buildIndexOverviewFromSeries(
+  series: DateValuePoint[],
+  code: string,
+  name: string
+): SeriesOverviewRow | null {
+  const clean = cleanDateValueSeries(series);
+  if (clean.length < MIN_OVERVIEW_POINTS) return null;
+  const block = (id: MetricWindowId) =>
+    metricBlockToSeriesBlock(calcMetricBlock(sliceSeriesForWindow(clean, id)));
+  return {
+    code,
+    name,
+    all: block("all"),
+    y1: block("y1"),
+    y3: block("y3"),
+    y5: block("y5"),
   };
 }
 

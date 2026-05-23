@@ -2,13 +2,50 @@ import { useMemo } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useDataSource } from "../context/DataSourceContext";
 import { latestTradeDate } from "../lib/dataFreshness";
+import { isEtfProductListed } from "../lib/etfListingAge";
 
-const nav = [
-  { to: "/", label: "配置总览", match: (path: string) => path === "/" },
-  { to: "/indices", label: "指数研究", match: (path: string) => path.startsWith("/indices") },
-  { to: "/monitor", label: "盘中观察", match: (path: string) => path.startsWith("/monitor") },
-  { to: "/registry", label: "策略研究", match: (path: string) => path.startsWith("/registry") },
+type NavItemDef = {
+  to: string;
+  label: string;
+  hint?: string;
+  match: (path: string) => boolean;
+};
+
+const mainNav: NavItemDef[] = [
+  { to: "/", label: "配置总览", match: (path) => path === "/" },
+  { to: "/indices", label: "指数研究", match: (path) => path.startsWith("/indices") },
+  { to: "/products", label: "产品选择", match: (path) => path.startsWith("/products") },
+  { to: "/monitor", label: "盘中监控", match: (path) => path.startsWith("/monitor") },
 ];
+
+const toolNav: NavItemDef[] = [
+  {
+    to: "/registry",
+    label: "策略研究工具",
+    hint: "策略研究",
+    match: (path) => path.startsWith("/registry"),
+  },
+  {
+    to: "/compare",
+    label: "ETF对比工具",
+    hint: "标的对比",
+    match: (path) => path === "/compare",
+  },
+];
+
+function NavLink({ item, active }: { item: NavItemDef; active: boolean }) {
+  return (
+    <Link
+      to={item.to}
+      className={`fin-nav-item shrink-0 ${active ? "fin-nav-item-active" : "fin-nav-item-idle"}`}
+    >
+      {item.label}
+      {item.hint ?
+        <span className="ml-0.5 font-normal opacity-75">（{item.hint}）</span>
+      : null}
+    </Link>
+  );
+}
 
 export function Layout() {
   const loc = useLocation();
@@ -18,76 +55,91 @@ export function Layout() {
     indexCsvError,
     definitions,
     indices,
+    etfProducts,
     reloadPublicCsv,
     reloadingPublicCsv,
     publicCsvAutoLoading,
   } = useDataSource();
+
+  const defByCode = useMemo(() => new Map(definitions.map((d) => [d.meta.code, d])), [definitions]);
+
+  const poolStats = useMemo(() => {
+    const listed = etfProducts.filter((p) => isEtfProductListed(defByCode.get(p.code), p));
+    return {
+      indexCount: new Set(etfProducts.map((p) => p.indexCode)).size,
+      listedCount: listed.length,
+      poolCount: etfProducts.length,
+    };
+  }, [etfProducts, defByCode]);
+
   const dataDate = useMemo(() => latestTradeDate(definitions, indices), [definitions, indices]);
   const statusLine = useMemo(() => {
-    if (publicCsvAutoLoading) return "正在加载数据…";
-    if (sourceKind === "mock") return "示例数据";
-    if (dataDate) return `数据截至 ${dataDate}`;
-    return "数据已加载";
+    if (publicCsvAutoLoading) return "加载中";
+    if (sourceKind === "mock") return "演示";
+    if (dataDate) return dataDate;
+    return "—";
   }, [publicCsvAutoLoading, sourceKind, dataDate]);
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex min-h-screen flex-col">
       {loadError && (
-        <div className="border-b border-red-200 bg-red-50 px-6 py-3 text-sm text-red-900">
-          <strong className="font-semibold">数据加载提示：</strong>
-          {loadError}
-        </div>
+        <div className="border-b border-red-900/30 bg-red-950 px-4 py-2 text-sm text-red-100">{loadError}</div>
       )}
       {indexCsvError && (
-        <div className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm text-amber-950">
-          <strong className="font-semibold">指数数据提示：</strong>
-          {indexCsvError}
-        </div>
+        <div className="border-b border-amber-900/30 bg-amber-950 px-4 py-2 text-sm text-amber-100">{indexCsvError}</div>
       )}
-      <header className="border-b border-zinc-200/80 bg-white/90 backdrop-blur-sm sticky top-0 z-20">
-        <div className="mx-auto max-w-7xl px-6 py-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-widest text-indigo-600">Value desk</p>
-            <h1 className="text-xl font-semibold text-zinc-900 tracking-tight">价值底仓配置台</h1>
-            <p className="text-sm text-zinc-500 mt-1">现金创造与股东回报 · 长期配置观察</p>
-            <p className="text-xs text-zinc-400 mt-2 flex flex-wrap items-center gap-2">
-              <span>{statusLine}</span>
-              <span className="text-zinc-300">·</span>
-              <span>ETF {definitions.length} 只</span>
-              <span className="text-zinc-300">·</span>
-              <span>指数 {indices.length} 个</span>
-              <button
-                type="button"
-                onClick={() => void reloadPublicCsv()}
-                disabled={reloadingPublicCsv || publicCsvAutoLoading}
-                className="rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-600 shadow-sm hover:bg-zinc-50 disabled:opacity-50"
-              >
-                {reloadingPublicCsv || publicCsvAutoLoading ? "加载中..." : "刷新数据"}
-              </button>
-            </p>
-          </div>
-          <nav className="flex max-w-full gap-2 overflow-x-auto pb-1">
-            {nav.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium transition ${
-                  item.match(loc.pathname)
-                    ? "bg-zinc-900 text-white shadow-sm"
-                    : "text-zinc-600 hover:bg-zinc-100"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+
+      <header className="fin-header">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <Link to="/" className="group shrink-0 cursor-pointer">
+            <p className="fin-brand-kicker">价值底仓 · 研究配置</p>
+            <h1 className="fin-brand-title mt-1 text-lg sm:text-xl">配置台</h1>
+          </Link>
+          <nav className="flex flex-wrap items-center gap-x-2 gap-y-2 overflow-x-auto">
+            <div className="flex flex-wrap gap-0.5">
+              {mainNav.map((item) => (
+                <NavLink key={item.to} item={item} active={item.match(loc.pathname)} />
+              ))}
+            </div>
+            <span className="hidden h-5 w-px bg-slate-600/80 sm:block" aria-hidden />
+            <div className="flex flex-wrap gap-0.5">
+              <span className="sr-only">策略研究工具</span>
+              {toolNav.map((item) => (
+                <NavLink key={item.to} item={item} active={item.match(loc.pathname)} />
+              ))}
+            </div>
           </nav>
         </div>
+        <div className="fin-ticker">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-1.5">
+            <span>
+              <span className="fin-muted-text text-slate-500">行情截至 </span>
+              <span className="fin-ticker-value font-mono">{statusLine}</span>
+            </span>
+            <span className="fin-muted-text text-slate-500">
+              观察池{" "}
+              <span className="fin-ticker-value font-mono">
+                {poolStats.indexCount} 指数 · {poolStats.listedCount}/{poolStats.poolCount} 只可交易
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => void reloadPublicCsv()}
+              disabled={reloadingPublicCsv || publicCsvAutoLoading}
+              title="重新加载 public/data 下的 CSV，不是浏览器刷新"
+              className="fin-ticker-btn"
+            >
+              {reloadingPublicCsv || publicCsvAutoLoading ? "加载中…" : "重载 CSV"}
+            </button>
+          </div>
+        </div>
       </header>
-      <main className="flex-1 mx-auto w-full max-w-6xl px-6 py-10">
+
+      <main className="fin-main">
         <Outlet />
       </main>
-      <footer className="border-t border-zinc-200/80 py-8 text-center text-xs text-zinc-400">
-        数据仅供研究与界面演示，不构成投资建议。
-      </footer>
+
+      <footer className="fin-footer">仅供研究参考，不构成投资建议</footer>
     </div>
   );
 }

@@ -9,6 +9,10 @@
     "preview": "vite preview",
     "worker:deploy": "npm --prefix workers/data-api run deploy",
     "r2:upload": "bash scripts/cloudflare/upload_public_data_to_r2.sh",
+    "etf-products:generate": "node scripts/generate_etf_products.mjs",
+    "etf-products:select": "node scripts/select_index_tracking_etfs.mjs",
+    "etf-products:sync": "node scripts/sync_etf_products_monthly.mjs",
+    "etf-products:verify": "node scripts/verify_etf_products.mjs",
     "backtest:cn-div": "tsx scripts/backtest_grid/run_scope_top5.ts --scope A股红利 --top 5",
     "backtest:cn-div:one": "tsx scripts/backtest_grid/run_scope_top5.ts --scope A股红利 --top 5 --code"
   },

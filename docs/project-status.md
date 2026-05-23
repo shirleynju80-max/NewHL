@@ -1,6 +1,6 @@
 # 项目状态与交接
 
-更新时间：2026-05-21（新版已合并 `main`）  
+更新时间：2026-05-22（新版已合并 `main`）  
 当前默认分支：`main`（已合并 `cursor/overview-monitor-registry-tickflow` + `origin/main` TickFlow 历史）  
 最新提交：见 `git log -1` on `main`  
 生产站：<https://newhl-dashboard.pages.dev/>（若 Cloudflare 绑 `main` 自动构建，合并 push 后可能更新为「价值底仓配置台」）
@@ -36,6 +36,7 @@
 ## 当前数据口径
 
 - ETF 盘中数据：用东方财富 quote，失败时用新浪 quote 兜底；场外基金代码跳过实时 quote。
+- ETF 产品落地：`public/data/etf_products.csv` 是产品落地数据底表；盘中信号只使用每个指数 `is_primary=true` 的默认产品，非主产品仅用于产品落地参考。
 - ETF 历史补缺：手动运行 `python scripts/realtime_crawler/sync_etf_realtime.py` 可补历史并校验今年以来重合日期一致性。
 - 指数价格/全收益：官方 T-1 或盘后数据为准，不做盘中实时。
 - 指数实时：暂不接入。沪深300、上证红利等少数交易所主指数可从新浪 quote 获取，但 H30269 等策略指数没有稳定可验证实时 quote；不要用 ETF proxy 冒充指数实时值。
@@ -62,6 +63,18 @@
 | P1 | 告警与失败可见性 | 数据 workflow 失败时目前没有通知机制。 |
 | P1 | 国际指数历史行情 | `SPCLLHCP.SPI`、`SPAHLVCP.SPI`、`FCFQCD` 仍缺可靠授权历史行情。 |
 
+## ETF 产品数据层（2026-05-22）
+
+- 已新增 `public/data/etf_products.csv`，字段覆盖产品代码、名称、产品分组、跟踪指数、交易所、管理人、首交易日、主产品标记、数据状态和备注。
+- 已新增生成脚本 `scripts/generate_etf_products.mjs`，从 `index_tracking_etfs.csv` 出发，合并 `etfs.csv`、`etfsmore.csv`、`bars.csv`、`barsmore.csv`、`fund_bars.csv` 和 `indices.csv`。
+- 已新增月更脚本 `scripts/sync_etf_products_monthly.mjs`，从天天基金 F10 补充规模、管理费、托管费、综合费率、来源链接和更新时间；当前本地运行覆盖 22 行产品中的 21 行 ETF，场外基金不自动补 F10。
+- 已新增 helper `src/lib/etfProducts.ts`，提供 `parseEtfProductsCsv`、`groupEtfProductsForLanding`、`getProductsForIndex`、`getPrimaryProductForIndex`、`etfProductDataStatusLabel`。
+- 已新增校验脚本 `scripts/verify_etf_products.mjs`：校验每行可回连 `indices.csv`，每个指数只有一个主产品，且 `H30269 -> 512890`、`159201/159232/159399 -> cash_creation`。
+- 已新增 GitHub Actions `.github/workflows/etf-products-monthly.yml`，支持手动 `workflow_dispatch`，并默认每月 5 日北京时间 09:20 刷新 `etf_products.csv`。
+- 产品选择口径：同指数多个 ETF 时，只保留少量已核验候选；`is_primary=true` 是盘中监控默认产品，其余只作为产品落地参考，降低盘中信号冗余。
+- 更新频率：产品基础映射按需/每周更新；首交易日和数据状态随行情 CSV 更新后重跑生成脚本；规模、管理费、托管费、综合费率按月更新；成交额、折溢价、实际跟踪误差仍待单独数据源，不估算。
+- 后续需要补充候选发现机制：搜索接口只生成 `needs_review` 候选，不自动加入产品池；盘中监控仍只使用 `is_primary=true` 的默认 ETF。
+
 ## Cursor / Codex 协作边界
 
 为减少重复工作，默认按下面边界协作：
@@ -80,6 +93,14 @@
 ## 产品框架改版交接（Cursor → Codex）
 
 产品框架唯一依据：`docs/product-redesign.md`。UI 接入示例：`docs/codex-handoff-ui.md`。
+
+### 指数 / ETF 分工口径（2026-05-21 追加）
+
+- 指数负责研究判断：编制逻辑、长期收益风险、股息率、利差、分位和配置参考。
+- ETF 负责产品落地：跟踪指数、成立时间、费率、规模、流动性、折溢价、跟踪误差和盘中执行状态。
+- 策略研究默认用指数长历史做规则验证；ETF 回测只做产品执行复核。
+- 盘中观察用 ETF 盘中价格做执行监控，把指数回测得到的参数映射到可交易产品。
+- 产品落地字段与数据补全任务见 `docs/etf-product-data-task.md`。
 
 ### Cursor 已在 `3b26d2e` 完成
 
@@ -147,6 +168,10 @@ python3 scripts/realtime_crawler/sync_etf_realtime.py
 # 指数 T-1 同步
 python3 scripts/index_data_sync/sync_a_share_dividend_indices.py
 python3 scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
+
+# ETF 产品属性月更
+node scripts/sync_etf_products_monthly.mjs
+node scripts/verify_etf_products.mjs
 
 # R2 / Worker，待 R2 开通后再执行
 npm run r2:upload

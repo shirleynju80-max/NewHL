@@ -138,7 +138,10 @@ export type SeriesOverviewRow = {
   y5: SeriesMetricBlock;
 };
 
-/** 任意净值/收盘序列：全样本 + 近 1/3/5 年（与 ETF 总览同一套指标）。 */
+/**
+ * 任意净值/收盘序列：全样本 + 近 1/3/5 年（按末尾固定交易日数切片，252/756/1260）。
+ * ETF 对比总览用；指数研究列表请用 indexPanelMetrics.buildIndexOverviewFromSeries（日历窗口，与详情页一致）。
+ */
 export function buildSeriesOverviewRowFromNav(
   closes: number[],
   dates: string[],

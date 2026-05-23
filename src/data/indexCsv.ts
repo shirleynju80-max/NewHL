@@ -1,5 +1,6 @@
 import { parseCsv, rowsToObjects } from "../lib/csv";
-import type { BondSeriesPoint } from "../types";
+import { bondYieldFromRow, getHkBondAnchorPreference, resolveBondAnchorForIndex } from "../lib/bondAnchor";
+import type { BondAnchorId, BondSeriesPoint } from "../types";
 import type { IndexBar, IndexCategory, IndexDefinition, IndexMarket, IndexMeta, IndexTrackingRow } from "../types";
 
 function num(s: string, field: string): number {
@@ -130,8 +131,10 @@ export function parseIndexCsvBundle(
   return { indices, indexTracking: tracking };
 }
 
-export function bondAnchorForIndexMarket(market: IndexMarket): "CN_10Y" | "US_10Y" {
-  return market === "A" ? "CN_10Y" : "US_10Y";
+/** @deprecated 请用 resolveBondAnchorForIndex；港股默认中国国债，可在指数详情页切换美债 */
+export function bondAnchorForIndexMarket(market: IndexMarket): BondAnchorId {
+  if (market === "H") return getHkBondAnchorPreference();
+  return "CN_10Y";
 }
 
 export function indexShowsSpread(category: IndexCategory): boolean {
@@ -158,18 +161,18 @@ export function indexHasPriceSeries(bars: IndexBar[]): boolean {
 /** 与现有 ETF 利差一致：仅使用 index_bars 中有显式股息率的日期，不做前向填充。 */
 export function buildIndexSpreadRows(
   def: IndexDefinition,
-  bondByDate: Record<string, BondSeriesPoint>
+  bondByDate: Record<string, BondSeriesPoint>,
+  bondAnchor?: BondAnchorId
 ): { date: string; divYieldPct: number; bondYieldPct: number; spreadPct: number }[] {
   if (!indexShowsSpread(def.meta.category)) return [];
-  const anchor = bondAnchorForIndexMarket(def.meta.market);
+  const anchor = bondAnchor ?? resolveBondAnchorForIndex(def);
   return def.bars.flatMap((b) => {
     const raw = b.div_yield_nominal_pct;
     if (typeof raw !== "number" || Number.isNaN(raw)) return [];
     const divYieldPct = raw;
     const bondRow = bondByDate[b.date];
     if (!bondRow) return [];
-    const bondYieldPct =
-      anchor === "CN_10Y" ? bondRow.cn10y_pct : bondRow.us10y_pct;
+    const bondYieldPct = bondYieldFromRow(bondRow, anchor);
     const spreadPct = Math.round((divYieldPct - bondYieldPct) * 100) / 100;
     return { date: b.date, divYieldPct, bondYieldPct, spreadPct };
   });

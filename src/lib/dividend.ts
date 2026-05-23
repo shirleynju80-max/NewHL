@@ -1,9 +1,10 @@
+import { bondYieldFromRow, getHkBondAnchorPreference } from "./bondAnchor";
 import type { BondAnchorId, BondSeriesPoint, EtfDefinition } from "../types";
 
 export function bondAnchorForEtf(etf: EtfDefinition): BondAnchorId | null {
   if (etf.meta.product_kind !== "红利_含股息分红") return null;
   if (!etf.meta.dividend_market_scope) return null;
-  return etf.meta.dividend_market_scope === "A股红利" ? "CN_10Y" : "US_10Y";
+  return etf.meta.dividend_market_scope === "A股红利" ? "CN_10Y" : getHkBondAnchorPreference();
 }
 
 export type SpreadRow = {
@@ -16,9 +17,10 @@ export type SpreadRow = {
 
 export function buildSpreadSeries(
   etf: EtfDefinition,
-  bondByDate: Record<string, BondSeriesPoint>
+  bondByDate: Record<string, BondSeriesPoint>,
+  bondAnchor?: BondAnchorId
 ): SpreadRow[] {
-  const anchor = bondAnchorForEtf(etf);
+  const anchor = bondAnchor ?? bondAnchorForEtf(etf);
   if (!anchor) return [];
   const fallbackNominal = etf.meta.div_yield_nominal_pct;
   let lastExplicit: number | undefined;
@@ -29,8 +31,7 @@ export function buildSpreadSeries(
     }
     const divYieldPct = lastExplicit ?? fallbackNominal;
     const bondRow = bondByDate[b.date];
-    const bondYieldPct =
-      anchor === "CN_10Y" ? bondRow?.cn10y_pct ?? 2.5 : bondRow?.us10y_pct ?? 4.2;
+    const bondYieldPct = bondYieldFromRow(bondRow, anchor, 2.5, 4.2);
     return {
       date: b.date,
       price: b.close,

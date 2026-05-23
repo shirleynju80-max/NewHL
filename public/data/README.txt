@@ -8,6 +8,7 @@
 【可选主文件】
   bonds.csv — 无此文件、或文件为空、或仅有表头/说明行无有效数据时，视为「无国债序列」：各交易日使用中债 2.5%、美债 4.0% 常数对齐 K 线（与代码内 DEFAULT_BOND_* 一致）。有数据时：表头可为 date,cn10y_pct,us10y_pct，或含「日期」+ 中债/美国收益率列；前几行说明可自动跳过。
   indices.csv / index_bars.csv / index_tracking_etfs.csv — 指数列表与指数详情页数据。index_bars.csv 中 div_yield_nominal_pct 为按日显式观测值；当前已确认可用的红利/现金流指数使用红色火箭 DID 序列补充，只在源接口有观测且本地有对应 bar 的日期写入，不做前向填充。
+  etf_products.csv — 产品落地数据底表。每个产品必须有 index_code；同一指数仅一个 is_primary=true，盘中信号默认只使用主产品，非主产品仅供产品落地参考。基础表由 node scripts/generate_etf_products.mjs 生成，规模/管理费/托管费/综合费率由 node scripts/sync_etf_products_monthly.mjs 按月补充；成交额、折溢价、实际跟踪误差无可靠来源时保持空。
 
 【可选合并文件】存在时会在内存中与主文件合并后再建 bundle：
   etfsmore.csv   — 与 etfs.csv 合并：同一 code 以 more 为准
