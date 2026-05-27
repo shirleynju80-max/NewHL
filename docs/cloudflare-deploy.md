@@ -79,7 +79,9 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 仓库已包含：
 
 - [.github/workflows/cloudflare-r2-upload.yml](../.github/workflows/cloudflare-r2-upload.yml)：将 `public/data/*.csv` 上传到 R2；可在实时 / 指数同步成功后自动触发，或手动 `workflow_dispatch`。
-- [.github/workflows/cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml)：手动构建并 `pages deploy`（更推荐在 Cloudflare Dashboard 连接 Git 自动构建）。
+- [.github/workflows/cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml)：手动构建并 `pages deploy`（须加 `--branch=main` 与 Production branch 一致，否则只进 Preview）。
+
+**wrangler 直传常见坑**：Actions 显示 deploy 成功，但 `newhl-dashboard.pages.dev` 仍是旧版 → 到 Cloudflare **Deployments** 把最新部署 **Promote to production**，或 workflow 使用 `--branch=main` 后重跑。
 
 所需 Secrets：
 

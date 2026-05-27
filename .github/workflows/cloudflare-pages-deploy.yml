@@ -11,9 +11,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify Cloudflare secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=0
+          if [[ -z "${CLOUDFLARE_API_TOKEN}" ]]; then
+            echo "::error::Missing repository secret CLOUDFLARE_API_TOKEN"
+            missing=1
+          fi
+          if [[ -z "${CLOUDFLARE_ACCOUNT_ID}" ]]; then
+            echo "::error::Missing repository secret CLOUDFLARE_ACCOUNT_ID"
+            missing=1
+          fi
+          if [[ "${missing}" -ne 0 ]]; then
+            echo "Configure secrets under Settings → Secrets and variables → Actions."
+            echo "Token needs: Account / Cloudflare Pages → Edit, Account → Read."
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
 
       - name: Install and build
@@ -28,4 +48,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=newhl-dashboard
+          # --branch 须与 Pages 项目 Settings → Production branch 一致（通常 main），否则只进 Preview
+          command: pages deploy dist --project-name=newhl-dashboard --branch=main --commit-dirty=true
