@@ -1,3 +1,5 @@
+import { fetchRealtimeQuote } from "./eastmoneyQuote";
+
 export interface Env {
   DATA_BUCKET: R2Bucket;
   ALLOWED_ORIGIN?: string;
@@ -12,6 +14,7 @@ const FILES = {
   barsMore: "barsmore.csv",
   bondsMore: "bondsmore.csv",
   fundBars: "fund_bars.csv",
+  etfProducts: "etf_products.csv",
   indices: "indices.csv",
   indexBars: "index_bars.csv",
   indexTrackingEtfs: "index_tracking_etfs.csv",
@@ -55,6 +58,25 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    if (request.method === "GET" && url.pathname === "/api/quote") {
+      const code = url.searchParams.get("code")?.trim() ?? "";
+      if (!code) return json({ ok: false, detail: "missing code" }, 400, origin);
+      const q = await fetchRealtimeQuote(code);
+      if (!q.ok) return json({ ok: false, detail: q.detail ?? "quote failed" }, 502, origin);
+      return json(
+        {
+          ok: true,
+          price: q.price,
+          tradeDate: q.tradeDate,
+          quoteTime: q.quoteTime,
+          source: q.source,
+        },
+        200,
+        origin
+      );
+    }
+
     if (request.method !== "GET" || url.pathname !== "/api/bundle") {
       return json({ error: "not_found" }, 404, origin);
     }

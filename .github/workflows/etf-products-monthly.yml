@@ -1,0 +1,45 @@
+# 每月更新 ETF 产品落地基础字段：规模、管理费、托管费、成立日期等
+name: ETF products monthly sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 每月 5 日北京时间 09:20；GitHub Actions 使用 UTC。
+    - cron: "20 1 5 * *"
+
+concurrency:
+  group: etf-products-monthly
+  cancel-in-progress: true
+
+jobs:
+  sync-etf-products:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Select index tracking ETF candidates
+        run: node scripts/select_index_tracking_etfs.mjs
+
+      - name: Sync ETF product fields
+        run: node scripts/sync_etf_products_monthly.mjs
+
+      - name: Verify ETF product table
+        run: node scripts/verify_etf_products.mjs
+
+      - name: Commit ETF product data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/data/index_tracking_etfs.csv public/data/etf_products.csv
+          if git diff --staged --quiet; then
+            echo "No changes to etf_products.csv"
+          else
+            git commit -m "chore(data): sync ETF product metadata"
+            git push
+          fi

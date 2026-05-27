@@ -1,4 +1,9 @@
-import type { EtfDefinition, EtfParams, OhlcBar, ParamStrategyVariant } from "../types";
+import type {
+  EtfDefinition,
+  EtfParams,
+  OhlcBar,
+  ParamStrategyVariant,
+} from "../types";
 import { bondMap, buildBondSeries } from "./bonds";
 
 function mulberry32(a: number) {
@@ -21,7 +26,12 @@ function genDates(n: number): string[] {
   return out;
 }
 
-function genOhlc(dates: string[], seed: number, start: number, drift: number): OhlcBar[] {
+function genOhlc(
+  dates: string[],
+  seed: number,
+  start: number,
+  drift: number,
+): OhlcBar[] {
   const rnd = mulberry32(seed);
   let c = start;
   return dates.map((date) => {
@@ -119,12 +129,17 @@ export const etfDefinitions: EtfDefinition[] = [
       tax_assumption_note: "示例：港股通红利税口径为示意，非税务建议。",
       fx_ccy: "HKD",
       doc_links: [
-        { label: "港股分红税梳理（参考）", href: "https://www.jiemian.com/article/13720733.html" },
+        {
+          label: "港股分红税梳理（参考）",
+          href: "https://www.jiemian.com/article/13720733.html",
+        },
       ],
     },
     params: {
       ma_variants: [{ variant_id: "ma_hk", fast: 5, slow: 30 }],
-      rsi_variants: [{ variant_id: "rsi_hk", period: 14, overbought: 70, oversold: 30 }],
+      rsi_variants: [
+        { variant_id: "rsi_hk", period: 14, overbought: 70, oversold: 30 },
+      ],
       bollinger_variants: [{ variant_id: "bb_hk", period: 20, stdDev: 2 }],
       strategy_ma_ids: ["ma_hk", "ma_hk"],
       strategy_rsi_id: "rsi_hk",
@@ -143,7 +158,9 @@ export const etfDefinitions: EtfDefinition[] = [
     },
     params: {
       ma_variants: [{ variant_id: "ma_cf", fast: 10, slow: 40 }],
-      rsi_variants: [{ variant_id: "rsi_cf", period: 14, overbought: 70, oversold: 30 }],
+      rsi_variants: [
+        { variant_id: "rsi_cf", period: 14, overbought: 70, oversold: 30 },
+      ],
       bollinger_variants: [{ variant_id: "bb_cf", period: 20, stdDev: 2 }],
       strategy_ma_ids: ["ma_cf", "ma_cf"],
     },

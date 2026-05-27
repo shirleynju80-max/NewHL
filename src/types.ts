@@ -10,17 +10,23 @@ export type MaVariant = {
   slow: number;
 };
 
+export type IndicatorCadence = "1d" | "1w";
+
 export type RsiVariant = {
   variant_id: string;
   period: number;
   overbought: number;
   oversold: number;
+  /** 缺省日频；登记参数可由 etf_params.note（如「RSI周」）指定 */
+  cadence?: IndicatorCadence;
 };
 
 export type BollingerVariant = {
   variant_id: string;
   period: number;
   stdDev: number;
+  /** 缺省日频；登记参数可由 etf_params.note（如「布林周」）指定 */
+  cadence?: IndicatorCadence;
 };
 
 /**
@@ -157,6 +163,8 @@ export type IndexBar = {
   tri_close: number;
   price_close?: number;
   div_yield_nominal_pct?: number;
+  /** Red-Rocket 历史分位（%），与 div_yield_nominal_pct 同日观测；缺则本地按名义股息率序列计算 */
+  div_yield_redrocket_percentile_pct?: number;
 };
 
 export type IndexDefinition = {

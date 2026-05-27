@@ -23,12 +23,18 @@ export function parseCsvLine(line: string): string[] {
 }
 
 export function parseCsv(text: string): string[][] {
-  const t = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const t = text
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
   const lines = t.split("\n").filter((ln) => ln.trim().length > 0);
   return lines.map(parseCsvLine);
 }
 
-export function rowsToObjects(headers: string[], rows: string[][]): Record<string, string>[] {
+export function rowsToObjects(
+  headers: string[],
+  rows: string[][],
+): Record<string, string>[] {
   return rows.map((cols) => {
     const o: Record<string, string> = {};
     headers.forEach((h, i) => {

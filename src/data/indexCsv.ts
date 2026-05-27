@@ -1,6 +1,18 @@
 import { parseCsv, rowsToObjects } from "../lib/csv";
-import type { BondSeriesPoint } from "../types";
-import type { IndexBar, IndexCategory, IndexDefinition, IndexMarket, IndexMeta, IndexTrackingRow } from "../types";
+import {
+  bondYieldFromRow,
+  getHkBondAnchorPreference,
+  resolveBondAnchorForIndex,
+} from "../lib/bondAnchor";
+import type { BondAnchorId, BondSeriesPoint } from "../types";
+import type {
+  IndexBar,
+  IndexCategory,
+  IndexDefinition,
+  IndexMarket,
+  IndexMeta,
+  IndexTrackingRow,
+} from "../types";
 
 function num(s: string, field: string): number {
   const v = Number(String(s).replace(/,/g, "").trim());
@@ -25,7 +37,9 @@ function mustCategory(raw: string): IndexCategory {
   const t = (raw ?? "").trim();
   const ok: IndexCategory[] = ["A股红利", "港股红利", "现金流", "价值", "宽基"];
   if ((ok as string[]).includes(t)) return t as IndexCategory;
-  throw new Error(`indices.csv category 无效: ${raw}（允许：${ok.join("、")}）`);
+  throw new Error(
+    `indices.csv category 无效: ${raw}（允许：${ok.join("、")}）`,
+  );
 }
 
 /** 空文件返回 [] */
@@ -70,9 +84,15 @@ export function parseIndexBarsCsv(text: string): Map<string, IndexBar[]> {
     const tri_close = num(r.tri_close ?? "", "tri_close");
     const price_close = optNum(r.price_close);
     const div_yield_nominal_pct = optNum(r.div_yield_nominal_pct);
+    const div_yield_redrocket_percentile_pct = optNum(
+      r.div_yield_redrocket_percentile_pct,
+    );
     const bar: IndexBar = { date, tri_close };
     if (price_close !== undefined) bar.price_close = price_close;
-    if (div_yield_nominal_pct !== undefined) bar.div_yield_nominal_pct = div_yield_nominal_pct;
+    if (div_yield_nominal_pct !== undefined)
+      bar.div_yield_nominal_pct = div_yield_nominal_pct;
+    if (div_yield_redrocket_percentile_pct !== undefined)
+      bar.div_yield_redrocket_percentile_pct = div_yield_redrocket_percentile_pct;
     if (!map.has(index_code)) map.set(index_code, []);
     map.get(index_code)!.push(bar);
   }
@@ -80,7 +100,8 @@ export function parseIndexBarsCsv(text: string): Map<string, IndexBar[]> {
     bars.sort((a, b) => a.date.localeCompare(b.date));
     const seen = new Set<string>();
     for (const b of bars) {
-      if (seen.has(b.date)) throw new Error(`index_bars.csv 指数 ${code} 重复日期 ${b.date}`);
+      if (seen.has(b.date))
+        throw new Error(`index_bars.csv 指数 ${code} 重复日期 ${b.date}`);
       seen.add(b.date);
     }
   }
@@ -95,7 +116,8 @@ export function parseIndexTrackingEtfsCsv(text: string): IndexTrackingRow[] {
   return rowsToObjects(headers, rows.slice(1)).map((r) => {
     const index_code = r.index_code?.trim();
     const etf_code = r.etf_code?.trim();
-    if (!index_code || !etf_code) throw new Error("index_tracking_etfs.csv 每行须含 index_code、etf_code");
+    if (!index_code || !etf_code)
+      throw new Error("index_tracking_etfs.csv 每行须含 index_code、etf_code");
     const row: IndexTrackingRow = { index_code, etf_code };
     const pt = (r.product_type ?? "").trim().toLowerCase();
     if (pt === "otc_fund" || pt === "otc") row.product_type = "otc_fund";
@@ -110,7 +132,10 @@ export function parseIndexTrackingEtfsCsv(text: string): IndexTrackingRow[] {
   });
 }
 
-export function buildIndexDefinitions(metas: IndexMeta[], barsByCode: Map<string, IndexBar[]>): IndexDefinition[] {
+export function buildIndexDefinitions(
+  metas: IndexMeta[],
+  barsByCode: Map<string, IndexBar[]>,
+): IndexDefinition[] {
   return metas.map((meta) => {
     const bars = barsByCode.get(meta.index_code) ?? [];
     return { meta, bars };
@@ -121,7 +146,7 @@ export function buildIndexDefinitions(metas: IndexMeta[], barsByCode: Map<string
 export function parseIndexCsvBundle(
   indicesText: string,
   indexBarsText: string,
-  trackingText: string
+  trackingText: string,
 ): { indices: IndexDefinition[]; indexTracking: IndexTrackingRow[] } {
   const metas = parseIndicesCsv(indicesText);
   const barsMap = parseIndexBarsCsv(indexBarsText);
@@ -130,8 +155,10 @@ export function parseIndexCsvBundle(
   return { indices, indexTracking: tracking };
 }
 
-export function bondAnchorForIndexMarket(market: IndexMarket): "CN_10Y" | "US_10Y" {
-  return market === "A" ? "CN_10Y" : "US_10Y";
+/** @deprecated 请用 resolveBondAnchorForIndex；港股默认中国国债，可在指数详情页切换美债 */
+export function bondAnchorForIndexMarket(market: IndexMarket): BondAnchorId {
+  if (market === "H") return getHkBondAnchorPreference();
+  return "CN_10Y";
 }
 
 export function indexShowsSpread(category: IndexCategory): boolean {
@@ -140,7 +167,10 @@ export function indexShowsSpread(category: IndexCategory): boolean {
 
 export type IndexValueMode = "tri" | "price";
 
-export function indexSeriesForMode(bars: IndexBar[], mode: IndexValueMode): { date: string; value: number }[] {
+export function indexSeriesForMode(
+  bars: IndexBar[],
+  mode: IndexValueMode,
+): { date: string; value: number }[] {
   return bars.map((b) => {
     if (mode === "price") {
       const v = b.price_close;
@@ -152,35 +182,135 @@ export function indexSeriesForMode(bars: IndexBar[], mode: IndexValueMode): { da
 }
 
 export function indexHasPriceSeries(bars: IndexBar[]): boolean {
-  return bars.some((b) => typeof b.price_close === "number" && !Number.isNaN(b.price_close));
+  return bars.some(
+    (b) => typeof b.price_close === "number" && !Number.isNaN(b.price_close),
+  );
+}
+
+function finitePositiveSeries(bars: IndexBar[], mode: IndexValueMode) {
+  return indexSeriesForMode(bars, mode).filter(
+    (p) => Number.isFinite(p.value) && p.value > 0,
+  );
+}
+
+function indexPriceTriSeriesEqual(
+  pricePts: { date: string; value: number }[],
+  triPts: { date: string; value: number }[],
+): boolean {
+  const triByDate = new Map(triPts.map((p) => [p.date, p.value]));
+  let compared = 0;
+  for (const p of pricePts) {
+    const tri = triByDate.get(p.date);
+    if (tri === undefined || !Number.isFinite(tri)) continue;
+    compared++;
+    const scale = Math.max(Math.abs(p.value), Math.abs(tri), 1);
+    if (Math.abs(p.value - tri) / scale > 1e-9) return false;
+  }
+  if (compared > 0) return true;
+  return pricePts.length === triPts.length && pricePts.length > 0;
+}
+
+/** 指数详情图/业绩表：价格与全收益可区分时才同时展示 */
+export function indexChartValueModes(bars: IndexBar[]): IndexValueMode[] {
+  if (!bars.length) return [];
+  const pricePts = finitePositiveSeries(bars, "price");
+  const triPts = finitePositiveSeries(bars, "tri");
+  if (!indexHasPriceSeries(bars) || !pricePts.length) {
+    return triPts.length ? ["tri"] : [];
+  }
+  if (!triPts.length) return ["price"];
+  if (indexPriceTriSeriesEqual(pricePts, triPts)) return ["tri"];
+  return ["price", "tri"];
+}
+
+export type IndexDividendYieldSnapshot = {
+  latestYieldPct: number | null;
+  yieldPercentilePct: number | null;
+  latestDate: string | null;
+  missingReason: string | null;
+};
+
+/** 最新名义股息率与历史分位：仅用 index_bars 显式观测，不前向填充。 */
+export function indexDividendYieldSnapshot(
+  bars: IndexBar[],
+): IndexDividendYieldSnapshot {
+  const withNominal = bars.filter(
+    (b) =>
+      typeof b.div_yield_nominal_pct === "number" &&
+      !Number.isNaN(b.div_yield_nominal_pct),
+  );
+  if (!withNominal.length) {
+    return {
+      latestYieldPct: null,
+      yieldPercentilePct: null,
+      latestDate: null,
+      missingReason: "index_bars 无按日股息率观测",
+    };
+  }
+  const latestBar = withNominal.at(-1)!;
+  const latestYieldPct = latestBar.div_yield_nominal_pct!;
+  const rr = latestBar.div_yield_redrocket_percentile_pct;
+  if (typeof rr === "number" && !Number.isNaN(rr)) {
+    return {
+      latestYieldPct,
+      yieldPercentilePct: rr,
+      latestDate: latestBar.date,
+      missingReason: null,
+    };
+  }
+  const series = withNominal.map((b) => b.div_yield_nominal_pct!);
+  const latest = series.at(-1)!;
+  const sorted = series.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!sorted.length) {
+    return {
+      latestYieldPct,
+      yieldPercentilePct: null,
+      latestDate: latestBar.date,
+      missingReason: "历史样本不足，无法计算分位",
+    };
+  }
+  const le = sorted.filter((v) => v <= latest).length;
+  return {
+    latestYieldPct,
+    yieldPercentilePct: Math.round((le / sorted.length) * 100),
+    latestDate: latestBar.date,
+    missingReason: null,
+  };
 }
 
 /** 与现有 ETF 利差一致：仅使用 index_bars 中有显式股息率的日期，不做前向填充。 */
 export function buildIndexSpreadRows(
   def: IndexDefinition,
-  bondByDate: Record<string, BondSeriesPoint>
-): { date: string; divYieldPct: number; bondYieldPct: number; spreadPct: number }[] {
+  bondByDate: Record<string, BondSeriesPoint>,
+  bondAnchor?: BondAnchorId,
+): {
+  date: string;
+  divYieldPct: number;
+  bondYieldPct: number;
+  spreadPct: number;
+}[] {
   if (!indexShowsSpread(def.meta.category)) return [];
-  const anchor = bondAnchorForIndexMarket(def.meta.market);
+  const anchor = bondAnchor ?? resolveBondAnchorForIndex(def);
   return def.bars.flatMap((b) => {
     const raw = b.div_yield_nominal_pct;
     if (typeof raw !== "number" || Number.isNaN(raw)) return [];
     const divYieldPct = raw;
     const bondRow = bondByDate[b.date];
     if (!bondRow) return [];
-    const bondYieldPct =
-      anchor === "CN_10Y" ? bondRow.cn10y_pct : bondRow.us10y_pct;
+    const bondYieldPct = bondYieldFromRow(bondRow, anchor);
     const spreadPct = Math.round((divYieldPct - bondYieldPct) * 100) / 100;
     return { date: b.date, divYieldPct, bondYieldPct, spreadPct };
   });
 }
 
 export function identifyIndexCsv(
-  name: string
+  name: string,
 ): "indices" | "index_bars" | "index_tracking_etfs" | null {
   const n = name.toLowerCase().trim();
   if (n === "indices.csv" || n.endsWith("/indices.csv")) return "indices";
-  if (n === "index_bars.csv" || n.endsWith("/index_bars.csv")) return "index_bars";
-  if (n === "index_tracking_etfs.csv" || n.endsWith("/index_tracking_etfs.csv")) return "index_tracking_etfs";
+  if (n === "index_bars.csv" || n.endsWith("/index_bars.csv"))
+    return "index_bars";
+  if (n === "index_tracking_etfs.csv" || n.endsWith("/index_tracking_etfs.csv"))
+    return "index_tracking_etfs";
   return null;
 }

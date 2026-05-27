@@ -12,7 +12,9 @@ import {
 export function stripQuotedAnnotations(s: string): string {
   let t = s;
   for (let i = 0; i < 8; i++) {
-    const n = t.replace(/\s*\u201c[^\u201d]*\u201d/g, "").replace(/\s*"[^"]*"/g, "");
+    const n = t
+      .replace(/\s*\u201c[^\u201d]*\u201d/g, "")
+      .replace(/\s*"[^"]*"/g, "");
     if (n === t) break;
     t = n;
   }
@@ -45,7 +47,9 @@ export function strategyKindLabel(strategyId: string): string {
 /** 下拉与表格：策略名 + 关键参数摘要 + 版本号 */
 export function variantOptionLabel(v: ParamStrategyVariant): string {
   if (isUserRegisteredVariantKey(v.key)) {
-    return stripQuotedAnnotations(v.label.replace(/^\[观测注册\]\s*/, "注册 · "));
+    return stripQuotedAnnotations(
+      v.label.replace(/^\[观测注册\]\s*/, "注册 · "),
+    );
   }
   const sid = v.strategyId;
   const ver = variantVersionDisplay(v.paramVersion);
@@ -72,7 +76,17 @@ export function variantOptionLabel(v: ParamStrategyVariant): string {
 /** 监控表等：去掉末尾「 · 版本号」，提高可读性 */
 export function variantMonitorCompact(v: ParamStrategyVariant): string {
   if (isUserRegisteredVariantKey(v.key)) {
-    return stripQuotedAnnotations(v.label.replace(/^\[观测注册\]\s*/, "注册 · "));
+    return stripQuotedAnnotations(
+      v.label.replace(/^\[观测注册\]\s*/, "注册 · "),
+    );
+  }
+  const noteLabel = stripQuotedAnnotations(v.label);
+  if (noteLabel && /日/.test(noteLabel)) {
+    const kind = strategyKindLabel(v.strategyId);
+    if (noteLabel.endsWith(` · ${kind}`)) {
+      return noteLabel.slice(0, -(kind.length + 3)).trim();
+    }
+    return noteLabel;
   }
   const full = variantOptionLabel(v);
   const sufRaw = ` · ${v.paramVersion}`;

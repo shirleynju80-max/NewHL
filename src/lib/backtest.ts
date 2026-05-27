@@ -5,7 +5,12 @@ import type { Signal } from "./strategy";
  * 与 computeSignalsMaCustom 一致：自买入日下一根起逐日检查，**首次**满足止盈或回撤的收盘目录入卖因；
  * 同日双触则「止盈+回撤（同日）」。
  */
-function maCustomSellTriggerLabel(bars: OhlcBar[], entryIdx: number, exitIdx: number, rule: MaCustomRule): string {
+function maCustomSellTriggerLabel(
+  bars: OhlcBar[],
+  entryIdx: number,
+  exitIdx: number,
+  rule: MaCustomRule,
+): string {
   const closes = bars.map((b) => b.close);
   const entry = closes[entryIdx]!;
   let peak = entry;
@@ -40,10 +45,13 @@ export function buildTrades(
   signals: Signal[],
   paramVersion: string,
   strategyId: string,
-  params?: EtfParams | null
+  params?: EtfParams | null,
 ): TradePoint[] {
   const sid = strategyId.toLowerCase();
-  const rule = sid.includes("ma_custom") && params?.ma_custom_rule ? params.ma_custom_rule : null;
+  const rule =
+    sid.includes("ma_custom") && params?.ma_custom_rule
+      ? params.ma_custom_rule
+      : null;
   const trades: TradePoint[] = [];
   let lastBuyIdx: number | null = null;
   for (let i = 0; i < bars.length; i++) {
@@ -68,7 +76,9 @@ export function buildTrades(
       const pnl = ((sell - buy) / buy) * 100;
       const holdDays = i - lastBuyIdx;
       const sellReason =
-        rule != null ? maCustomSellTriggerLabel(bars, lastBuyIdx, i, rule) : triggerLabel(strategyId, "SELL");
+        rule != null
+          ? maCustomSellTriggerLabel(bars, lastBuyIdx, i, rule)
+          : triggerLabel(strategyId, "SELL");
       trades.push({
         date: bars[i].date,
         side: "SELL",
@@ -85,7 +95,10 @@ export function buildTrades(
 }
 
 /** 按 K 线顺序，每日收盘后权益（全仓进出；持仓中按收盘对净值做 MTM） */
-export function buildEquitySeries(bars: OhlcBar[], trades: TradePoint[]): number[] {
+export function buildEquitySeries(
+  bars: OhlcBar[],
+  trades: TradePoint[],
+): number[] {
   if (!bars.length) return [];
   const byDate = new Map<string, TradePoint[]>();
   for (const t of trades) {
@@ -145,7 +158,8 @@ export function equityReturnMetrics(series: number[]): {
     };
   }
   const mean = rets.reduce((x, y) => x + y, 0) / rets.length;
-  const varSample = rets.reduce((acc, r) => acc + (r - mean) ** 2, 0) / (rets.length - 1);
+  const varSample =
+    rets.reduce((acc, r) => acc + (r - mean) ** 2, 0) / (rets.length - 1);
   const dailyVol = Math.sqrt(Math.max(0, varSample));
   const annualVolPct = Math.round(dailyVol * Math.sqrt(252) * 10000) / 100;
   return {
@@ -177,7 +191,9 @@ export function performanceFromTrades(trades: TradePoint[]): {
   }
   const mean = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : 0;
   const var_ =
-    rets.length > 1 ? rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1) : 0;
+    rets.length > 1
+      ? rets.reduce((a, b) => a + (b - mean) ** 2, 0) / (rets.length - 1)
+      : 0;
   const vol = rets.length > 1 ? Math.sqrt(var_) * Math.sqrt(252) * 100 : 0;
   return {
     cumReturnPct: Math.round((equity - 1) * 10000) / 100,

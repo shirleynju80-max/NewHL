@@ -1,18 +1,54 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader";
+import {
+  defaultCustomBaselineForm,
+  kindFromStrategyId,
+  MAX_CUSTOM_BASELINES,
+  RegistryCustomBaseline,
+  type CommittedCustomBaseline,
+  type CustomBaselineFormValues,
+  type CustomBaselineKind,
+} from "../components/RegistryCustomBaseline";
+import { customBaselineLabel } from "../components/registryCustomBaselineUtils";
 import { useDataSource } from "../context/DataSourceContext";
 import { useStrategyRegistry } from "../context/StrategyRegistryContext";
 import { parseBarsCsv } from "../data/csvLoader";
 import {
   backtestSummaryForParams,
+  buildCustomBaselineDraft,
   DEFAULT_PARAM_SEARCH,
   gridSearchTopParams,
-  sameScoredParamRow,
+  scoreCustomParamBaseline,
   type GridSearchOutcome,
   type ParamSearchSnapshot,
   type ScoredParamRow,
+  type StrategyFamily,
+  type TopPickedRow,
 } from "../lib/paramBacktest";
-import { getParamVariants } from "../lib/paramVariants";
+import {
+  buildProductSearchHaystack,
+  matchesProductSearch,
+  primaryEtfCodesWithBars,
+} from "../lib/etfProducts";
+import {
+  etfBacktestEligible,
+  etfBacktestIneligibleReason,
+  ETF_REGISTRY_MIN_BACKTEST_YEARS,
+} from "../lib/etfListingAge";
+import {
+  formatAvgFlatDaysDisplay,
+  formatAvgHoldDaysDisplay,
+  HOLD_FLAT_AVG_TOO_FEW_ROUNDS_NOTE,
+} from "../lib/backtestSummary";
+import { formatPct, formatSignedPct } from "../lib/formatDisplay";
+import { getProductParamVariants } from "../lib/paramVariants";
 import {
   isUserRegisteredVariantKey,
   registeredIdFromVariantKey,
@@ -24,60 +60,44 @@ const TOP_N_OPTIONS = [2, 3, 5, 8, 10] as const;
 /** 训练集占比可选值（10% 步进，避免细粒度拖动触发重复全量网格） */
 const TRAIN_RATIO_PCT_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90] as const;
 
-type RegistryPreset = "shareholder_return" | "cash_creation";
-
-const REGISTRY_PRESET_META: Record<
-  RegistryPreset,
-  { label: string; indexCode: string; indexName: string; etfCode: string }
-> = {
-  shareholder_return: {
-    label: "股东回报",
-    indexCode: "H30269",
-    indexName: "中证红利低波动",
-    etfCode: "512890",
-  },
-  cash_creation: {
-    label: "现金创造",
-    indexCode: "980092",
-    indexName: "国证自由现金流",
-    etfCode: "159201",
-  },
-};
-
-function etfCodeForPreset(preset: RegistryPreset, codes: string[]): string {
-  const preferred = REGISTRY_PRESET_META[preset].etfCode;
-  if (codes.includes(preferred)) return preferred;
-  return codes[0] ?? "";
-}
-
-function RegistryResultSummary({ gridResult }: { gridResult: GridSearchOutcome }) {
+function RegistryResultSummary({
+  gridResult,
+}: {
+  gridResult: GridSearchOutcome;
+}) {
   const hints = noBeatBuyHoldHints(gridResult);
   return (
-    <div className="mt-4 space-y-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-4 text-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">回测摘要</p>
-      <p className="text-xs text-zinc-600">
-        买入持有 {gridResult.meta.buyHoldReturnPct}%（年化 {gridResult.meta.buyHoldAnnualPct}%）· 样本{" "}
+    <div className="fin-panel fin-panel-muted mt-4 space-y-3 p-4 text-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-muted)]">
+        回测摘要
+      </p>
+      <p className="text-xs fin-muted-text">
+        买入持有 {formatPct(gridResult.meta.buyHoldReturnPct)}（年化{" "}
+        {formatPct(gridResult.meta.buyHoldAnnualPct)}）· 样本{" "}
         {gridResult.meta.barCount} 日
       </p>
       {gridResult.globalRobustBest && (
-        <p className="text-xs text-sky-950">
-          <span className="font-semibold">☆ 验证集最优</span> — {gridResult.globalRobustBest.label} · 验证超额{" "}
+        <p className="text-xs text-[var(--fin-blue-bright)]">
+          <span className="fin-best-badge-robust">验证集最优</span> —{" "}
+          {gridResult.globalRobustBest.label} · 验证超额{" "}
           {gridResult.globalRobustBest.excessValPct != null
-            ? `${gridResult.globalRobustBest.excessValPct > 0 ? "+" : ""}${gridResult.globalRobustBest.excessValPct}%`
+            ? formatSignedPct(gridResult.globalRobustBest.excessValPct)
             : "—"}
         </p>
       )}
       {gridResult.globalFullBest && (
-        <p className="text-xs text-amber-950">
-          <span className="font-semibold">★ 全样本最优</span> — {gridResult.globalFullBest.label} · 超额{" "}
-          {gridResult.globalFullBest.excessReturnPct > 0 ? "+" : ""}
-          {gridResult.globalFullBest.excessReturnPct}%
+        <p className="text-xs text-[var(--fin-amber)]">
+          <span className="fin-best-badge-full">全样本最优</span> —{" "}
+          {gridResult.globalFullBest.label} · 超额{" "}
+          {formatSignedPct(gridResult.globalFullBest.excessReturnPct)}
         </p>
       )}
       {hints && (
-        <p className="text-xs text-rose-900">
+        <p className="text-xs text-[var(--fin-down)]">
           {hints[0]}
-          {hints.length > 1 ? `（另有 ${hints.length - 1} 条说明，见详细结果）` : null}
+          {hints.length > 1
+            ? `（另有 ${hints.length - 1} 条说明，见详细结果）`
+            : null}
         </p>
       )}
     </div>
@@ -99,18 +119,31 @@ function coalesce<T>(parsed: T[], fallback: T[]): T[] {
 
 /** 全样本无一组合跑赢买入持有时，给出可能原因 */
 function noBeatBuyHoldHints(result: GridSearchOutcome): string[] | null {
-  const rows = [...result.rsi, ...result.boll, ...result.maCross, ...result.maCustom];
+  const rows = [
+    ...result.rsi,
+    ...result.boll,
+    ...result.maCross,
+    ...result.maCustom,
+  ];
   if (!rows.length) return ["网格无有效成交组合，可放宽参数范围或延长样本"];
   const bestFullExcess =
-    result.globalFullBest?.excessReturnPct ?? Math.max(...rows.map((r) => r.excessReturnPct));
+    result.globalFullBest?.excessReturnPct ??
+    Math.max(...rows.map((r) => r.excessReturnPct));
   if (bestFullExcess > 0) return null;
 
   const hints: string[] = ["当前 Top 组合在全样本上均未跑赢买入持有"];
-  const { barCount, buyHoldReturnPct, buyHoldAnnualPct, buyHoldMaxDrawdownPct } = result.meta;
+  const {
+    barCount,
+    buyHoldReturnPct,
+    buyHoldAnnualPct,
+    buyHoldMaxDrawdownPct,
+  } = result.meta;
   const { valBarCount, trainBarCount } = result.split;
 
-  if (barCount < 252) hints.push(`样本约 ${barCount} 日，窗口偏短，择时优势难稳定体现`);
-  else if (barCount < 504) hints.push("样本不足两年，长周期策略相对买入持有的优势不易显现");
+  if (barCount < 252)
+    hints.push(`样本约 ${barCount} 日，窗口偏短，择时优势难稳定体现`);
+  else if (barCount < 504)
+    hints.push("样本不足两年，长周期策略相对买入持有的优势不易显现");
   if (buyHoldReturnPct > 30 && buyHoldMaxDrawdownPct > -25) {
     hints.push("区间收益高且回撤可控，偏慢牛/趋势市，持有往往优于频繁交易");
   }
@@ -119,7 +152,8 @@ function noBeatBuyHoldHints(result: GridSearchOutcome): string[] | null {
   }
   if (valBarCount < 60) hints.push("验证段不足约 60 日，分段排序参考价值有限");
   if (trainBarCount < 60) hints.push("训练段过短，易过拟合短窗噪声");
-  if (rows.every((r) => r.roundCount < 3)) hints.push("换手轮次过少，信号稀疏或参数过严");
+  if (rows.every((r) => r.roundCount < 3))
+    hints.push("换手轮次过少，信号稀疏或参数过严");
 
   return hints;
 }
@@ -163,14 +197,26 @@ function formFromDefaults(): SearchForm {
 
 function snapshotFromForm(f: SearchForm): ParamSearchSnapshot {
   const d = DEFAULT_PARAM_SEARCH;
-  const rsiModes = ([] as ("1d" | "1w")[]).concat(f.rsiD ? (["1d"] as const) : [], f.rsiW ? (["1w"] as const) : []);
-  const bollModes = ([] as ("1d" | "1w")[]).concat(f.bollD ? (["1d"] as const) : [], f.bollW ? (["1w"] as const) : []);
+  const rsiModes = ([] as ("1d" | "1w")[]).concat(
+    f.rsiD ? (["1d"] as const) : [],
+    f.rsiW ? (["1w"] as const) : [],
+  );
+  const bollModes = ([] as ("1d" | "1w")[]).concat(
+    f.bollD ? (["1d"] as const) : [],
+    f.bollW ? (["1w"] as const) : [],
+  );
   return {
     maCrossFast: coalesce(parseNumList(f.maCrossFastStr), d.maCrossFast),
     maCrossSlow: coalesce(parseNumList(f.maCrossSlowStr), d.maCrossSlow),
     maCustomBuyMa: coalesce(parseNumList(f.maCustomBuyStr), d.maCustomBuyMa),
-    maCustomProfitPct: coalesce(parseNumList(f.maCustomProfitStr), d.maCustomProfitPct),
-    maCustomDrawdownPct: coalesce(parseNumList(f.maCustomDdStr), d.maCustomDrawdownPct),
+    maCustomProfitPct: coalesce(
+      parseNumList(f.maCustomProfitStr),
+      d.maCustomProfitPct,
+    ),
+    maCustomDrawdownPct: coalesce(
+      parseNumList(f.maCustomDdStr),
+      d.maCustomDrawdownPct,
+    ),
     rsiModes: rsiModes.length ? rsiModes : d.rsiModes,
     rsiPeriods: coalesce(parseNumList(f.rsiPeriodStr), d.rsiPeriods),
     rsiOversold: coalesce(parseNumList(f.rsiOsStr), d.rsiOversold),
@@ -184,9 +230,14 @@ function snapshotFromForm(f: SearchForm): ParamSearchSnapshot {
 type DataSourceMode = "bundle" | "upload";
 
 export function RegistryPage() {
-  const { definitions: etfDefinitions, getEtf } = useDataSource();
+  const {
+    definitions: etfDefinitions,
+    getEtf,
+    etfProducts,
+  } = useDataSource();
   const { entries, addEntry, removeEntry } = useStrategyRegistry();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const prevUrlEtfRef = useRef<string | undefined>(undefined);
 
   const barsInputRef = useRef<HTMLInputElement>(null);
   const [barsText, setBarsText] = useState<string | null>(null);
@@ -196,12 +247,29 @@ export function RegistryPage() {
   const [gridBusy, setGridBusy] = useState(false);
   const [gridErr, setGridErr] = useState<string | null>(null);
   const [gridResult, setGridResult] = useState<GridSearchOutcome | null>(null);
-  const [searchForm, setSearchForm] = useState<SearchForm>(() => formFromDefaults());
+  const [searchForm, setSearchForm] = useState<SearchForm>(() =>
+    formFromDefaults(),
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [topN, setTopN] = useState<number>(2);
   /** 训练集占全样本比例 %（5–95，默认 70 ≈ 7:3） */
   const [trainRatioPct, setTrainRatioPct] = useState(70);
-  const [registryPreset, setRegistryPreset] = useState<RegistryPreset>("shareholder_return");
+  const [productQuery, setProductQuery] = useState("");
+  const [baselineKind, setBaselineKind] = useState<CustomBaselineKind>("ma");
+  const [baselineFormByKind, setBaselineFormByKind] = useState<
+    Record<CustomBaselineKind, CustomBaselineFormValues>
+  >(() => ({
+    ma: defaultCustomBaselineForm(),
+    rsi: defaultCustomBaselineForm(),
+    boll: defaultCustomBaselineForm(),
+  }));
+  const [baselineSlotsByKind, setBaselineSlotsByKind] = useState<
+    Record<
+      CustomBaselineKind,
+      { id: string; committed: CommittedCustomBaseline }[]
+    >
+  >(() => ({ ma: [], rsi: [], boll: [] }));
+  const [baselineAddError, setBaselineAddError] = useState<string | null>(null);
   const skipTopNEffectRef = useRef(true);
 
   useEffect(() => {
@@ -219,12 +287,32 @@ export function RegistryPage() {
     }
   }, [barsText]);
 
-  const bundleCodes = useMemo(() => etfDefinitions.map((d) => d.meta.code).sort(), [etfDefinitions]);
+  const bundleCodes = useMemo(
+    () => primaryEtfCodesWithBars(etfDefinitions, etfProducts),
+    [etfDefinitions, etfProducts],
+  );
 
   const selectableCodes = useMemo(
     () => (dataMode === "bundle" ? bundleCodes : barCodes),
-    [dataMode, bundleCodes, barCodes]
+    [dataMode, bundleCodes, barCodes],
   );
+
+  const eligibleSelectableCodes = useMemo(() => {
+    if (dataMode !== "bundle") return selectableCodes;
+    return selectableCodes.filter((code) => {
+      const def = getEtf(code);
+      if (!def) return false;
+      const product = etfProducts.find((p) => p.code === code);
+      if (product?.exchange === "OTC" || product?.productGroup === "otc_fund") {
+        return false;
+      }
+      return etfBacktestEligible(
+        def,
+        product,
+        ETF_REGISTRY_MIN_BACKTEST_YEARS,
+      );
+    });
+  }, [dataMode, selectableCodes, getEtf, etfProducts]);
 
   const barsForCode = useMemo(() => {
     if (!barsText || !selectedCode) return null;
@@ -244,67 +332,344 @@ export function RegistryPage() {
     return barsForCode;
   }, [dataMode, getEtf, selectedCode, barsForCode]);
 
-  const selectedDef = useMemo(() => (selectedCode ? getEtf(selectedCode) : undefined), [getEtf, selectedCode]);
+  const selectedDef = useMemo(
+    () => (selectedCode ? getEtf(selectedCode) : undefined),
+    [getEtf, selectedCode],
+  );
+
+  const selectedProduct = useMemo(
+    () =>
+      selectedCode
+        ? etfProducts.find((p) => p.code === selectedCode)
+        : undefined,
+    [etfProducts, selectedCode],
+  );
+
+  const selectedIsOtcFund =
+    selectedProduct?.exchange === "OTC" ||
+    selectedProduct?.productGroup === "otc_fund";
+
+  const selectedBacktestEligible = useMemo(
+    () =>
+      selectedDef
+        && !selectedIsOtcFund
+        ? etfBacktestEligible(
+            selectedDef,
+            selectedProduct,
+            ETF_REGISTRY_MIN_BACKTEST_YEARS,
+          )
+        : false,
+    [selectedDef, selectedProduct, selectedIsOtcFund],
+  );
 
   const boardVerifySummary = useMemo(() => {
-    if (dataMode !== "bundle" || !selectedDef || !barsForRun || barsForRun.length < 2) return null;
+    if (
+      dataMode !== "bundle" ||
+      !selectedDef ||
+      !selectedBacktestEligible ||
+      !barsForRun ||
+      barsForRun.length < 2
+    ) {
+      return null;
+    }
     return backtestSummaryForParams(
       barsForRun,
       selectedDef.params,
       selectedDef.meta.strategy_id,
-      selectedDef.meta.param_version
+      selectedDef.meta.param_version,
     );
-  }, [dataMode, selectedDef, barsForRun]);
+  }, [dataMode, selectedDef, selectedBacktestEligible, barsForRun]);
+
+  const selectedBacktestIneligibleReason = useMemo(
+    () =>
+      dataMode === "bundle" && selectedDef && !selectedBacktestEligible
+        ? selectedIsOtcFund
+          ? "场外基金使用净值序列，不参与本页日 K 网格回测；可在精选跟踪和产品详情中查看净值口径结果。"
+          : etfBacktestIneligibleReason(
+              selectedDef,
+              selectedProduct,
+              ETF_REGISTRY_MIN_BACKTEST_YEARS,
+            )
+        : null,
+    [
+      dataMode,
+      selectedDef,
+      selectedBacktestEligible,
+      selectedProduct,
+      selectedIsOtcFund,
+    ],
+  );
 
   const selectedInBundle = useMemo(
-    () => Boolean(selectedCode && etfDefinitions.some((d) => d.meta.code === selectedCode)),
-    [etfDefinitions, selectedCode]
+    () =>
+      Boolean(
+        selectedCode &&
+        etfDefinitions.some((d) => d.meta.code === selectedCode),
+      ),
+    [etfDefinitions, selectedCode],
   );
 
   const uploadOnlyRegistered = useMemo(() => {
-    if (dataMode !== "upload" || !selectedCode || selectedInBundle) return [] as typeof entries;
+    if (dataMode !== "upload" || !selectedCode || selectedInBundle)
+      return [] as typeof entries;
     return entries.filter((e) => e.etfCode === selectedCode);
   }, [dataMode, selectedCode, selectedInBundle, entries]);
 
-  const applyPreset = useCallback(
-    (preset: RegistryPreset) => {
-      setRegistryPreset(preset);
-      const code = etfCodeForPreset(preset, selectableCodes);
-      if (!code) return;
+  const productPickerOptions = useMemo(() => {
+    return selectableCodes.map((code) => {
+      const def = getEtf(code);
+      const product = etfProducts.find((p) => p.code === code);
+      const name =
+        product?.name?.trim() ||
+        (def?.meta.name && !/仅 bars|etfs 为空/.test(def.meta.name)
+          ? def.meta.name
+          : "") ||
+        code;
+      const haystack = buildProductSearchHaystack(
+        code,
+        product,
+        def?.meta.name,
+      );
+      return { code, name, haystack };
+    });
+  }, [selectableCodes, getEtf, etfProducts]);
+
+  const filteredProductOptions = useMemo(() => {
+    const q = productQuery.trim();
+    if (!q) return productPickerOptions;
+    return productPickerOptions.filter((o) =>
+      matchesProductSearch(o.haystack, q),
+    );
+  }, [productPickerOptions, productQuery]);
+
+  const selectProduct = useCallback(
+    (code: string) => {
       setSelectedCode(code);
       setGridResult(null);
       setGridErr(null);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (next.get("etf") === code) return prev;
+          next.set("etf", code);
+          return next;
+        },
+        { replace: true },
+      );
     },
-    [selectableCodes]
+    [setSearchParams],
   );
+
+  useEffect(() => {
+    setBaselineSlotsByKind({ ma: [], rsi: [], boll: [] });
+    setBaselineAddError(null);
+    if (selectedDef) {
+      setBaselineKind(kindFromStrategyId(selectedDef.meta.strategy_id));
+    }
+    setBaselineFormByKind({
+      ma: defaultCustomBaselineForm(),
+      rsi: defaultCustomBaselineForm(),
+      boll: defaultCustomBaselineForm(),
+    });
+  }, [selectedCode, selectedDef?.meta.strategy_id]);
+
+  const baselineSlots = baselineSlotsByKind[baselineKind] ?? [];
+  const baselineForm = baselineFormByKind[baselineKind];
+  const setBaselineForm = useCallback(
+    (next: CustomBaselineFormValues) => {
+      setBaselineFormByKind((prev) => ({ ...prev, [baselineKind]: next }));
+    },
+    [baselineKind],
+  );
+
+  const allBaselineCommitted = useMemo(
+    () =>
+      (["ma", "rsi", "boll"] as const).flatMap(
+        (k) => baselineSlotsByKind[k] ?? [],
+      ),
+    [baselineSlotsByKind],
+  );
+
+  const baselineSlotCountTotal = allBaselineCommitted.length;
+
+  const scoreBaselineSlot = useCallback(
+    (slot: { id: string; committed: CommittedCustomBaseline }) => {
+      if (!barsForRun || barsForRun.length < 40) {
+        return { ...slot, row: null as ScoredParamRow | null };
+      }
+      const label = customBaselineLabel(
+        slot.committed.strategyId,
+        slot.committed.params,
+        slot.committed.mode,
+      );
+      const row = scoreCustomParamBaseline(
+        barsForRun,
+        slot.committed.params,
+        slot.committed.strategyId,
+        label,
+        { trainRatio: trainRatioPct / 100 },
+        slot.committed.kind,
+        slot.committed.mode,
+      );
+      return { ...slot, row };
+    },
+    [barsForRun, trainRatioPct],
+  );
+
+  const customBaselineSlotsAllKinds = useMemo(
+    () => allBaselineCommitted.map(scoreBaselineSlot),
+    [allBaselineCommitted, scoreBaselineSlot],
+  );
+
+  const customBaselineSlotsForKind = useMemo(
+    () =>
+      customBaselineSlotsAllKinds.filter(
+        (s) => s.committed.kind === baselineKind,
+      ),
+    [customBaselineSlotsAllKinds, baselineKind],
+  );
+
+  const customBaselineRows = useMemo(
+    () =>
+      customBaselineSlotsAllKinds
+        .map((s) => s.row)
+        .filter((r): r is ScoredParamRow => r != null),
+    [customBaselineSlotsAllKinds],
+  );
+
+  const addCustomBaseline = useCallback(() => {
+    setBaselineAddError(null);
+    if (!barsForRun || barsForRun.length < 40) {
+      setBaselineAddError("K 线不足 40 根，无法计算 Baseline。");
+      return;
+    }
+    if (baselineSlots.length >= MAX_CUSTOM_BASELINES) {
+      setBaselineAddError(
+        `最多添加 ${MAX_CUSTOM_BASELINES} 组自定义参数。`,
+      );
+      return;
+    }
+    if (baselineKind === "ma" && baselineForm.maFast >= baselineForm.maSlow) {
+      setBaselineAddError("MA 金叉：慢线须大于快线。");
+      return;
+    }
+    if (
+      baselineKind === "rsi" &&
+      baselineForm.rsiOversold >= baselineForm.rsiOverbought
+    ) {
+      setBaselineAddError("RSI：超卖须小于超买。");
+      return;
+    }
+    const draft = buildCustomBaselineDraft(baselineKind, baselineForm);
+    const committed: CommittedCustomBaseline = {
+      kind: baselineKind,
+      ...draft,
+      mode:
+        baselineKind === "rsi"
+          ? baselineForm.rsiMode
+          : baselineKind === "boll"
+            ? baselineForm.bollMode
+            : undefined,
+    };
+    const row = scoreCustomParamBaseline(
+      barsForRun,
+      draft.params,
+      draft.strategyId,
+      customBaselineLabel(draft.strategyId, draft.params, committed.mode),
+      { trainRatio: trainRatioPct / 100 },
+      baselineKind,
+      committed.mode,
+    );
+    if (!row) {
+      setBaselineAddError("参数无法产生有效回测，请检查取值。");
+      return;
+    }
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `cb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setBaselineSlotsByKind((prev) => ({
+      ...prev,
+      [baselineKind]: [...(prev[baselineKind] ?? []), { id, committed }],
+    }));
+  }, [barsForRun, baselineKind, baselineForm, trainRatioPct, baselineSlots.length]);
+
+  const removeCustomBaseline = useCallback((id: string) => {
+    setBaselineSlotsByKind((prev) => {
+      const next = { ...prev };
+      for (const k of ["ma", "rsi", "boll"] as const) {
+        next[k] = (prev[k] ?? []).filter((s) => s.id !== id);
+      }
+      return next;
+    });
+    setBaselineAddError(null);
+  }, []);
+
+  const clearCustomBaselines = useCallback(() => {
+    setBaselineSlotsByKind((prev) => ({ ...prev, [baselineKind]: [] }));
+    setBaselineAddError(null);
+  }, [baselineKind]);
 
   useEffect(() => {
     if (!selectableCodes.length) {
       setSelectedCode("");
       return;
     }
-    const fromUrl = searchParams.get("etf")?.trim();
-    if (fromUrl && selectableCodes.includes(fromUrl)) {
-      setSelectedCode(fromUrl);
-      setDataMode("bundle");
-      if (fromUrl === REGISTRY_PRESET_META.cash_creation.etfCode) setRegistryPreset("cash_creation");
-      else if (fromUrl === REGISTRY_PRESET_META.shareholder_return.etfCode) setRegistryPreset("shareholder_return");
+    const urlEtf = searchParams.get("etf")?.trim() ?? "";
+    const urlEtfChanged = prevUrlEtfRef.current !== urlEtf;
+    prevUrlEtfRef.current = urlEtf;
+
+    if (urlEtf && selectableCodes.includes(urlEtf)) {
+      if (urlEtfChanged) {
+        setSelectedCode(urlEtf);
+        setDataMode("bundle");
+      }
       return;
     }
     setSelectedCode((c) => {
-      if (c && selectableCodes.includes(c)) return c;
-      return etfCodeForPreset(registryPreset, selectableCodes);
+      if (
+        c &&
+        selectableCodes.includes(c) &&
+        (dataMode !== "bundle" || eligibleSelectableCodes.includes(c))
+      ) {
+        return c;
+      }
+      const next = eligibleSelectableCodes[0] ?? selectableCodes[0] ?? "";
+      if (next !== c) {
+        setGridResult(null);
+        setGridErr(null);
+      }
+      return next;
     });
-  }, [selectableCodes.join("|"), searchParams, registryPreset]);
+  }, [dataMode, selectableCodes.join("|"), eligibleSelectableCodes.join("|"), searchParams]);
 
   const runBacktest = useCallback(() => {
     setGridErr(null);
+    if (
+      dataMode === "bundle" &&
+      selectedDef &&
+      !etfBacktestEligible(
+        selectedDef,
+        selectedProduct,
+        ETF_REGISTRY_MIN_BACKTEST_YEARS,
+      )
+    ) {
+      setGridResult(null);
+      setGridErr(
+        etfBacktestIneligibleReason(
+          selectedDef,
+          selectedProduct,
+          ETF_REGISTRY_MIN_BACKTEST_YEARS,
+        ),
+      );
+      return;
+    }
     if (!barsForRun || barsForRun.length < 40) {
       setGridResult(null);
       setGridErr(
         dataMode === "bundle"
-          ? "当前标的 K 线不足 40 根或未加载。请在首页确认数据源已包含 bars，并选择有数据的标的。"
-          : "请先上传 bars.csv 并选择标的；K 线需不少于 40 根。"
+          ? "当前标的 K 线不足 40 根或未加载。请确认数据源已包含 bars，并选择有数据的标的。"
+          : "请先上传 bars.csv 并选择标的；K 线需不少于 40 根。",
       );
       return;
     }
@@ -312,9 +677,14 @@ export function RegistryPage() {
     try {
       const snap = snapshotFromForm(searchForm);
       const tr = Math.min(95, Math.max(5, trainRatioPct)) / 100;
-      setGridResult(gridSearchTopParams(barsForRun, topN, snap, { trainRatio: tr }));
+      setGridResult(
+        gridSearchTopParams(barsForRun, topN, snap, { trainRatio: tr }),
+      );
       requestAnimationFrame(() => {
-        resultsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        resultsSectionRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       });
     } catch (e) {
       setGridErr(e instanceof Error ? e.message : String(e));
@@ -322,7 +692,15 @@ export function RegistryPage() {
     } finally {
       setGridBusy(false);
     }
-  }, [barsForRun, searchForm, dataMode, topN, trainRatioPct]);
+  }, [
+    barsForRun,
+    searchForm,
+    dataMode,
+    topN,
+    trainRatioPct,
+    selectedDef,
+    selectedProduct,
+  ]);
 
   const resultsSectionRef = useRef<HTMLDetailsElement | null>(null);
   const runBacktestRef = useRef(runBacktest);
@@ -366,7 +744,9 @@ export function RegistryPage() {
     if (!selectedCode) return;
     const dup = entries.some(
       (e) =>
-        e.etfCode === selectedCode && e.strategyId === row.strategyId && e.paramVersion === row.paramVersion
+        e.etfCode === selectedCode &&
+        e.strategyId === row.strategyId &&
+        e.paramVersion === row.paramVersion,
     );
     if (dup) {
       setToast("该组合已在观测列表中（含本页已注册项）。");
@@ -381,90 +761,128 @@ export function RegistryPage() {
       paramVersion: row.paramVersion,
       params: row.params,
     });
-    setToast("已加入观测列表。在单标的页「策略参数」下拉里会出现「观测注册」项，可随时删除。");
+    setToast(
+      "已加入观测列表。在单标的页「策略参数」下拉里会出现「观测注册」项，可随时删除。",
+    );
   };
 
   return (
-    <div className="space-y-8">
+    <div className="ft-page space-y-6">
       {toast && (
         <div
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-sm text-emerald-900 shadow-lg"
+          className="fin-toast-success fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
           role="status"
         >
           {toast}
         </div>
       )}
 
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight text-zinc-900">策略研究</h2>
-        <p className="mt-2 text-sm text-zinc-500 max-w-3xl leading-relaxed">
-          策略层 · 在底仓之上验证交易规则（可含择时），<strong>不构成投资建议</strong>。首屏一键回测；参数网格与观测列表在下方高级区。
-        </p>
-        <p className="mt-2 text-xs text-zinc-400">
-          <Link to="/" className="font-medium text-indigo-600 hover:underline">
-            配置总览
-          </Link>
-          <span className="mx-2 text-zinc-300">·</span>
-          <Link to="/indices" className="font-medium text-indigo-600 hover:underline">
-            指数研究
-          </Link>
-        </p>
-      </header>
+      <PageHeader
+        kicker="策略层"
+        title="策略研究工具"
+        breadcrumbs={[
+          { label: "配置总览", to: "/" },
+          { label: "策略研究工具" },
+        ]}
+        description={
+          <>
+            策略层 · 在底仓之上验证交易规则（可含择时），
+            <strong>不构成投资建议</strong>
+            。首屏一键回测；参数网格与观测列表在下方高级区。
+          </>
+        }
+      />
 
-      <section className="rounded-lg border border-indigo-100 bg-white p-5 shadow-sm ring-1 ring-indigo-50">
-        <p className="text-xs font-medium text-zinc-600">代表底仓（跟踪指数）</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {(Object.keys(REGISTRY_PRESET_META) as RegistryPreset[]).map((key) => {
-            const meta = REGISTRY_PRESET_META[key];
-            const active = registryPreset === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => applyPreset(key)}
-                className={`rounded-full px-4 py-2 text-left text-sm transition ${
-                  active ? "bg-zinc-900 text-white shadow-sm" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                }`}
-              >
-                <span className="font-medium">{meta.label}</span>
-                <span className={`mt-0.5 block text-[11px] ${active ? "text-zinc-300" : "text-zinc-500"}`}>
-                  {meta.indexName}（{meta.indexCode}）
+      <section className="fin-panel p-5">
+        {selectableCodes.length > 0 ? (
+          <div className="space-y-3">
+            <label className="block text-sm">
+              <span className="fin-label">落地产品（ETF）</span>
+              <input
+                type="search"
+                value={productQuery}
+                onChange={(e) => setProductQuery(e.target.value)}
+                placeholder="代码或产品名称"
+                className="fin-input mt-1 block w-full max-w-xl px-3 py-2 text-sm"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            {selectedCode ? (
+              <p className="text-sm">
+                <span className="font-mono font-semibold text-[var(--fin-text)]">
+                  {selectedCode}
                 </span>
-              </button>
-            );
-          })}
-        </div>
+                {productPickerOptions.find((o) => o.code === selectedCode)
+                  ?.name ? (
+                  <span className="fin-muted-text">
+                    {" "}
+                    ·{" "}
+                    {
+                      productPickerOptions.find((o) => o.code === selectedCode)!
+                        .name
+                    }
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
+            <div
+              className="flex max-h-40 flex-wrap gap-2 overflow-y-auto"
+              role="listbox"
+              aria-label="可选落地产品"
+            >
+              {filteredProductOptions.length > 0 ? (
+                filteredProductOptions.map((o) => {
+                  const active = selectedCode === o.code;
+                  return (
+                    <button
+                      key={o.code}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => selectProduct(o.code)}
+                      className={`fin-chip-filter rounded-full px-3 py-1.5 text-left text-sm ${
+                        active ? "fin-chip-filter-active" : ""
+                      }`}
+                    >
+                      <span className="font-mono font-medium">{o.code}</span>
+                      {o.name !== o.code ? (
+                        <span
+                          className={`ml-1.5 text-[11px] ${active ? "opacity-90" : "fin-muted-text"}`}
+                        >
+                          {o.name}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="text-xs fin-muted-text">无匹配产品</p>
+              )}
+            </div>
+            {productQuery.trim() ? (
+              <p className="text-xs fin-muted-text">
+                匹配 {filteredProductOptions.length} /{" "}
+                {productPickerOptions.length} 只主跟踪产品
+              </p>
+            ) : (
+              <p className="text-xs fin-muted-text">
+                共 {productPickerOptions.length} 只主跟踪产品（不含同指数候选 ETF）
+              </p>
+            )}
+          </div>
+        ) : null}
 
         {selectableCodes.length > 0 ? (
           <div className="mt-4 flex flex-wrap items-end gap-4">
-            <label className="min-w-[12rem] flex-1 text-sm">
-              <span className="text-xs font-medium text-zinc-600">落地产品（ETF）</span>
-              <select
-                value={selectedCode}
-                onChange={(e) => {
-                  const code = e.target.value;
-                  setSelectedCode(code);
-                  setGridResult(null);
-                  setGridErr(null);
-                  if (code === REGISTRY_PRESET_META.cash_creation.etfCode) setRegistryPreset("cash_creation");
-                  else if (code === REGISTRY_PRESET_META.shareholder_return.etfCode) setRegistryPreset("shareholder_return");
-                }}
-                className="mt-1 block w-full max-w-md rounded-xl border border-zinc-200 px-3 py-2.5 font-mono text-sm"
-              >
-                {selectableCodes.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                    {getEtf(c)?.meta.name ? ` · ${getEtf(c)!.meta.name}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm text-zinc-600">
-              <span className="text-xs font-medium text-zinc-600">训练集占比</span>
+            <label className="text-sm fin-muted-text">
+              <span className="text-xs font-medium fin-muted-text">
+                训练集占比
+              </span>
               <select
                 value={trainRatioPct}
                 onChange={(e) => setTrainRatioPct(Number(e.target.value))}
-                className="mt-1 block rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+                className="fin-input mt-1 block px-2 py-1.5"
               >
                 {TRAIN_RATIO_PCT_OPTIONS.map((p) => (
                   <option key={p} value={p}>
@@ -475,16 +893,20 @@ export function RegistryPage() {
             </label>
           </div>
         ) : (
-          <p className="mt-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="fin-alert-warn--compact mt-4">
             当前数据源没有可回测标的，请先在配置总览确认 public/data 已加载。
           </p>
         )}
 
         {barsForRun && (
-          <p className="mt-2 text-xs text-zinc-500">
-            共 {barsForRun.length} 根日 K · 默认参数网格（RSI / 布林 / MA）· 训练 {trainRatioPct}%
+          <p className="mt-2 text-xs fin-muted-text">
+            共 {barsForRun.length} 根日 K · 默认参数网格（RSI / 布林 / MA）·
+            训练 {trainRatioPct}%
             {dataMode === "bundle" && selectedDef ? (
-              <span className="text-zinc-400"> · {strategyKindLabel(selectedDef.meta.strategy_id)}</span>
+              <span className="text-[var(--fin-dim)]">
+                {" "}
+                · {strategyKindLabel(selectedDef.meta.strategy_id)}
+              </span>
             ) : null}
           </p>
         )}
@@ -494,45 +916,64 @@ export function RegistryPage() {
             type="button"
             disabled={!barsForRun || barsForRun.length < 40 || gridBusy}
             onClick={() => void runBacktest()}
-            className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+            className="fin-btn-primary px-6 py-2.5 disabled:opacity-50"
           >
             {gridBusy ? "回测计算中…" : "执行回测（默认网格）"}
           </button>
-          <a href="#registry-config" className="text-xs font-medium text-indigo-600 hover:underline">
-            改参数搜索范围 ↓
+          <a href="#registry-config" className="text-xs fin-link">
+            ① 回测配置（网格范围）↓
+          </a>
+          <a href="#registry-custom-baseline" className="text-xs fin-link">
+            ② 自定义参数对比 ↓
           </a>
           {gridResult && (
-            <a href="#registry-results" className="text-xs font-medium text-indigo-600 hover:underline">
-              查看详细结果 ↓
+            <a href="#registry-results" className="text-xs fin-link">
+              ③ 详细结果 ↓
             </a>
           )}
         </div>
+
+        {selectedBacktestIneligibleReason ? (
+          <p className="fin-alert-warn--compact mt-3 text-xs">
+            {selectedBacktestIneligibleReason}
+          </p>
+        ) : null}
 
         {gridErr && <p className="mt-3 text-sm text-red-700">{gridErr}</p>}
 
         {gridResult && <RegistryResultSummary gridResult={gridResult} />}
 
-        {!gridResult && boardVerifySummary && selectedDef && (
-          <p className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-xs text-zinc-700">
-            看板 CSV 默认参数：策略 {boardVerifySummary.strategyReturnPct}% · 超额 {boardVerifySummary.excessReturnPct}% · 点击上方执行网格回测查看 Top 组合。
-          </p>
-        )}
+        {!gridResult &&
+          boardVerifySummary &&
+          selectedDef &&
+          selectedBacktestEligible && (
+            <p className="mt-4 rounded-lg border border-fin-border bg-fin-panel-muted/80 px-3 py-2 text-xs fin-muted-text">
+              看板 CSV 默认参数：策略{" "}
+              {formatPct(boardVerifySummary.strategyReturnPct)} · 超额{" "}
+              {formatPct(boardVerifySummary.excessReturnPct)} ·
+              点击上方执行网格回测查看 Top 组合。
+            </p>
+          )}
       </section>
 
       <details
         id="registry-config"
-        className="rounded-lg border border-zinc-200/80 bg-white p-5 shadow-sm"
+        className="fin-panel p-5"
       >
-        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
-          <span className="mr-2 text-zinc-400">▸</span>
-          ① 回测配置（高级 · 默认折叠）
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-[var(--fin-dim)]">▸</span>
+          <span className="fin-section-title">
+            ① 回测配置（参数网格搜索范围）
+          </span>
         </summary>
-        <p className="mt-2 text-xs text-zinc-500">
-          数据源、上传 CSV、训练验证切分与 RSI/布林/MA 参数网格。主按钮在首屏。
+        <p className="mt-2 text-xs fin-muted-text">
+          控制「执行回测」时的<strong>网格枚举范围</strong>（RSI / 布林 / MA
+          金叉 / MA 自定义多组参数）。与下方「② 自定义参数对比」无关：后者只添加
+          <strong>一组</strong>对照 Baseline，不参与网格搜索。
         </p>
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
+          <label className="fin-choice has-[:checked]:bg-[var(--fin-blue-soft)] has-[:checked]:text-[var(--fin-text)]">
             <input
               type="radio"
               name="reg-ds"
@@ -545,7 +986,7 @@ export function RegistryPage() {
             />
             当前数据源 K 线（与看板一致）
           </label>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50 has-[:checked]:text-indigo-900">
+          <label className="fin-choice has-[:checked]:bg-[var(--fin-blue-soft)] has-[:checked]:text-[var(--fin-text)]">
             <input
               type="radio"
               name="reg-ds"
@@ -572,7 +1013,7 @@ export function RegistryPage() {
             <button
               type="button"
               onClick={() => barsInputRef.current?.click()}
-              className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-800 hover:bg-zinc-50"
+              className="fin-btn-secondary px-4 py-2 text-sm"
             >
               选择 bars.csv
             </button>
@@ -585,147 +1026,237 @@ export function RegistryPage() {
                   setBarsErr(null);
                   setGridErr(null);
                 }}
-                className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+                className="rounded-lg border border-fin-border px-4 py-2 text-sm fin-muted-text hover:bg-fin-panel-muted"
               >
                 清除上传
               </button>
             )}
-            {barsErr && <p className="w-full text-sm text-red-700">{barsErr}</p>}
+            {barsErr && (
+              <p className="w-full text-sm text-red-700">{barsErr}</p>
+            )}
           </div>
         )}
 
         <div className="mt-6 space-y-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">参数搜索范围（网格枚举）</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-dim)]">
+            参数搜索范围（网格枚举）
+          </p>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-5">
-              <h4 className="text-sm font-semibold text-zinc-900">RSI</h4>
-              <p className="mt-1 text-xs text-zinc-500">超卖上穿买、超买下穿卖；可勾选日/周线。</p>
-              <div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-700">
+            <div className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-5">
+              <h4 className="text-sm font-semibold text-[var(--fin-text)]">
+                RSI
+              </h4>
+              <p className="mt-1 text-xs fin-muted-text">
+                超卖上穿买、超买下穿卖；可勾选日/周线。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-4 text-sm fin-muted-text">
                 <label className="inline-flex items-center gap-2">
-                  <input type="checkbox" checked={searchForm.rsiD} onChange={(e) => setSearchForm((s) => ({ ...s, rsiD: e.target.checked }))} />
+                  <input
+                    type="checkbox"
+                    checked={searchForm.rsiD}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({ ...s, rsiD: e.target.checked }))
+                    }
+                  />
                   日线
                 </label>
                 <label className="inline-flex items-center gap-2">
-                  <input type="checkbox" checked={searchForm.rsiW} onChange={(e) => setSearchForm((s) => ({ ...s, rsiW: e.target.checked }))} />
+                  <input
+                    type="checkbox"
+                    checked={searchForm.rsiW}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({ ...s, rsiW: e.target.checked }))
+                    }
+                  />
                   周线
                 </label>
               </div>
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <label className="text-xs text-zinc-600">
+                <label className="text-xs fin-muted-text">
                   周期
                   <input
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 font-mono text-sm"
+                    className="fin-input mt-1 w-full px-2.5 py-2"
                     value={searchForm.rsiPeriodStr}
-                    onChange={(e) => setSearchForm((s) => ({ ...s, rsiPeriodStr: e.target.value }))}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({
+                        ...s,
+                        rsiPeriodStr: e.target.value,
+                      }))
+                    }
                     placeholder="6,12,24"
                   />
                 </label>
-                <label className="text-xs text-zinc-600">
+                <label className="text-xs fin-muted-text">
                   超卖阈值
                   <input
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 font-mono text-sm"
+                    className="fin-input mt-1 w-full px-2.5 py-2"
                     value={searchForm.rsiOsStr}
-                    onChange={(e) => setSearchForm((s) => ({ ...s, rsiOsStr: e.target.value }))}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({ ...s, rsiOsStr: e.target.value }))
+                    }
                   />
                 </label>
-                <label className="text-xs text-zinc-600">
+                <label className="text-xs fin-muted-text">
                   超买阈值
                   <input
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 font-mono text-sm"
+                    className="fin-input mt-1 w-full px-2.5 py-2"
                     value={searchForm.rsiObStr}
-                    onChange={(e) => setSearchForm((s) => ({ ...s, rsiObStr: e.target.value }))}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({ ...s, rsiObStr: e.target.value }))
+                    }
                   />
                 </label>
               </div>
             </div>
 
-            <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-5">
-              <h4 className="text-sm font-semibold text-zinc-900">布林带</h4>
-              <p className="mt-1 text-xs text-zinc-500">下轨外回归买入、上轨外回归卖出；可勾选日/周线。</p>
-              <div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-700">
+            <div className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-5">
+              <h4 className="text-sm font-semibold text-[var(--fin-text)]">
+                布林带
+              </h4>
+              <p className="mt-1 text-xs fin-muted-text">
+                下轨外回归买入、上轨外回归卖出；可勾选日/周线。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-4 text-sm fin-muted-text">
                 <label className="inline-flex items-center gap-2">
-                  <input type="checkbox" checked={searchForm.bollD} onChange={(e) => setSearchForm((s) => ({ ...s, bollD: e.target.checked }))} />
+                  <input
+                    type="checkbox"
+                    checked={searchForm.bollD}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({ ...s, bollD: e.target.checked }))
+                    }
+                  />
                   日线
                 </label>
                 <label className="inline-flex items-center gap-2">
-                  <input type="checkbox" checked={searchForm.bollW} onChange={(e) => setSearchForm((s) => ({ ...s, bollW: e.target.checked }))} />
+                  <input
+                    type="checkbox"
+                    checked={searchForm.bollW}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({ ...s, bollW: e.target.checked }))
+                    }
+                  />
                   周线
                 </label>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-zinc-600">
+                <label className="text-xs fin-muted-text">
                   窗口长度
                   <input
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 font-mono text-sm"
+                    className="fin-input mt-1 w-full px-2.5 py-2"
                     value={searchForm.bollPeriodStr}
-                    onChange={(e) => setSearchForm((s) => ({ ...s, bollPeriodStr: e.target.value }))}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({
+                        ...s,
+                        bollPeriodStr: e.target.value,
+                      }))
+                    }
                   />
                 </label>
-                <label className="text-xs text-zinc-600">
+                <label className="text-xs fin-muted-text">
                   标准差倍数
                   <input
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 font-mono text-sm"
+                    className="fin-input mt-1 w-full px-2.5 py-2"
                     value={searchForm.bollStdStr}
-                    onChange={(e) => setSearchForm((s) => ({ ...s, bollStdStr: e.target.value }))}
+                    onChange={(e) =>
+                      setSearchForm((s) => ({
+                        ...s,
+                        bollStdStr: e.target.value,
+                      }))
+                    }
                   />
                 </label>
               </div>
             </div>
 
-            <div className="rounded-lg border border-zinc-100 bg-zinc-50/50 p-5 lg:col-span-2">
-              <h4 className="text-sm font-semibold text-zinc-900">MA</h4>
+            <div className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-5 lg:col-span-2">
+              <h4 className="text-sm font-semibold text-[var(--fin-text)]">
+                MA
+              </h4>
               <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-lg border border-zinc-100 bg-white/80 p-4">
-                  <p className="text-xs font-medium text-zinc-800">金叉</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">短均线上穿长均线买，反之为卖。</p>
+                <div className="fin-panel fin-panel-muted p-4">
+                  <p className="text-xs font-medium text-[var(--fin-text)]">
+                    金叉
+                  </p>
+                  <p className="mt-0.5 text-[11px] fin-muted-text">
+                    短均线上穿长均线买，反之为卖。
+                  </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <label className="text-xs text-zinc-600">
+                    <label className="text-xs fin-muted-text">
                       快线
                       <input
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+                        className="fin-input mt-1 w-full px-2 py-1.5"
                         value={searchForm.maCrossFastStr}
-                        onChange={(e) => setSearchForm((s) => ({ ...s, maCrossFastStr: e.target.value }))}
+                        onChange={(e) =>
+                          setSearchForm((s) => ({
+                            ...s,
+                            maCrossFastStr: e.target.value,
+                          }))
+                        }
                         placeholder="5,10,20"
                       />
                     </label>
-                    <label className="text-xs text-zinc-600">
+                    <label className="text-xs fin-muted-text">
                       慢线
                       <input
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+                        className="fin-input mt-1 w-full px-2 py-1.5"
                         value={searchForm.maCrossSlowStr}
-                        onChange={(e) => setSearchForm((s) => ({ ...s, maCrossSlowStr: e.target.value }))}
+                        onChange={(e) =>
+                          setSearchForm((s) => ({
+                            ...s,
+                            maCrossSlowStr: e.target.value,
+                          }))
+                        }
                         placeholder="60,120"
                       />
                     </label>
                   </div>
                 </div>
-                <div className="rounded-lg border border-zinc-100 bg-white/80 p-4">
-                  <p className="text-xs font-medium text-zinc-800">自定义</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">上穿均线买；卖=止盈或回撤（先到先卖）。</p>
+                <div className="fin-panel fin-panel-muted p-4">
+                  <p className="text-xs font-medium text-[var(--fin-text)]">
+                    自定义
+                  </p>
+                  <p className="mt-0.5 text-[11px] fin-muted-text">
+                    上穿均线买；卖=止盈或回撤（先到先卖）。
+                  </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    <label className="text-xs text-zinc-600">
+                    <label className="text-xs fin-muted-text">
                       买入均线
                       <input
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+                        className="fin-input mt-1 w-full px-2 py-1.5"
                         value={searchForm.maCustomBuyStr}
-                        onChange={(e) => setSearchForm((s) => ({ ...s, maCustomBuyStr: e.target.value }))}
+                        onChange={(e) =>
+                          setSearchForm((s) => ({
+                            ...s,
+                            maCustomBuyStr: e.target.value,
+                          }))
+                        }
                       />
                     </label>
-                    <label className="text-xs text-zinc-600">
+                    <label className="text-xs fin-muted-text">
                       止盈 %
                       <input
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+                        className="fin-input mt-1 w-full px-2 py-1.5"
                         value={searchForm.maCustomProfitStr}
-                        onChange={(e) => setSearchForm((s) => ({ ...s, maCustomProfitStr: e.target.value }))}
+                        onChange={(e) =>
+                          setSearchForm((s) => ({
+                            ...s,
+                            maCustomProfitStr: e.target.value,
+                          }))
+                        }
                       />
                     </label>
-                    <label className="text-xs text-zinc-600">
+                    <label className="text-xs fin-muted-text">
                       回撤 %
                       <input
-                        className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 font-mono text-sm"
+                        className="fin-input mt-1 w-full px-2 py-1.5"
                         value={searchForm.maCustomDdStr}
-                        onChange={(e) => setSearchForm((s) => ({ ...s, maCustomDdStr: e.target.value }))}
+                        onChange={(e) =>
+                          setSearchForm((s) => ({
+                            ...s,
+                            maCustomDdStr: e.target.value,
+                          }))
+                        }
                       />
                     </label>
                   </div>
@@ -734,49 +1265,97 @@ export function RegistryPage() {
             </div>
           </div>
 
-        <div className="mt-6">
-          <button
-            type="button"
-            onClick={() => setSearchForm(formFromDefaults())}
-            className="rounded-lg border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-          >
-            恢复默认搜索范围
-          </button>
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => setSearchForm(formFromDefaults())}
+              className="rounded-lg border border-fin-border px-4 py-2 text-sm fin-muted-text hover:bg-fin-panel-muted"
+            >
+              恢复默认搜索范围
+            </button>
+          </div>
         </div>
-        </div>
+      </details>
+
+      <details
+        id="registry-custom-baseline"
+        open={baselineSlotCountTotal > 0}
+        className="fin-panel p-5"
+      >
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-[var(--fin-dim)]">▸</span>
+          <span className="fin-section-title">② 自定义参数对比</span>
+        </summary>
+        <p className="mt-2 text-xs fin-muted-text">
+          独立于「① 回测配置」：最多添加 <strong>{MAX_CUSTOM_BASELINES}</strong>{" "}
+          组策略参数作为对照线；添加后会在「③ 详细回测结果」对应策略表中展示为紫色对照行。
+          切换策略类型不会清空已添加的对照参数。
+        </p>
+        <RegistryCustomBaseline
+          productSelected={Boolean(selectedCode)}
+          kind={baselineKind}
+          onKindChange={(k) => {
+            setBaselineKind(k);
+            setBaselineAddError(null);
+          }}
+          form={baselineForm}
+          onFormChange={setBaselineForm}
+          onAdd={addCustomBaseline}
+          slots={customBaselineSlotsForKind}
+          savedCountsByKind={{
+            ma: baselineSlotsByKind.ma?.length ?? 0,
+            rsi: baselineSlotsByKind.rsi?.length ?? 0,
+            boll: baselineSlotsByKind.boll?.length ?? 0,
+          }}
+          onRemoveSlot={removeCustomBaseline}
+          onClearAll={clearCustomBaselines}
+          barsReady={Boolean(barsForRun && barsForRun.length >= 40)}
+          addError={baselineAddError}
+          embedded
+        />
       </details>
 
       <details
         id="registry-results"
         ref={resultsSectionRef}
         open={gridResult != null}
-        className="rounded-lg border-2 border-indigo-200 bg-white p-6 shadow-md ring-1 ring-indigo-100"
+        className="fin-panel p-5"
       >
-        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden">
-          <span className="mr-2 text-zinc-400">▸</span>
-          <span className="text-xl tracking-tight">
-            ② 详细回测结果
+        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="mr-2 text-[var(--fin-dim)]">▸</span>
+          <span className="fin-section-title">
+            ③ 详细回测结果
             {selectedCode ? (
               <>
                 {" · "}
-                <span className="font-mono text-lg text-indigo-700">{selectedCode}</span>
+                <span className="font-mono text-lg text-[var(--fin-blue)]">
+                  {selectedCode}
+                </span>
               </>
             ) : null}
           </span>
         </summary>
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm text-zinc-500">与单标的页摘要同源：按成交重建权益曲线后统计收益、回撤、买卖笔数与持仓节奏。</p>
+            <p className="text-sm fin-muted-text">
+              与单标的页摘要同源：按成交重建权益曲线后统计收益、回撤、买卖笔数与持仓节奏。
+              每类 Top {topN}：按<strong>全样本超额</strong>取{" "}
+              {topN - Math.floor(topN / 2)} 个、按<strong>验证集超额</strong>取{" "}
+              {Math.floor(topN / 2)} 个（去重；奇数时全样本多 1 个）。例：布林带 Top
+              2 常为「全样本最优布林」（如 60/2.5）+「验证集最优布林」（如
+              40/2）。页顶「全样本最优」徽标为 RSI/布林/MA <strong>全体</strong>
+              跨类最优，勿与类内 Top 表混读。
+            </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-zinc-600">
-            <span className="text-xs text-zinc-500">每类展示</span>
+          <label className="flex items-center gap-2 text-sm fin-muted-text">
+            <span className="text-xs fin-muted-text">每类展示</span>
             <select
               value={topN}
               onChange={(e) => {
                 const n = Number(e.target.value);
                 setTopN(n);
               }}
-              className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm font-medium"
+              className="fin-input px-2 py-1.5 text-sm font-medium"
             >
               {TOP_N_OPTIONS.map((n) => (
                 <option key={n} value={n}>
@@ -784,56 +1363,82 @@ export function RegistryPage() {
                 </option>
               ))}
             </select>
-            <span className="text-xs text-zinc-400">变更后自动重算</span>
+            <span className="text-xs text-[var(--fin-dim)]">
+              变更后自动重算
+            </span>
           </label>
         </div>
 
         {!gridResult && (
-          <p className="mt-6 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/50 px-4 py-8 text-center text-sm text-zinc-500">
-            在首屏选择代表底仓并点击「执行回测」后，此处展开 Top 组合表与买入持有对照。
+          <p className="mt-6 rounded-xl border border-dashed border-fin-border bg-fin-panel-muted/50 px-4 py-8 text-center text-sm fin-muted-text">
+            在首屏选择落地产品并点击「执行回测」后，此处展开 Top
+            组合表与买入持有对照。
           </p>
         )}
 
         {gridResult && (
           <>
-            <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/80 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">基础统计 · 买入持有</p>
+            <div className="mt-6 rounded-lg border border-fin-border bg-[var(--fin-blue-soft)]/80 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-blue)]">
+                基础统计 · 买入持有
+              </p>
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
                 <div>
-                  <span className="text-zinc-500">区间</span>
-                  <p className="font-mono font-medium text-zinc-900">
+                  <span className="fin-muted-text">区间</span>
+                  <p className="font-mono font-medium text-[var(--fin-text)]">
                     {gridResult.meta.startDate} → {gridResult.meta.endDate}
                   </p>
                 </div>
                 <div>
-                  <span className="text-zinc-500">样本</span>
-                  <p className="font-medium text-zinc-900">{gridResult.meta.barCount} 根日 K</p>
+                  <span className="fin-muted-text">样本</span>
+                  <p className="font-medium text-[var(--fin-text)]">
+                    {gridResult.meta.barCount} 根日 K
+                  </p>
                 </div>
                 <div>
-                  <span className="text-zinc-500">累计收益</span>
-                  <p className="font-semibold text-indigo-700">{gridResult.meta.buyHoldReturnPct}%</p>
+                  <span className="fin-muted-text">累计收益</span>
+                  <p className="font-semibold text-[var(--fin-blue)]">
+                    {formatPct(gridResult.meta.buyHoldReturnPct)}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-zinc-500">年化收益</span>
-                  <p className="font-semibold text-indigo-700">{gridResult.meta.buyHoldAnnualPct}%</p>
+                  <span className="fin-muted-text">年化收益</span>
+                  <p className="font-semibold text-[var(--fin-blue)]">
+                    {formatPct(gridResult.meta.buyHoldAnnualPct)}
+                  </p>
                 </div>
                 <div>
-                  <span className="text-zinc-500">最大回撤</span>
-                  <p className="font-semibold text-zinc-900">{gridResult.meta.buyHoldMaxDrawdownPct}%</p>
+                  <span className="fin-muted-text">最大回撤</span>
+                  <p className="font-semibold text-[var(--fin-text)]">
+                    {formatPct(gridResult.meta.buyHoldMaxDrawdownPct)}
+                  </p>
                 </div>
               </div>
             </div>
 
-            <p className="mt-3 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-[11px] font-mono text-zinc-800">
-              <span className="font-sans font-semibold text-zinc-900">训练 / 验证窗口 · </span>
-              训练 {gridResult.split.trainStartDate}→{gridResult.split.trainEndDate}（{gridResult.split.trainBarCount} 日，{(gridResult.split.trainRatio * 100).toFixed(0)}%）
-              · 验证 {gridResult.split.valStartDate}→{gridResult.split.valEndDate}（{gridResult.split.valBarCount} 日）
+            {customBaselineRows.length > 0 ? (
+              <p className="fin-alert-info--compact mt-4 text-xs">
+                已添加 {customBaselineRows.length} 组自定义 Baseline（
+                {customBaselineRows.map((r) => r.label).join("、")}）。增删请前往「②
+                自定义参数对比」；网格范围请前往「① 回测配置」。
+              </p>
+            ) : null}
+
+            <p className="fin-input mt-3 px-3 py-2 text-[11px]">
+              <span className="font-sans font-semibold text-[var(--fin-text)]">
+                训练 / 验证窗口 ·{" "}
+              </span>
+              训练 {gridResult.split.trainStartDate}→
+              {gridResult.split.trainEndDate}（{gridResult.split.trainBarCount}{" "}
+              日，{(gridResult.split.trainRatio * 100).toFixed(0)}%） · 验证{" "}
+              {gridResult.split.valStartDate}→{gridResult.split.valEndDate}（
+              {gridResult.split.valBarCount} 日）
             </p>
 
             {(() => {
               const hints = noBeatBuyHoldHints(gridResult);
               return hints ? (
-                <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50/90 px-3 py-2 text-[11px] text-rose-950">
+                <div className="fin-alert-error--compact mt-3 text-[11px]">
                   <p className="font-semibold">未跑赢买入持有</p>
                   <ul className="mt-1 list-inside list-disc space-y-0.5">
                     {hints.map((h, i) => (
@@ -845,7 +1450,7 @@ export function RegistryPage() {
             })()}
 
             {gridResult.split.credibility !== "ok" && (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/90 px-3 py-2 text-[11px] text-amber-950">
+              <div className="fin-alert-warn--compact mt-3 text-[11px]">
                 <p className="font-semibold">回测可信度提示</p>
                 <ul className="mt-1 list-inside list-disc space-y-0.5">
                   {gridResult.split.notes.map((n, i) => (
@@ -858,62 +1463,85 @@ export function RegistryPage() {
             {(gridResult.globalRobustBest || gridResult.globalFullBest) && (
               <div className="mt-3 space-y-2">
                 {gridResult.globalRobustBest && (
-                  <p className="rounded-lg border border-sky-200 bg-sky-50/85 px-3 py-2 text-[11px] text-sky-950">
-                    <span className="font-semibold">☆ 验证集最优</span> — {gridResult.globalRobustBest.label} · 验证超额{" "}
+                  <p className="fin-alert-info--compact text-[11px]">
+                    <span className="fin-best-badge-robust">验证集最优</span> —{" "}
+                    {gridResult.globalRobustBest.label} · 验证超额{" "}
                     {gridResult.globalRobustBest.excessValPct != null
-                      ? `${gridResult.globalRobustBest.excessValPct > 0 ? "+" : ""}${gridResult.globalRobustBest.excessValPct}%`
+                      ? formatSignedPct(
+                          gridResult.globalRobustBest.excessValPct,
+                        )
                       : "—"}{" "}
-                    · 全样本超额 {gridResult.globalRobustBest.excessReturnPct > 0 ? "+" : ""}
-                    {gridResult.globalRobustBest.excessReturnPct}%
+                    · 全样本超额{" "}
+                    {gridResult.globalRobustBest.excessReturnPct > 0 ? "+" : ""}
+                    {formatPct(gridResult.globalRobustBest.excessReturnPct)}
                   </p>
                 )}
                 {gridResult.globalFullBest && (
-                  <p className="rounded-lg border border-amber-100 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-950">
-                    <span className="font-semibold">★ 全样本最优</span> — {gridResult.globalFullBest.label} · 策略 {gridResult.globalFullBest.cumReturnPct}% · 超额{" "}
-                    {gridResult.globalFullBest.excessReturnPct > 0 ? "+" : ""}
-                    {gridResult.globalFullBest.excessReturnPct}% · 回撤 {gridResult.globalFullBest.maxDrawdownPct}% · 胜率{" "}
-                    {(gridResult.globalFullBest.winRate * 100).toFixed(1)}% · {gridResult.globalFullBest.roundCount} 轮
+                  <p className="fin-panel fin-panel-muted px-3 py-2 text-[11px]">
+                    <span className="fin-best-badge-full">全样本最优</span> —{" "}
+                    {gridResult.globalFullBest.label} · 策略{" "}
+                    {formatPct(gridResult.globalFullBest.cumReturnPct)} · 超额{" "}
+                    {formatSignedPct(gridResult.globalFullBest.excessReturnPct)}{" "}
+                    · 回撤 {formatPct(gridResult.globalFullBest.maxDrawdownPct)}{" "}
+                    · 胜率 {formatPct(gridResult.globalFullBest.winRate * 100)}{" "}
+                    · {gridResult.globalFullBest.roundCount} 轮
                   </p>
                 )}
               </div>
             )}
-            {gridResult && !gridResult.globalRobustBest && !gridResult.globalFullBest && boardVerifySummary && selectedDef && (
-              <p className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/80 px-3 py-2 text-[11px] text-zinc-800">
-                看板默认参数（CSV）：策略 {boardVerifySummary.strategyReturnPct}% · 超额 {boardVerifySummary.excessReturnPct}% · 回撤{" "}
-                {boardVerifySummary.maxDrawdownPct}% · 胜率 {(boardVerifySummary.winRate * 100).toFixed(1)}% · 轮次{" "}
-                {boardVerifySummary.roundCount}。产生有效候选后，此处展示<strong>☆ 验证集最优</strong>与<strong>★ 全样本最优</strong>摘要。
-              </p>
-            )}
+            {gridResult &&
+              !gridResult.globalRobustBest &&
+              !gridResult.globalFullBest &&
+              boardVerifySummary &&
+              selectedDef && (
+                <p className="mt-3 rounded-lg border border-fin-border bg-fin-panel-muted/80 px-3 py-2 text-[11px] text-[var(--fin-text)]">
+                  看板默认参数（CSV）：策略{" "}
+                  {formatPct(boardVerifySummary.strategyReturnPct)} · 超额{" "}
+                  {formatPct(boardVerifySummary.excessReturnPct)} · 回撤{" "}
+                  {formatPct(boardVerifySummary.maxDrawdownPct)} · 胜率{" "}
+                  {formatPct(boardVerifySummary.winRate * 100)} · 轮次{" "}
+                  {boardVerifySummary.roundCount}。产生有效候选后，此处展示
+                  <strong>验证集最优</strong>与<strong>全样本最优</strong>
+                  摘要。
+                </p>
+              )}
 
             <div className="mt-4 space-y-8">
               <ResultTable
                 title={`RSI Top ${topN}`}
+                tableFamily="rsi"
+                topN={topN}
                 rows={gridResult.rsi}
                 onRegister={registerRow}
-                globalRobustBest={gridResult.globalRobustBest}
-                globalFullBest={gridResult.globalFullBest}
+                customBaselineRows={customBaselineRows}
               />
               <ResultTable
                 title={`布林带 Top ${topN}`}
+                tableFamily="boll"
+                topN={topN}
                 rows={gridResult.boll}
                 onRegister={registerRow}
-                globalRobustBest={gridResult.globalRobustBest}
-                globalFullBest={gridResult.globalFullBest}
+                customBaselineRows={customBaselineRows}
               />
               <ResultTable
                 title={`MA 金叉 Top ${topN}`}
+                tableFamily="ma"
+                topN={topN}
                 rows={gridResult.maCross}
                 onRegister={registerRow}
-                globalRobustBest={gridResult.globalRobustBest}
-                globalFullBest={gridResult.globalFullBest}
+                customBaselineRows={customBaselineRows}
               />
               <ResultTable
                 title={`MA 自定义 Top ${topN}`}
+                tableFamily="ma_custom"
+                topN={topN}
                 rows={gridResult.maCustom}
                 onRegister={registerRow}
-                globalRobustBest={gridResult.globalRobustBest}
-                globalFullBest={gridResult.globalFullBest}
+                customBaselineRows={customBaselineRows}
               />
+              <p className="text-[11px] fin-muted-text">
+                {HOLD_FLAT_AVG_TOO_FEW_ROUNDS_NOTE}
+              </p>
             </div>
           </>
         )}
@@ -921,36 +1549,54 @@ export function RegistryPage() {
 
       <details
         id="registry-observations"
-        className="rounded-lg border border-indigo-100 bg-gradient-to-b from-indigo-50/30 to-white p-4 shadow-sm"
+        className="fin-panel p-5"
       >
-        <summary className="cursor-pointer list-none font-semibold text-zinc-900 [&::-webkit-details-marker]:hidden flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span>
-            <span className="mr-1.5 text-zinc-400">▸</span>
-            ③ 当前观测 <span className="font-normal text-zinc-500">（默认折叠）</span>
+        <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+          <span className="fin-section-title">
+            <span className="mr-1.5 text-[var(--fin-dim)]">▸</span>④ 当前观测{" "}
+            <span className="font-normal fin-muted-text">（默认折叠）</span>
           </span>
         </summary>
-        <p className="mt-2 text-xs text-zinc-500">灰标=数据源默认；蓝标=观测注册可删。加入后可在单标的页策略参数下拉中选择。</p>
+        <p className="mt-2 text-xs fin-muted-text">
+          灰标=数据源默认；蓝标=观测注册可删。加入后可在单标的页策略参数下拉中选择。
+        </p>
 
         {etfDefinitions.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-500">暂无标的定义。</p>
+          <p className="mt-3 text-sm fin-muted-text">暂无标的定义。</p>
         ) : (
           <div className="mt-4 space-y-4">
             {etfDefinitions.map((etf) => {
-              const vars = getParamVariants(etf, entries);
+              const product = etfProducts.find((p) => p.code === etf.meta.code);
+              const vars = getProductParamVariants(etf, product, entries);
               return (
-                <div key={etf.meta.code} className="rounded-lg border border-zinc-100 bg-white/90 p-3 shadow-sm">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-100 pb-2">
+                <div
+                  key={etf.meta.code}
+                  className="fin-panel fin-panel-muted p-3"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-fin-border pb-2">
                     <div>
-                      <p className="font-mono text-[10px] text-indigo-600">{etf.meta.code}</p>
-                      <p className="text-sm font-semibold text-zinc-900">{etf.meta.name}</p>
+                      <p className="font-mono text-[10px] text-[var(--fin-blue)]">
+                        {etf.meta.code}
+                      </p>
+                      <p className="text-sm font-semibold text-[var(--fin-text)]">
+                        {etf.meta.name}
+                      </p>
                     </div>
-                    <Link to={`/etf/${etf.meta.code}`} className="shrink-0 text-xs font-medium text-indigo-600 hover:underline">
+                    <Link
+                      to={`/etf/${etf.meta.code}`}
+                      className="shrink-0 text-xs fin-link"
+                    >
                       看板
                     </Link>
                   </div>
                   <ul className="mt-2 space-y-1.5">
                     {vars.map((v) => (
-                      <ObservationRow key={v.key} etfCode={etf.meta.code} variant={v} onRemoveRegistered={onRemoveVariant} />
+                      <ObservationRow
+                        key={v.key}
+                        etfCode={etf.meta.code}
+                        variant={v}
+                        onRemoveRegistered={onRemoveVariant}
+                      />
                     ))}
                   </ul>
                 </div>
@@ -960,18 +1606,24 @@ export function RegistryPage() {
         )}
 
         {uploadOnlyRegistered.length > 0 && (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-            <h4 className="text-xs font-semibold text-amber-950">仅上传 CSV 出现的标的（未在数据源定义中）</h4>
+          <div className="fin-alert-warn--compact mt-4">
+            <h4 className="text-xs font-semibold text-[var(--fin-amber)]">
+              仅上传 CSV 出现的标的（未在数据源定义中）
+            </h4>
             <ul className="mt-2 space-y-1.5">
               {uploadOnlyRegistered.map((r) => (
                 <li
                   key={r.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-100 bg-white px-2 py-1.5 text-xs"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-fin-border bg-fin-panel-muted/50 px-2 py-1.5 text-xs"
                 >
                   <div>
-                    <span className="font-mono text-indigo-600">{r.etfCode}</span>
-                    <span className="mx-1.5 text-zinc-300">|</span>
-                    <span className="font-medium text-zinc-900">{r.label}</span>
+                    <span className="font-mono text-[var(--fin-blue)]">
+                      {r.etfCode}
+                    </span>
+                    <span className="mx-1.5 fin-muted-text">|</span>
+                    <span className="font-medium text-[var(--fin-text)]">
+                      {r.label}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -1002,22 +1654,26 @@ function ObservationRow({
   const registered = isUserRegisteredVariantKey(variant.key);
   const kind = strategyKindLabel(variant.strategyId);
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50/40 px-3 py-2.5 text-sm">
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fin-border bg-fin-panel-muted/40 px-3 py-2.5 text-sm">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              registered ? "bg-indigo-100 text-indigo-800" : "bg-zinc-200 text-zinc-600"
+              registered
+                ? "bg-[var(--fin-blue-soft)] text-[var(--fin-blue)]"
+                : "bg-fin-panel-muted fin-muted-text"
             }`}
           >
             {registered ? "观测注册" : "数据源默认"}
           </span>
-          <span className="font-medium text-zinc-900">{variant.label}</span>
+          <span className="font-medium text-[var(--fin-text)]">
+            {variant.label}
+          </span>
         </div>
-        <p className="mt-0.5 text-xs text-zinc-500">策略类型：{kind}</p>
+        <p className="mt-0.5 text-xs fin-muted-text">策略类型：{kind}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <Link to={`/etf/${etfCode}`} className="text-xs font-medium text-indigo-600 hover:underline">
+        <Link to={`/etf/${etfCode}`} className="text-xs fin-link">
           看板
         </Link>
         {registered ? (
@@ -1029,7 +1685,7 @@ function ObservationRow({
             删除
           </button>
         ) : (
-          <span className="text-[10px] text-zinc-400">内置</span>
+          <span className="text-[10px] text-[var(--fin-dim)]">内置</span>
         )}
       </div>
     </li>
@@ -1038,30 +1694,74 @@ function ObservationRow({
 
 function ResultTable({
   title,
+  tableFamily,
+  topN,
   rows,
   onRegister,
-  globalRobustBest,
-  globalFullBest,
+  customBaselineRows,
 }: {
   title: string;
-  rows: ScoredParamRow[];
+  tableFamily: StrategyFamily;
+  topN: number;
+  rows: TopPickedRow[];
   onRegister: (r: ScoredParamRow) => void;
-  globalRobustBest: ScoredParamRow | null;
-  globalFullBest: ScoredParamRow | null;
+  customBaselineRows: ScoredParamRow[];
 }) {
   if (!rows.length) return null;
-  const fmtEx = (x: number | null) =>
-    x == null ? "—" : `${x > 0 ? "+" : ""}${x}%`;
+  const fullBadgeCap = topN - Math.floor(topN / 2);
+  const valBadgeCap = Math.floor(topN / 2);
+  const fmtEx = (x: number | null) => formatSignedPct(x);
+  const familyBaselines = customBaselineRows.filter(
+    (b) => b.family === tableFamily,
+  );
+  const fullRankByKey = new Map<string, number>();
+  const valRankByKey = new Map<string, number>();
+  const rowKey = (r: ScoredParamRow) => `${r.strategyId}|${r.paramVersion}`;
+  [...rows]
+    .sort((a, b) => b.excessReturnPct - a.excessReturnPct)
+    .forEach((r, index) => fullRankByKey.set(rowKey(r), index + 1));
+  [...rows]
+    .sort((a, b) => {
+      const av = a.excessValPct;
+      const bv = b.excessValPct;
+      if (av != null && bv != null && Math.abs(av - bv) > 1e-9) return bv - av;
+      if (av != null && bv == null) return -1;
+      if (av == null && bv != null) return 1;
+      return b.excessReturnPct - a.excessReturnPct;
+    })
+    .forEach((r, index) => valRankByKey.set(rowKey(r), index + 1));
+
+  const badgesForRow = (r: TopPickedRow) => {
+    const key = rowKey(r);
+    const fullRank = fullRankByKey.get(key);
+    const valRank = valRankByKey.get(key);
+    return (
+      <>
+        {r.pickSlots.includes("full") &&
+        fullRank != null &&
+        fullRank <= fullBadgeCap ? (
+          <span className="fin-rank-badge-full">全样本 Top{fullRank}</span>
+        ) : null}
+        {r.pickSlots.includes("val") &&
+        valRank != null &&
+        valRank <= valBadgeCap ? (
+          <span className="fin-rank-badge-robust">验证 Top{valRank}</span>
+        ) : null}
+      </>
+    );
+  };
   return (
     <div>
-      <h4 className="text-sm font-semibold text-zinc-900">{title}</h4>
-      <p className="mt-1 text-[10px] text-zinc-500">
-        主表为全样本口径；☆ 验证集最优 · ★ 全样本最优（可与同一行）。
+      <h4 className="fin-section-title">{title}</h4>
+      <p className="mt-1 text-[11px] fin-muted-text">
+        主表为全样本口径。类内按入选位标注全样本 Top1–{fullBadgeCap}、验证 Top1–
+        {valBadgeCap}（与「每类展示」一致）；跨策略族全局最优只在摘要区展示。
+        {familyBaselines.length > 0 ? " 对照行=自定义参数。" : null}
       </p>
-      <div className="mt-3 overflow-x-auto rounded-xl border border-zinc-100">
+      <div className="mt-3 overflow-x-auto">
         <table className="min-w-[1120px] w-full text-left text-sm">
-          <thead className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            <tr>
+          <thead>
+            <tr className="fin-table-head">
               <th className="px-3 py-2">组合说明</th>
               <th className="px-3 py-2">策略收益 %</th>
               <th className="px-3 py-2">最大回撤 %</th>
@@ -1076,65 +1776,121 @@ function ResultTable({
               <th className="px-3 py-2">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {rows.map((r, i) => {
-              const isRobust = globalRobustBest != null && sameScoredParamRow(r, globalRobustBest);
-              const isFull = globalFullBest != null && sameScoredParamRow(r, globalFullBest);
-              return (
+          <tbody className="divide-y divide-fin-border">
+            {familyBaselines.map((baseline, bi) => (
               <tr
-                key={`${r.paramVersion}-${i}-${r.label}`}
-                className={
-                  isFull && isRobust
-                    ? "bg-amber-50/90 ring-2 ring-inset ring-amber-400/90"
-                    : isFull
-                      ? "bg-amber-50/90 ring-2 ring-inset ring-amber-400/90"
-                      : isRobust
-                        ? "bg-sky-50/85 ring-2 ring-inset ring-sky-300/85"
-                        : undefined
-                }
+                key={`baseline-${baseline.paramVersion}-${bi}`}
+                className="fin-baseline-row"
               >
-                <td className="px-3 py-2 text-zinc-800">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {isRobust ? (
-                      <span className="text-sky-600" title="验证集最优">
-                        ☆
-                      </span>
-                    ) : null}
-                    {isFull ? (
-                      <span className="text-amber-500" title="全样本最优">
-                        ★
-                      </span>
-                    ) : null}
-                    <span className="font-medium">{r.label}</span>
-                  </div>
-                  <p className="mt-0.5 text-[10px] text-zinc-400">{strategyKindLabel(r.strategyId)}</p>
+                <td className="px-3 py-2 text-[var(--fin-text)]">
+                  <span className="font-medium text-[var(--fin-muted)]">
+                    自定义 {bi + 1}
+                  </span>
+                  <p className="mt-0.5 text-[10px] fin-muted-text">
+                    {baseline.label}
+                  </p>
                 </td>
-                <td className="px-3 py-2 font-mono">{r.cumReturnPct}%</td>
-                <td className="px-3 py-2 font-mono">{r.maxDrawdownPct}%</td>
-                <td className="px-3 py-2 font-mono text-indigo-700">
-                  {r.excessReturnPct > 0 ? "+" : ""}
-                  {r.excessReturnPct}%
+                <td className="px-3 py-2 font-mono">
+                  {formatPct(baseline.cumReturnPct)}
                 </td>
-                <td className="px-3 py-2 font-mono text-zinc-700">{fmtEx(r.excessTrainPct)}</td>
-                <td className="px-3 py-2 font-mono text-sky-900">{fmtEx(r.excessValPct)}</td>
-                <td className="px-3 py-2 font-mono">{(r.winRate * 100).toFixed(1)}%</td>
-                <td className="px-3 py-2 text-xs text-zinc-700">
-                  {r.rawBuyCount} 买 / {r.rawSellCount} 卖
-                  <span className="block text-zinc-400">完成 {r.roundCount} 轮</span>
+                <td className="px-3 py-2 font-mono">
+                  {formatPct(baseline.maxDrawdownPct)}
                 </td>
-                <td className="px-3 py-2 font-mono">{r.avgHoldDays}</td>
-                <td className="px-3 py-2 font-mono">{r.avgFlatDays}</td>
-                <td className="px-3 py-2 font-mono text-zinc-600">{r.score}</td>
-                <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => onRegister(r)}
-                    className="rounded-full bg-zinc-900 px-3 py-1 text-xs font-medium text-white hover:bg-zinc-800"
-                  >
-                    加入观测
-                  </button>
+                <td className="px-3 py-2 font-mono fin-muted-text">
+                  {formatSignedPct(baseline.excessReturnPct)}
                 </td>
+                <td className="px-3 py-2 font-mono fin-muted-text">
+                  {fmtEx(baseline.excessTrainPct)}
+                </td>
+                <td className="px-3 py-2 font-mono fin-muted-text">
+                  {fmtEx(baseline.excessValPct)}
+                </td>
+                <td className="px-3 py-2 font-mono">
+                  {formatPct(baseline.winRate * 100)}
+                </td>
+                <td className="px-3 py-2 text-xs fin-muted-text">
+                  {baseline.rawBuyCount} 买 / {baseline.rawSellCount} 卖
+                  <span className="block text-[var(--fin-dim)]">
+                    完成 {baseline.roundCount} 轮
+                  </span>
+                </td>
+                <td className="px-3 py-2 font-mono">
+                  {formatAvgHoldDaysDisplay(
+                    baseline.roundCount,
+                    baseline.avgHoldDays,
+                  )}
+                </td>
+                <td className="px-3 py-2 font-mono">
+                  {formatAvgFlatDaysDisplay(
+                    baseline.roundCount,
+                    baseline.avgFlatDays,
+                  )}
+                </td>
+                <td className="px-3 py-2 font-mono fin-muted-text">
+                  {baseline.score}
+                </td>
+                <td className="px-3 py-2 fin-muted-text text-xs">对照行</td>
               </tr>
+            ))}
+            {rows.map((r, i) => {
+              return (
+                <tr
+                  key={`${r.paramVersion}-${i}-${r.label}`}
+                  className="fin-row-hover"
+                >
+                  <td className="px-3 py-2 text-[var(--fin-text)]">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {badgesForRow(r)}
+                      <span className="font-medium">{r.label}</span>
+                    </div>
+                    <p className="mt-0.5 text-[10px] text-[var(--fin-dim)]">
+                      {strategyKindLabel(r.strategyId)}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2 font-mono">
+                    {formatPct(r.cumReturnPct)}
+                  </td>
+                  <td className="px-3 py-2 font-mono">
+                    {formatPct(r.maxDrawdownPct)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[var(--fin-blue)]">
+                    {r.excessReturnPct > 0 ? "+" : ""}
+                    {formatPct(r.excessReturnPct)}
+                  </td>
+                  <td className="px-3 py-2 font-mono fin-muted-text">
+                    {fmtEx(r.excessTrainPct)}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[var(--fin-blue-bright)]">
+                    {fmtEx(r.excessValPct)}
+                  </td>
+                  <td className="px-3 py-2 font-mono">
+                    {formatPct(r.winRate * 100)}
+                  </td>
+                  <td className="px-3 py-2 text-xs fin-muted-text">
+                    {r.rawBuyCount} 买 / {r.rawSellCount} 卖
+                    <span className="block text-[var(--fin-dim)]">
+                      完成 {r.roundCount} 轮
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono">
+                    {formatAvgHoldDaysDisplay(r.roundCount, r.avgHoldDays)}
+                  </td>
+                  <td className="px-3 py-2 font-mono">
+                    {formatAvgFlatDaysDisplay(r.roundCount, r.avgFlatDays)}
+                  </td>
+                  <td className="px-3 py-2 font-mono fin-muted-text">
+                    {r.score}
+                  </td>
+                  <td className="px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={() => onRegister(r)}
+                      className="fin-btn-primary px-3 py-1 text-xs"
+                    >
+                      加入观测
+                    </button>
+                  </td>
+                </tr>
               );
             })}
           </tbody>

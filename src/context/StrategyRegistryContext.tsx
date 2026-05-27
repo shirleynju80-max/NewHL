@@ -32,32 +32,42 @@ function saveToStorage(entries: UserRegisteredStrategy[]) {
 
 type Ctx = {
   entries: UserRegisteredStrategy[];
-  addEntry: (e: Omit<UserRegisteredStrategy, "id" | "createdAt"> & { id?: string }) => void;
+  addEntry: (
+    e: Omit<UserRegisteredStrategy, "id" | "createdAt"> & { id?: string },
+  ) => void;
   removeEntry: (id: string) => void;
 };
 
 const StrategyRegistryContext = createContext<Ctx | null>(null);
 
-export function StrategyRegistryProvider({ children }: { children: ReactNode }) {
+export function StrategyRegistryProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [entries, setEntries] = useState<UserRegisteredStrategy[]>([]);
 
   useEffect(() => {
     setEntries(loadFromStorage());
   }, []);
 
-  const addEntry = useCallback((e: Omit<UserRegisteredStrategy, "id" | "createdAt"> & { id?: string }) => {
-    const id = e.id ?? `reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setEntries((prev) => {
-      const row: UserRegisteredStrategy = {
-        ...e,
-        id,
-        createdAt: new Date().toISOString(),
-      };
-      const next = [row, ...prev];
-      saveToStorage(next);
-      return next;
-    });
-  }, []);
+  const addEntry = useCallback(
+    (e: Omit<UserRegisteredStrategy, "id" | "createdAt"> & { id?: string }) => {
+      const id =
+        e.id ?? `reg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setEntries((prev) => {
+        const row: UserRegisteredStrategy = {
+          ...e,
+          id,
+          createdAt: new Date().toISOString(),
+        };
+        const next = [row, ...prev];
+        saveToStorage(next);
+        return next;
+      });
+    },
+    [],
+  );
 
   const removeEntry = useCallback((id: string) => {
     setEntries((prev) => {
@@ -73,14 +83,21 @@ export function StrategyRegistryProvider({ children }: { children: ReactNode }) 
       addEntry,
       removeEntry,
     }),
-    [entries, addEntry, removeEntry]
+    [entries, addEntry, removeEntry],
   );
 
-  return <StrategyRegistryContext.Provider value={value}>{children}</StrategyRegistryContext.Provider>;
+  return (
+    <StrategyRegistryContext.Provider value={value}>
+      {children}
+    </StrategyRegistryContext.Provider>
+  );
 }
 
 export function useStrategyRegistry(): Ctx {
   const v = useContext(StrategyRegistryContext);
-  if (!v) throw new Error("useStrategyRegistry must be used within StrategyRegistryProvider");
+  if (!v)
+    throw new Error(
+      "useStrategyRegistry must be used within StrategyRegistryProvider",
+    );
   return v;
 }

@@ -12,7 +12,11 @@ export function mondayKey(isoDate: string): string {
   return `${y}-${m}-${da}`;
 }
 
-export type WeeklyPoint = { weekMonday: string; lastDate: string; close: number };
+export type WeeklyPoint = {
+  weekMonday: string;
+  lastDate: string;
+  close: number;
+};
 
 /** 按周聚合：每周取区间内最后一根 bar 的收盘价（按日期字符串排序）。 */
 export function weeklyLastCloses(bars: OhlcBar[]): WeeklyPoint[] {
@@ -20,15 +24,24 @@ export function weeklyLastCloses(bars: OhlcBar[]): WeeklyPoint[] {
   for (const b of bars) {
     const k = mondayKey(b.date);
     const cur = m.get(k);
-    if (!cur || b.date >= cur.lastDate) m.set(k, { lastDate: b.date, close: b.close });
+    if (!cur || b.date >= cur.lastDate)
+      m.set(k, { lastDate: b.date, close: b.close });
   }
   return Array.from(m.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([weekMonday, v]) => ({ weekMonday, lastDate: v.lastDate, close: v.close }));
+    .map(([weekMonday, v]) => ({
+      weekMonday,
+      lastDate: v.lastDate,
+      close: v.close,
+    }));
 }
 
 /** 将「每周一个标量」对齐到与 bars 等长的序列（同周内各日相同值）。 */
-export function expandWeeklyScalarToDaily(bars: OhlcBar[], weekly: WeeklyPoint[], selector: (p: WeeklyPoint) => number): (number | null)[] {
+export function expandWeeklyScalarToDaily(
+  bars: OhlcBar[],
+  weekly: WeeklyPoint[],
+  selector: (p: WeeklyPoint) => number,
+): (number | null)[] {
   const byWeek = new Map(weekly.map((p) => [p.weekMonday, selector(p)]));
   return bars.map((b) => {
     const k = mondayKey(b.date);

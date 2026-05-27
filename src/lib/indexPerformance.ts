@@ -5,11 +5,15 @@ import { indexSeriesForMode } from "../data/indexCsv";
 const TRADING_DAYS = 252;
 
 function validPoints(series: { value: number }[]): { value: number }[] {
-  return series.filter((p) => typeof p.value === "number" && !Number.isNaN(p.value) && p.value > 0);
+  return series.filter(
+    (p) => typeof p.value === "number" && !Number.isNaN(p.value) && p.value > 0,
+  );
 }
 
 /** 全样本总收益（%），首末点比 - 1。 */
-export function totalReturnPctFromSeries(series: { value: number }[]): number | null {
+export function totalReturnPctFromSeries(
+  series: { value: number }[],
+): number | null {
   const v = validPoints(series);
   if (v.length < 2) return null;
   const a = v[0]!.value;
@@ -19,7 +23,9 @@ export function totalReturnPctFromSeries(series: { value: number }[]): number | 
 }
 
 /** 最大回撤（%），基于净值曲线。 */
-export function maxDrawdownPctFromSeries(series: { value: number }[]): number | null {
+export function maxDrawdownPctFromSeries(
+  series: { value: number }[],
+): number | null {
   const v = validPoints(series);
   if (v.length < 2) return null;
   let peak = v[0]!.value;
@@ -33,7 +39,9 @@ export function maxDrawdownPctFromSeries(series: { value: number }[]): number | 
 }
 
 /** 日对数收益年化波动（%，简易）。 */
-export function annualizedVolFromSeries(series: { value: number }[]): number | null {
+export function annualizedVolFromSeries(
+  series: { value: number }[],
+): number | null {
   const pts = validPoints(series);
   if (pts.length < 5) return null;
   const rets: number[] = [];
@@ -45,7 +53,8 @@ export function annualizedVolFromSeries(series: { value: number }[]): number | n
   if (rets.length < 2) return null;
   const mean = rets.reduce((s, x) => s + x, 0) / rets.length;
   const varSample =
-    rets.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, rets.length - 1);
+    rets.reduce((s, x) => s + (x - mean) ** 2, 0) /
+    Math.max(1, rets.length - 1);
   const vol = Math.sqrt(varSample * TRADING_DAYS);
   return Math.round(vol * 10000) / 100;
 }
@@ -64,7 +73,7 @@ export type DateValue = { date: string; value: number };
 /** 按日期交集对齐后的首尾总收益（%）。 */
 export function overlapTotalReturnPct(
   a: DateValue[],
-  b: DateValue[]
+  b: DateValue[],
 ): { indexPct: number | null; otherPct: number | null } {
   const mb = new Map(b.map((p) => [p.date, p.value]));
   const pairs: { va: number; vb: number }[] = [];
@@ -78,14 +87,16 @@ export function overlapTotalReturnPct(
   const f = pairs[0]!;
   const l = pairs[pairs.length - 1]!;
   return {
-    indexPct: Math.round(((l.va / f.va - 1) * 100 + Number.EPSILON) * 100) / 100,
-    otherPct: Math.round(((l.vb / f.vb - 1) * 100 + Number.EPSILON) * 100) / 100,
+    indexPct:
+      Math.round(((l.va / f.va - 1) * 100 + Number.EPSILON) * 100) / 100,
+    otherPct:
+      Math.round(((l.vb / f.vb - 1) * 100 + Number.EPSILON) * 100) / 100,
   };
 }
 
 export function etfCloseSeriesFromBars(
   dates: string[],
-  closeByDate: Map<string, number>
+  closeByDate: Map<string, number>,
 ): DateValue[] {
   return dates
     .map((d) => {

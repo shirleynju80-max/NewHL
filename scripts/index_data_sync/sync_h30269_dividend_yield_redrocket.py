@@ -4,35 +4,17 @@ import csv
 from pathlib import Path
 from typing import Any
 
-import requests
+from redrocket_did_common import (
+    REDROCKET_SECURITY_CODES,
+    fetch_redrocket_did_rows,
+    fmt_date,
+    read_csv,
+    redrocket_target_index_codes,
+    write_div_yield_meta,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
-INDICES = ROOT / "public" / "data" / "indices.csv"
 INDEX_BARS = ROOT / "public" / "data" / "index_bars.csv"
-
-API_URL = "https://hongsehuojian.com/fundex-quote/index/valuation"
-
-# RedRocket securityCode 后缀并不完全等同于本地展示代码：
-# 中证系列用 .CSI，上证红利用 .SH，H30269 沿用页面上的小写 h30269.CSI。
-REDROCKET_SECURITY_CODES = {
-    "H30269": "h30269.CSI",
-    "930955": "930955.CSI",
-    "000922": "000922.CSI",
-    "000015": "000015.SH",
-    "931468": "931468.CSI",
-    "000825": "000825.CSI",
-    "931157": "931157.CSI",
-    "930914": "930914.CSI",
-    "931233": "931233.CSI",
-    "932365": "932365.CSI",
-    "932366": "932366.CSI",
-    "932367": "932367.CSI",
-    "932368": "932368.CSI",
-    "980092": "980092.CNI",
-    "CIS51002": "987016.CNI",
-    "HSI114": "HSHYLV.HI",
-    "HSSCSOY.HI": "HSSCSOY.HI",
-}
 
 DIV_COLUMNS = [
     "div_yield_nominal_pct",
@@ -45,12 +27,6 @@ LEGACY_LEGULEGU_COLUMNS = [
     "div_yield_ttm_pct",
     "div_yield_ttm_equal_pct",
 ]
-
-
-def read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        return reader.fieldnames or [], list(reader)
 
 
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> None:
@@ -66,57 +42,8 @@ def fmt(raw: Any) -> str:
     return f"{float(raw):.4f}"
 
 
-def fmt_date(raw: str) -> str:
-    if len(raw) != 8 or not raw.isdigit():
-        raise ValueError(f"unexpected tradeDate: {raw!r}")
-    return f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
-
-
 def source_page(security_code: str) -> str:
     return f"https://hongsehuojian.com/red-rocket/indexDetail?securityCode={security_code}"
-
-
-def iframe_referer(security_code: str) -> str:
-    return (
-        "https://hongsehuojian.com/index/h5/fundexh5bai/index.html"
-        f"?targetPage=indexDetail&securityCode={security_code}&pro=RedRocket-PC"
-    )
-
-
-def fetch_redrocket_did_rows(security_code: str) -> list[dict[str, Any]]:
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json, text/plain, */*",
-        "Referer": iframe_referer(security_code),
-        "pro": "RedRocket-PC",
-    }
-    resp = requests.get(
-        API_URL,
-        params={
-            "securityCode": security_code,
-            "valuationType": "DID",
-            "timeInterval": "since_inception",
-        },
-        headers=headers,
-        timeout=45,
-    )
-    resp.raise_for_status()
-    payload = resp.json()
-    data = payload.get("data") or {}
-    items = data.get("items") or []
-    if payload.get("code") != "200" or not items:
-        raise RuntimeError(f"RedRocket returned no DID rows for {security_code}: {payload!r}")
-    return items
-
-
-def redrocket_target_index_codes() -> set[str]:
-    _, rows = read_csv(INDICES)
-    categories = {"A股红利", "港股红利", "现金流"}
-    return {
-        row["index_code"]
-        for row in rows
-        if row.get("category") in categories
-    }
 
 
 def main() -> None:
@@ -132,13 +59,17 @@ def main() -> None:
     )
 
     redrocket_rows_by_code: dict[str, dict[str, dict[str, Any]]] = {}
+    per_index_latest: dict[str, str] = {}
     for code in target_codes:
         security_code = REDROCKET_SECURITY_CODES[code]
-        redrocket_rows_by_code[code] = {
+        by_date = {
             fmt_date(row["tradeDate"]): row
             for row in fetch_redrocket_did_rows(security_code)
             if row.get("tradeDate")
         }
+        redrocket_rows_by_code[code] = by_date
+        if by_date:
+            per_index_latest[code] = max(by_date)
 
     updated_by_code = {code: 0 for code in target_codes}
     total_by_code = {code: 0 for code in target_codes}
@@ -150,7 +81,6 @@ def main() -> None:
             continue
 
         total_by_code[index_code] += 1
-        # 红色火箭 DID 为周频/不定期观测；缺失交易日保持为空，不做填充。
         row["div_yield_nominal_pct"] = ""
         row["div_yield_redrocket_did_pct"] = ""
         row["div_yield_redrocket_percentile_pct"] = ""
@@ -163,10 +93,14 @@ def main() -> None:
         did = fmt(source.get("valuationValue"))
         row["div_yield_nominal_pct"] = did
         row["div_yield_redrocket_did_pct"] = did
-        row["div_yield_redrocket_percentile_pct"] = fmt(source.get("historicalPercentile"))
+        row["div_yield_redrocket_percentile_pct"] = fmt(
+            source.get("historicalPercentile")
+        )
         updated_by_code[index_code] += 1
 
     write_csv(INDEX_BARS, fieldnames, rows)
+    meta_path = write_div_yield_meta(per_index_latest)
+
     print("updated RedRocket DID rows:")
     for code in target_codes:
         by_date = redrocket_rows_by_code[code]
@@ -176,6 +110,10 @@ def main() -> None:
         print(
             f"- {code}: {updated_by_code[code]}/{total_by_code[code]}; "
             f"source range: {first} to {last}; source={source_page(security_code)}"
+        )
+    if per_index_latest:
+        print(
+            f"meta: {meta_path} · source_latest_date={max(per_index_latest.values())}"
         )
 
 

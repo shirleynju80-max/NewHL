@@ -1,0 +1,162 @@
+{
+  "generatedAt": "2026-05-27T09:15:26.340Z",
+  "representativeCodes": [
+    "007751",
+    "512890",
+    "513910",
+    "515100",
+    "515450"
+  ],
+  "representativeIndexCodes": [
+    "930955",
+    "931157",
+    "931233"
+  ],
+  "indexRepresentatives": [
+    {
+      "index": "931157",
+      "name": "中证沪港深红利成长低波动指数",
+      "primaryEtf": "007751",
+      "annReturnPct": 13.34770048988645,
+      "maxDrawdownPct": 14.166837466693996,
+      "volatilityPct": 14.18663806741024
+    },
+    {
+      "index": "930955",
+      "name": "中证红利低波动100指数",
+      "primaryEtf": "515100",
+      "annReturnPct": 9.793663766861304,
+      "maxDrawdownPct": 13.602896180065155,
+      "volatilityPct": 14.82479927542715
+    },
+    {
+      "index": "931233",
+      "name": "中证港股通央企红利指数",
+      "primaryEtf": "513910",
+      "annReturnPct": 15.38124819096305,
+      "maxDrawdownPct": 28.781567788659984,
+      "volatilityPct": 21.626186514050545
+    }
+  ],
+  "byIndex": {
+    "930955": [
+      "515100"
+    ],
+    "931157": [
+      "007751"
+    ],
+    "931233": [
+      "513910"
+    ]
+  },
+  "primaryRepresentativeCodes": [
+    "007751",
+    "515450",
+    "512890"
+  ],
+  "strongDualExcess": [
+    {
+      "etf": "512890",
+      "strategy": "rsi_mean_reversion",
+      "version": "v20260526_rsi_14_35_75",
+      "excessReturn": 61.05,
+      "excessTrain": 14.04,
+      "excessVal": 20.7,
+      "roundCount": 10,
+      "winRate": 1,
+      "avgHoldDays": 55.6
+    },
+    {
+      "etf": "515080",
+      "strategy": "rsi_mean_reversion",
+      "version": "v20260526_rsi_21_40_75",
+      "excessReturn": 60.42,
+      "excessTrain": 36.14,
+      "excessVal": 13.91,
+      "roundCount": 4,
+      "winRate": 1,
+      "avgHoldDays": 63.5
+    },
+    {
+      "etf": "159758",
+      "strategy": "rsi_mean_reversion",
+      "version": "v20260526_rsi_14_30_75",
+      "excessReturn": 38.29,
+      "excessTrain": 16.91,
+      "excessVal": 16.27,
+      "roundCount": 4,
+      "winRate": 1,
+      "avgHoldDays": 52
+    },
+    {
+      "etf": "159758",
+      "strategy": "bollinger_mean_reversion",
+      "version": "v20260526_boll_20_3",
+      "excessReturn": 21.82,
+      "excessTrain": 10.04,
+      "excessVal": 9.46,
+      "roundCount": 6,
+      "winRate": 1,
+      "avgHoldDays": 35.33
+    },
+    {
+      "etf": "007751",
+      "strategy": "rsi_mean_reversion",
+      "version": "v20260526_rsi_21_35_70",
+      "excessReturn": 49.24,
+      "excessTrain": 36.94,
+      "excessVal": 9.27,
+      "roundCount": 6,
+      "winRate": 1,
+      "avgHoldDays": 56.5
+    },
+    {
+      "etf": "513530",
+      "strategy": "rsi_mean_reversion",
+      "version": "v20260526_rsi_21_40_70",
+      "excessReturn": 49.31,
+      "excessTrain": 20.06,
+      "excessVal": 12.44,
+      "roundCount": 5,
+      "winRate": 1,
+      "avgHoldDays": 58
+    }
+  ],
+  "swingCandidates": [
+    {
+      "etf": "561580",
+      "strategy": "rsi_mean_reversion",
+      "rounds": 8,
+      "roundsPerYear": 2.8038942976356047,
+      "winRate": 1,
+      "excessReturn": 11.78,
+      "avgHoldDays": 19.5
+    },
+    {
+      "etf": "513630",
+      "strategy": "rsi_mean_reversion",
+      "rounds": 5,
+      "roundsPerYear": 2.1392190152801356,
+      "winRate": 1,
+      "excessReturn": 4.77,
+      "avgHoldDays": 34.6
+    }
+  ],
+  "fund007751": "007751: 1592 日; 首 2019-09-06 close=0.713 (loader 用 nav_forward_adjusted 优先); 末 2026-05-25",
+  "fund007751NavCompare": {
+    "registeredRsi": "v20260526_rsi_21_35_70",
+    "forwardAdjusted": {
+      "excessReturnPct": 49.24,
+      "excessTrainPct": 36.94,
+      "excessValPct": 9.27,
+      "roundCount": 6
+    },
+    "navUnitOnly": {
+      "excessReturnPct": 87.49,
+      "excessTrainPct": 48.54,
+      "excessValPct": 21.31,
+      "roundCount": 6
+    },
+    "note": "生产 loader 优先 nav_forward_adjusted；nav_unit 仅作口径对照"
+  }
+}

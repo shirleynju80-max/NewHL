@@ -1,10 +1,21 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { EtfProductCodeLink } from "../components/EtfProductDetailLink";
+import { PageHeader } from "../components/PageHeader";
 import { useDataSource } from "../context/DataSourceContext";
-import type { IndexTrackingRow } from "../types";
-import { buildSeriesOverviewRowFromNav, type SeriesOverviewRow } from "../lib/compareEtfs";
+import { buildIndexSpreadRows, indexSeriesForMode } from "../data/indexCsv";
+import { useHkBondAnchorPreference } from "../hooks/useHkBondAnchorPreference";
+import { resolveBondAnchorForIndex } from "../lib/bondAnchor";
+import { formatPct, formatPctValue } from "../lib/formatDisplay";
+import {
+  etfProductDetailNavigable,
+  primaryProductForIndex,
+  type EtfProductRecord,
+} from "../lib/etfProducts";
+import type { EtfDefinition, IndexDefinition } from "../types";
 import {
   CONFIG_DIMENSION_OPTIONS,
+  INDEX_META_DATE_FOOTNOTE,
   dataAvailabilityLabel,
   dataAvailabilityTone,
   filterIndicesByDimensionOption,
@@ -13,295 +24,820 @@ import {
   indexToConfigDimension,
   type ConfigDimensionFilter,
 } from "../lib/configFramework";
+import {
+  fetchRedrocketDivYieldMeta,
+  indexDivYieldFootnote,
+  type RedrocketDivYieldMeta,
+} from "../lib/redrocketDivYieldMeta";
+import {
+  calcMetricBlock,
+  sliceSeriesForWindow,
+  type DateValuePoint,
+  type MetricWindowId,
+} from "../lib/indexPanelMetrics";
 
-const STYLE_FILTER_OPTIONS = ["全部风格", "A股", "港股", "低波", "质量", "央企", "红利", "自由现金流"] as const;
-type StyleFilter = (typeof STYLE_FILTER_OPTIONS)[number];
+type MarketFilter = "all" | "cn" | "hk";
+type InceptionFilter = "all" | "y5" | "y10";
+type PerfWindow = "y3" | "y5" | "y10" | "all";
 
-type InceptionFilter = "all" | "lt2015" | "y2015_2019" | "y2020_2024" | "ge2025" | "unknown";
-
-const INCEPTION_FILTERS: { id: InceptionFilter; label: string }[] = [
-  { id: "all", label: "全部成立期" },
-  { id: "lt2015", label: "2015 年前" },
-  { id: "y2015_2019", label: "2015–2019" },
-  { id: "y2020_2024", label: "2020–2024" },
-  { id: "ge2025", label: "2025 年及以后" },
-  { id: "unknown", label: "未填成立日" },
+const MARKET_OPTIONS: { id: MarketFilter; label: string }[] = [
+  { id: "all", label: "全部" },
+  { id: "cn", label: "A股" },
+  { id: "hk", label: "港股" },
 ];
+
+const INCEPTION_OPTIONS: {
+  id: InceptionFilter;
+  label: string;
+  minYears: number | null;
+}[] = [
+  { id: "all", label: "全部", minYears: null },
+  { id: "y5", label: "满5年", minYears: 5 },
+  { id: "y10", label: "满10年", minYears: 10 },
+];
+
+const PERF_WINDOWS: {
+  id: PerfWindow;
+  label: string;
+  metricId: MetricWindowId;
+}[] = [
+  { id: "y3", label: "近3年", metricId: "y3" },
+  { id: "y5", label: "近5年", metricId: "y5" },
+  { id: "y10", label: "近10年", metricId: "y10" },
+  { id: "all", label: "全周期", metricId: "all" },
+];
+
+type SortKey =
+  | "dimension"
+  | "baseDate"
+  | "inceptionDate"
+  | "annualReturnPct"
+  | "maxDrawdownPct"
+  | "annualVolPct"
+  | "sharpeLike"
+  | "calmarLike";
+type SortState = { key: SortKey; dir: "asc" | "desc" };
+
+function dateToSortValue(iso: string | null | undefined): number {
+  if (!iso?.trim()) return Number.NaN;
+  const t = new Date(`${iso.trim()}T00:00:00`).getTime();
+  return Number.isNaN(t) ? Number.NaN : t;
+}
+
+function metricToSortValue(v: number | null | undefined): number {
+  return v == null || Number.isNaN(v) ? Number.NaN : v;
+}
+
+/** Null/missing values always sort last; asc = smaller first, desc = larger first. */
+function compareSortValues(a: number, b: number, dir: "asc" | "desc"): number {
+  const aMissing = Number.isNaN(a);
+  const bMissing = Number.isNaN(b);
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  return dir === "asc" ? a - b : b - a;
+}
+
+function fmtMetaDate(iso: string | null | undefined): string {
+  return iso?.trim() ? iso.trim() : "—";
+}
+
+const SHORT_INCEPTION_YEARS = 3;
+
+function yearsSinceInception(iso: string | null | undefined): number | null {
+  const s = iso?.trim();
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return (Date.now() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+}
+
+function isShortInception(iso: string | null | undefined): boolean {
+  const years = yearsSinceInception(iso);
+  return years != null && years < SHORT_INCEPTION_YEARS;
+}
+
+function meetsInceptionMin(
+  iso: string | null | undefined,
+  minYears: number,
+): boolean {
+  const years = yearsSinceInception(iso);
+  return years != null && years >= minYears;
+}
 
 function isListVisibleIndex(code: string): boolean {
   return code !== "000300";
 }
 
-function inceptionBucket(d: string | undefined): InceptionFilter {
-  if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return "unknown";
-  const y = Number(d.slice(0, 4));
-  if (y < 2015) return "lt2015";
-  if (y <= 2019) return "y2015_2019";
-  if (y <= 2024) return "y2020_2024";
-  return "ge2025";
+function metricForWindow(series: DateValuePoint[], win: PerfWindow) {
+  const id: MetricWindowId = win === "all" ? "all" : win;
+  return calcMetricBlock(sliceSeriesForWindow(series, id));
 }
 
-function indexTriNav(def: { bars: { date: string; tri_close: number }[] }): { closes: number[]; dates: string[] } | null {
-  const sorted = [...def.bars].sort((a, b) => a.date.localeCompare(b.date));
-  if (sorted.length < 20) return null;
-  return { closes: sorted.map((b) => b.tri_close), dates: sorted.map((b) => b.date) };
+import { SP_INDEX_ETF_PROXY_CODES } from "../lib/indexEtfProxy";
+
+function etfCloseSeries(etf: EtfDefinition | undefined): DateValuePoint[] {
+  if (!etf?.bars.length) return [];
+  return etf.bars
+    .filter((bar) => Number.isFinite(bar.close) && bar.close > 0)
+    .map((bar) => ({ date: bar.date, value: bar.close }));
 }
 
-function fmtBlock(b: SeriesOverviewRow["all"], key: "annualReturnPct" | "maxDrawdownPct" | "annualVolPct"): string {
-  if (!b) return "—";
-  const v = b[key];
-  return typeof v === "number" && Number.isFinite(v) ? String(v) : "—";
+function listMetricSeriesForIndex(
+  def: IndexDefinition,
+  primaryEtf: EtfDefinition | undefined,
+): DateValuePoint[] {
+  const tri = indexSeriesForMode(def.bars, "tri");
+  if (tri.length || !SP_INDEX_ETF_PROXY_CODES.has(def.meta.index_code)) return tri;
+  return etfCloseSeries(primaryEtf);
 }
 
-function fmtAnn(row: SeriesOverviewRow | null, win: "all" | "y1" | "y3" | "y5"): string {
-  if (!row) return "—";
-  const b = win === "all" ? row.all : win === "y1" ? row.y1 : win === "y3" ? row.y3 : row.y5;
-  return fmtBlock(b, "annualReturnPct");
+function sharpeLike(ann: number | null, vol: number | null): number | null {
+  if (ann == null || vol == null || vol < 1e-6) return null;
+  return Math.round((ann / vol) * 100) / 100;
+}
+
+function marketOf(category: string): "cn" | "hk" | null {
+  if (category === "港股红利") return "hk";
+  if (category === "A股红利" || category === "现金流") return "cn";
+  return null;
+}
+
+function fmtPctCell(v: number | null | undefined): string {
+  return formatPct(v);
+}
+
+function fmtRatio(v: number | null | undefined): string {
+  return formatPctValue(v);
+}
+
+function dimOrder(dim: ConfigDimensionFilter | null): number {
+  if (dim === "cash_creation") return 0;
+  if (dim === "shareholder_return") return 1;
+  return 2;
+}
+
+function indexMatchesSearch(
+  indexCode: string,
+  indexName: string,
+  category: string,
+  tags: string[],
+  primaryCode: string | undefined,
+  primaryName: string | undefined,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const hay = [
+    indexCode,
+    indexName,
+    category,
+    ...tags,
+    primaryCode,
+    primaryName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q);
+}
+
+/** 在当前维度/市场/搜索下，符合成立年限门槛的指数只数（chip 上的筛选计数） */
+function countFilteredIndices(
+  indices: IndexDefinition[],
+  etfProducts: EtfProductRecord[],
+  query: string,
+  dimension: ConfigDimensionFilter,
+  market: MarketFilter,
+  inceptionMinYears: number | null,
+): number {
+  let n = 0;
+  for (const ix of indices) {
+    if (!isListVisibleIndex(ix.meta.index_code)) continue;
+    if (!indexToConfigDimension(ix.meta.category)) continue;
+    if (filterIndicesByDimensionOption([ix], dimension).length === 0) continue;
+    if (market !== "all" && marketOf(ix.meta.category) !== market) continue;
+    if (
+      inceptionMinYears != null &&
+      !meetsInceptionMin(ix.meta.inception_date, inceptionMinYears)
+    ) {
+      continue;
+    }
+    const primary = primaryProductForIndex(etfProducts, ix.meta.index_code);
+    if (
+      !indexMatchesSearch(
+        ix.meta.index_code,
+        ix.meta.name,
+        ix.meta.category,
+        indexStyleTags(ix.meta),
+        primary?.code,
+        primary?.name,
+        query,
+      )
+    ) {
+      continue;
+    }
+    n += 1;
+  }
+  return n;
+}
+
+function FilterChipCount({ count }: { count: number }) {
+  return (
+    <span
+      className="ml-1 font-mono text-[10px] font-normal tabular-nums text-[var(--fin-dim)]"
+      title="当前筛选条件下符合的指数只数"
+    >
+      {count}只
+    </span>
+  );
 }
 
 export function IndicesListPage() {
-  const { indices, indexTracking, publicCsvAutoLoading } = useDataSource();
-  const [dimension, setDimension] = useState<ConfigDimensionFilter>("shareholder_return");
-  const [styleFilter, setStyleFilter] = useState<StyleFilter>("全部风格");
-  const [inc, setInc] = useState<InceptionFilter>("all");
+  const {
+    indices,
+    etfProducts,
+    bondByDate,
+    publicCsvAutoLoading,
+    reloadingPublicCsv,
+    getEtf,
+  } = useDataSource();
+  const [hkBondAnchor] = useHkBondAnchorPreference();
+  const [searchParams] = useSearchParams();
+  const dimParam = searchParams.get("dim");
+  const initialDim: ConfigDimensionFilter =
+    dimParam === "cash_creation" || dimParam === "shareholder_return"
+      ? dimParam
+      : "all";
 
-  const dimensionCounts = useMemo(() => {
-    const counts: Record<ConfigDimensionFilter, number> = { all: 0, cash_creation: 0, shareholder_return: 0 };
-    for (const ix of indices) {
-      if (!isListVisibleIndex(ix.meta.index_code)) continue;
-      const dim = indexToConfigDimension(ix.meta.category);
-      if (!dim) continue;
-      counts.all += 1;
-      counts[dim] += 1;
-    }
-    return counts;
-  }, [indices]);
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [dimension, setDimension] = useState<ConfigDimensionFilter>(initialDim);
+  const [market, setMarket] = useState<MarketFilter>("all");
+  const [inceptionFilter, setInceptionFilter] =
+    useState<InceptionFilter>("all");
 
-  const primaryTrackingByIndex = useMemo(() => {
-    const map = new Map<string, IndexTrackingRow>();
-    for (const row of indexTracking) {
-      if (!map.has(row.index_code)) map.set(row.index_code, row);
-    }
-    return map;
-  }, [indexTracking]);
+  const [divYieldMeta, setDivYieldMeta] = useState<RedrocketDivYieldMeta | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (publicCsvAutoLoading) return;
+    let cancelled = false;
+    void fetchRedrocketDivYieldMeta(Date.now()).then((meta) => {
+      if (!cancelled) setDivYieldMeta(meta);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [publicCsvAutoLoading, reloadingPublicCsv]);
+
+  const divYieldFootnote = useMemo(
+    () => indexDivYieldFootnote(divYieldMeta),
+    [divYieldMeta],
+  );
+
+  const [perfWindow, setPerfWindow] = useState<PerfWindow>("y5");
+  const [sort, setSort] = useState<SortState>({
+    key: "calmarLike",
+    dir: "desc",
+  });
+  const [compactTable, setCompactTable] = useState(true);
+
+  const activeInceptionMin =
+    INCEPTION_OPTIONS.find((o) => o.id === inceptionFilter)?.minYears ?? null;
 
   const rows = useMemo(() => {
     const list = filterIndicesByDimensionOption(
       indices.filter((ix) => isListVisibleIndex(ix.meta.index_code)),
-      dimension
+      dimension,
     )
-      .filter((ix) => (inc === "all" ? true : inceptionBucket(ix.meta.inception_date) === inc))
       .filter((ix) => {
-        if (styleFilter === "全部风格") return true;
-        return indexStyleTags(ix.meta).includes(styleFilter);
+        if (market === "all") return true;
+        return marketOf(ix.meta.category) === market;
+      })
+      .filter((ix) => {
+        const opt = INCEPTION_OPTIONS.find((o) => o.id === inceptionFilter);
+        if (!opt?.minYears) return true;
+        return meetsInceptionMin(ix.meta.inception_date, opt.minYears);
+      })
+      .filter((ix) => {
+        const primary = primaryProductForIndex(
+          etfProducts,
+          ix.meta.index_code,
+        );
+        return indexMatchesSearch(
+          ix.meta.index_code,
+          ix.meta.name,
+          ix.meta.category,
+          indexStyleTags(ix.meta),
+          primary?.code,
+          primary?.name,
+          deferredQuery,
+        );
       })
       .map((def) => {
-        const nav = indexTriNav(def);
-        const overview =
-          nav ? buildSeriesOverviewRowFromNav(nav.closes, nav.dates, def.meta.index_code, def.meta.name) : null;
-        return { def, barDays: def.bars.length, overview, tags: indexStyleTags(def.meta) };
+        const primary = primaryProductForIndex(
+          etfProducts,
+          def.meta.index_code,
+        );
+        const primaryEtf = primary ? getEtf(primary.code) : undefined;
+        const metricSeries = listMetricSeriesForIndex(def, primaryEtf);
+        const mb = metricForWindow(metricSeries, perfWindow);
+        const dim = indexToConfigDimension(def.meta.category);
+        const spreadRows = buildIndexSpreadRows(
+          def,
+          bondByDate,
+          def.meta.market === "H"
+            ? hkBondAnchor
+            : resolveBondAnchorForIndex(def),
+        );
+        const latestSpread = spreadRows.at(-1);
+        const showSpread =
+          dim === "shareholder_return" && spreadRows.length > 0;
+        return {
+          def,
+          dim,
+          tags: indexStyleTags(def.meta),
+          avail: indexDataAvailability(def),
+          primary,
+          mb,
+          sharpe: sharpeLike(mb.annualReturnPct, mb.annualVolPct),
+          baseDate: def.meta.base_date?.trim() || null,
+          inceptionDate: def.meta.inception_date?.trim() || null,
+          divYield: showSpread ? latestSpread?.divYieldPct : null,
+        };
       });
+
     list.sort((a, b) => {
-      if (a.barDays === 0 && b.barDays > 0) return 1;
-      if (a.barDays > 0 && b.barDays === 0) return -1;
+      const compare = (va: number, vb: number) =>
+        compareSortValues(va, vb, sort.dir);
+      let diff = 0;
+      if (sort.key === "dimension") {
+        const cmp = a.def.meta.category.localeCompare(
+          b.def.meta.category,
+          "zh-Hans-CN",
+        );
+        diff = sort.dir === "asc" ? cmp : -cmp;
+      }
+      else if (sort.key === "baseDate")
+        diff = compare(
+          dateToSortValue(a.baseDate),
+          dateToSortValue(b.baseDate),
+        );
+      else if (sort.key === "inceptionDate")
+        diff = compare(
+          dateToSortValue(a.inceptionDate),
+          dateToSortValue(b.inceptionDate),
+        );
+      else if (sort.key === "maxDrawdownPct")
+        diff = compare(
+          metricToSortValue(a.mb.maxDrawdownPct),
+          metricToSortValue(b.mb.maxDrawdownPct),
+        );
+      else if (sort.key === "annualVolPct")
+        diff = compare(
+          metricToSortValue(a.mb.annualVolPct),
+          metricToSortValue(b.mb.annualVolPct),
+        );
+      else if (sort.key === "sharpeLike")
+        diff = compare(
+          metricToSortValue(a.sharpe),
+          metricToSortValue(b.sharpe),
+        );
+      else if (sort.key === "calmarLike")
+        diff = compare(
+          metricToSortValue(a.mb.calmar),
+          metricToSortValue(b.mb.calmar),
+        );
+      else
+        diff = compare(
+          metricToSortValue(a.mb.annualReturnPct),
+          metricToSortValue(b.mb.annualReturnPct),
+        );
+      if (diff !== 0) return diff;
+      if (sort.key !== "dimension") {
+        const da = dimOrder(a.dim);
+        const db = dimOrder(b.dim);
+        if (da !== db) return da - db;
+      }
       return a.def.meta.name.localeCompare(b.def.meta.name, "zh-Hans-CN");
     });
     return list;
-  }, [indices, dimension, styleFilter, inc]);
+  }, [
+    indices,
+    deferredQuery,
+    dimension,
+    market,
+    inceptionFilter,
+    perfWindow,
+    etfProducts,
+    getEtf,
+    bondByDate,
+    sort,
+    hkBondAnchor,
+  ]);
+
+  function onSort(key: SortKey) {
+    setSort((prev) => {
+      if (prev.key === key)
+        return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
+      const defaultDir =
+        key === "dimension" ||
+        key === "maxDrawdownPct" ||
+        key === "annualVolPct"
+          ? "asc"
+          : "desc";
+      return { key, dir: defaultDir };
+    });
+  }
+
+  function sortableTh(
+    key: SortKey,
+    label: string,
+    opts?: { className?: string; title?: string },
+  ) {
+    return (
+      <th
+        className={opts?.className ?? "px-3 py-2 font-normal"}
+        title={opts?.title}
+      >
+        <button
+          type="button"
+          className="fin-interactive hover:text-[var(--fin-blue)]"
+          onClick={() => onSort(key)}
+        >
+          {label}
+          {sortMark(key)}
+        </button>
+      </th>
+    );
+  }
+
+  function sortMark(key: SortKey) {
+    if (sort.key !== key) return "";
+    return sort.dir === "asc" ? " ↑" : " ↓";
+  }
+
+  const hasActiveFilters =
+    deferredQuery.trim() !== "" || dimension !== "all" || market !== "all";
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 tracking-tight">指数研究</h1>
-          <p className="mt-2 text-sm text-zinc-500 max-w-2xl">
-            按配置维度研究指数：现金创造看长期质量底仓；股东回报可看股息率与利差。不做简单收益排行榜。
-          </p>
-        </div>
-        <p className="text-xs text-zinc-500">
-          当前 {rows.length} 个 · 有行情 {rows.filter((r) => r.barDays > 0).length} 个
-        </p>
-      </header>
+    <div className="ft-page space-y-6">
+      <PageHeader
+        kicker="研究层"
+        title="指数研究"
+        breadcrumbs={[{ label: "配置总览", to: "/" }, { label: "指数研究" }]}
+      />
 
-      <section className="rounded-lg border border-zinc-100 bg-white p-5 shadow-sm space-y-5">
-        <div>
-          <p className="text-xs font-medium text-zinc-600">一级维度</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+      <section className="fin-panel space-y-3 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[min(100%,220px)] flex-1 text-sm">
+            <span className="fin-label">搜索</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="指数或 ETF 代码、名称"
+              className="fin-select fin-interactive mt-1 block w-full rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          {hasActiveFilters ?
             <button
               type="button"
-              onClick={() => setDimension("all")}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                dimension === "all" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-              }`}
+              className="fin-chip-filter px-3 py-2 text-sm"
+              onClick={() => {
+                setQuery("");
+                setDimension("all");
+                setMarket("all");
+                setInceptionFilter("all");
+              }}
             >
-              全部（{dimensionCounts.all}）
+              重置筛选
             </button>
-            {CONFIG_DIMENSION_OPTIONS.map((opt) => (
+          : null}
+        </div>
+
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="fin-label shrink-0">维度</span>
+            {(
+              [
+                "all",
+                ...CONFIG_DIMENSION_OPTIONS.map((o) => o.id),
+              ] as ConfigDimensionFilter[]
+            ).map((id) => (
               <button
-                key={opt.id}
+                key={id}
                 type="button"
-                onClick={() => setDimension(opt.id)}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                  dimension === opt.id ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                }`}
+                onClick={() => setDimension(id)}
+                className={`fin-chip-filter ${dimension === id ? "fin-chip-filter-active" : ""}`}
               >
-                {opt.title}（{dimensionCounts[opt.id]}）
+                {id === "all" ? "全部" : CONFIG_DIMENSION_OPTIONS.find((o) => o.id === id)?.title}
+                <FilterChipCount
+                  count={countFilteredIndices(
+                    indices,
+                    etfProducts,
+                    deferredQuery,
+                    id,
+                    market,
+                    activeInceptionMin,
+                  )}
+                />
               </button>
             ))}
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-lg border border-zinc-100 bg-zinc-50/60 p-4 sm:flex-row sm:items-end sm:gap-6">
-          <label className="flex w-full shrink-0 flex-col gap-1 text-sm sm:w-40">
-            <span className="text-xs font-medium text-zinc-600">二级风格</span>
-            <select
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900"
-              value={styleFilter}
-              onChange={(e) => setStyleFilter(e.target.value as StyleFilter)}
-            >
-              {STYLE_FILTER_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex w-full shrink-0 flex-col gap-1 text-sm sm:w-44">
-            <span className="text-xs font-medium text-zinc-600">成立时间</span>
-            <select
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900"
-              value={inc}
-              onChange={(e) => setInc(e.target.value as InceptionFilter)}
-            >
-              {INCEPTION_FILTERS.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <p className="text-xs text-zinc-500 leading-relaxed">
-          绩效仅基于指数全收益 tri_close；红利类详情页可查看股息率与利差。高级多标的对比见配置总览底部折叠区。
-        </p>
-
-        {publicCsvAutoLoading ?
-          <p className="rounded-lg border border-zinc-100 bg-zinc-50 px-4 py-6 text-sm text-zinc-500">
-            正在加载指数数据...
-          </p>
-        : indices.length === 0 ?
-          <p className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-6 text-sm text-amber-900">
-            暂无指数 CSV。请确认 `public/data/indices.csv` 与 `public/data/index_bars.csv` 已随构建发布。
-          </p>
-        : rows.length === 0 ? (
-          <p className="rounded-lg border border-zinc-100 bg-zinc-50 px-4 py-6 text-sm text-zinc-500">
-            当前筛选条件下没有指数。
-          </p>
-        )
-        : (
-          <div className="grid gap-3">
-            {rows.map(({ def, barDays, overview, tags }) => {
-              const primaryTrackingRow = primaryTrackingByIndex.get(def.meta.index_code);
-              const avail = indexDataAvailability(def);
-              const availTone = dataAvailabilityTone(avail);
-              return (
-                <div
-                  key={def.meta.index_code}
-                  className="group rounded-lg border border-zinc-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/30 hover:shadow-md"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-base font-semibold text-zinc-900 group-hover:text-indigo-700">{def.meta.name}</p>
-                        <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] text-zinc-600 group-hover:border-indigo-200 group-hover:bg-white">
-                          {def.meta.category}
-                        </span>
-                        <span
-                          className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                            availTone === "good"
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                              : availTone === "warn"
-                                ? "border-amber-200 bg-amber-50 text-amber-800"
-                                : "border-zinc-200 bg-zinc-100 text-zinc-600"
-                          }`}
-                        >
-                          {dataAvailabilityLabel(avail)}
-                        </span>
-                        {tags.slice(0, 4).map((t) => (
-                          <span
-                            key={t}
-                            className="rounded-full border border-indigo-100 bg-indigo-50/50 px-2 py-0.5 text-[10px] text-indigo-800"
-                          >
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="mt-1 font-mono text-xs text-zinc-500">
-                        {def.meta.index_code} · 成立日 {def.meta.inception_date ?? "—"} · {barDays} 个指数交易日
-                      </p>
-                    </div>
-                    <Link
-                      to={`/indices/${encodeURIComponent(def.meta.index_code)}`}
-                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white opacity-90 transition hover:bg-indigo-700 group-hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                    >
-                      查看详情
-                    </Link>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3 lg:grid-cols-7">
-                    <div>
-                      <p className="text-zinc-500">全样本年化</p>
-                      <p className="mt-1 font-mono font-semibold text-zinc-900">{fmtAnn(overview, "all")}</p>
-                    </div>
-                    <div>
-                      <p className="text-zinc-500">全样本回撤</p>
-                      <p className="mt-1 font-mono font-semibold text-zinc-900">
-                        {overview?.all ? fmtBlock(overview.all, "maxDrawdownPct") : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-zinc-500">全样本波动</p>
-                      <p className="mt-1 font-mono font-semibold text-zinc-900">
-                        {overview?.all ? fmtBlock(overview.all, "annualVolPct") : "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-zinc-500">近1年年化</p>
-                      <p className="mt-1 font-mono font-semibold text-zinc-900">{fmtAnn(overview, "y1")}</p>
-                    </div>
-                    <div>
-                      <p className="text-zinc-500">近3年年化</p>
-                      <p className="mt-1 font-mono font-semibold text-zinc-900">{fmtAnn(overview, "y3")}</p>
-                    </div>
-                    <div>
-                      <p className="text-zinc-500">近5年年化</p>
-                      <p className="mt-1 font-mono font-semibold text-zinc-900">{fmtAnn(overview, "y5")}</p>
-                    </div>
-                    <div>
-                      <p className="text-zinc-500">主跟踪产品</p>
-                      {primaryTrackingRow ?
-                        <Link
-                          to={`/etf/${encodeURIComponent(primaryTrackingRow.etf_code)}`}
-                          className="mt-1 inline-block font-mono font-semibold text-indigo-600 hover:underline"
-                        >
-                          {primaryTrackingRow.etf_code}
-                        </Link>
-                      : (
-                        <p className="mt-1 font-mono font-semibold text-zinc-900">—</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="fin-label shrink-0">市场</span>
+            {MARKET_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setMarket(opt.id)}
+                className={`fin-chip-filter ${market === opt.id ? "fin-chip-filter-active" : ""}`}
+              >
+                {opt.label}
+                <FilterChipCount
+                  count={countFilteredIndices(
+                    indices,
+                    etfProducts,
+                    deferredQuery,
+                    dimension,
+                    opt.id,
+                    activeInceptionMin,
+                  )}
+                />
+              </button>
+            ))}
           </div>
-        )}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="fin-label shrink-0">成立时间</span>
+            {INCEPTION_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => setInceptionFilter(opt.id)}
+                className={`fin-chip-filter ${inceptionFilter === opt.id ? "fin-chip-filter-active" : ""}`}
+              >
+                {opt.label}
+                <FilterChipCount
+                  count={countFilteredIndices(
+                    indices,
+                    etfProducts,
+                    deferredQuery,
+                    dimension,
+                    market,
+                    opt.minYears,
+                  )}
+                />
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="fin-label shrink-0">时间窗</span>
+            {PERF_WINDOWS.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => setPerfWindow(w.id)}
+                className={`fin-chip-filter ${perfWindow === w.id ? "fin-chip-filter-active" : ""}`}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCompactTable((v) => !v)}
+            className="fin-chip-filter ml-auto"
+            aria-pressed={compactTable}
+          >
+            {compactTable ? "显示全部列" : "简略列"}
+          </button>
+        </div>
+
+        {hasActiveFilters ?
+          <p className="text-xs fin-muted-text">当前 {rows.length} 个指数</p>
+        : null}
       </section>
 
-      <p className="text-center text-xs text-zinc-400">
-        详情页仅使用指数序列；跟踪产品仅提供跳转链接，不混入指数指标计算。
-      </p>
+      {publicCsvAutoLoading ? (
+        <p className="text-sm fin-muted-text">正在加载指数数据…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm fin-muted-text">
+          暂无符合筛选条件的指数，请调整搜索或筛选条件。
+        </p>
+      ) : (
+        <div className="fin-panel overflow-x-auto">
+          <table
+            className={`w-full text-sm ${compactTable ? "min-w-[880px]" : "min-w-[1180px]"}`}
+          >
+            <thead>
+              <tr className="fin-table-head">
+                <th className="px-3 py-2 font-normal text-left">指数</th>
+                {sortableTh("dimension", "维度", {
+                  title: "指数分类（A股红利、港股红利、现金流等，点击排序）",
+                })}
+                {!compactTable ? (
+                  <th className="px-3 py-2 font-normal">风格</th>
+                ) : null}
+                {!compactTable ?
+                  sortableTh("baseDate", "基日", {
+                    title: "指数基日（编制方案）",
+                  })
+                : null}
+                {sortableTh("inceptionDate", "成立日", {
+                  title: "指数正式发布/成立日（indices.csv inception_date）",
+                })}
+                {sortableTh("annualReturnPct", "年化")}
+                {sortableTh("maxDrawdownPct", "回撤")}
+                {!compactTable ? sortableTh("annualVolPct", "波动") : null}
+                {sortableTh("sharpeLike", "收益/波动", {
+                  title: "年化收益 ÷ 年化波动，类夏普，非无风险夏普",
+                  className: compactTable ? "px-2 py-2 font-normal text-right w-[4.5rem]" : undefined,
+                })}
+                {sortableTh("calmarLike", "卡玛")}
+                <th className={`font-normal ${compactTable ? "px-2 py-2 w-[4.5rem]" : "px-3 py-2"}`}>
+                  股息率
+                </th>
+                <th className={`font-normal ${compactTable ? "px-2 py-2 w-[5.5rem]" : "px-3 py-2"}`}>
+                  主跟踪
+                </th>
+                {!compactTable ? (
+                  <th className="px-3 py-2 font-normal">状态</th>
+                ) : null}
+                <th className={`font-normal ${compactTable ? "px-2 py-2 w-[5.5rem]" : "px-3 py-2"}`}>
+                  操作
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-fin-border">
+              {rows.map(
+                ({
+                  def,
+                  tags,
+                  avail,
+                  primary,
+                  mb,
+                  sharpe,
+                  baseDate,
+                  inceptionDate,
+                  divYield,
+                }) => {
+                  const tone = dataAvailabilityTone(avail);
+                  const primaryEtf = primary ? getEtf(primary.code) : undefined;
+                  const primaryNavigable =
+                    primary != null &&
+                    etfProductDetailNavigable(primary, primaryEtf);
+                  const shortInception = isShortInception(inceptionDate);
+                  const inceptionYears = yearsSinceInception(inceptionDate);
+                  return (
+                    <tr
+                      key={def.meta.index_code}
+                      className={
+                        shortInception ?
+                          "fin-row-hover fin-row-inception-short"
+                        : "fin-row-hover"
+                      }
+                    >
+                      <td className="px-3 py-2">
+                        <Link
+                          to={`/indices/${encodeURIComponent(def.meta.index_code)}`}
+                          className="font-medium text-[var(--fin-text)] fin-link"
+                        >
+                          {def.meta.name}
+                        </Link>
+                        <p className="font-mono text-xs fin-muted-text">
+                          {def.meta.index_code}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 text-xs fin-muted-text">
+                        {def.meta.category}
+                      </td>
+                      {!compactTable ? (
+                        <td
+                          className="max-w-[8rem] truncate px-3 py-2 text-xs fin-muted-text"
+                          title={tags.join("、")}
+                        >
+                          {tags.slice(0, 2).join("、") || "—"}
+                        </td>
+                      ) : null}
+                      {!compactTable ?
+                        <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                          {fmtMetaDate(baseDate)}
+                        </td>
+                      : null}
+                      <td
+                        className={`px-3 py-2 font-mono text-xs whitespace-nowrap ${
+                          shortInception ? "fin-inception-date-short" : ""
+                        }`}
+                        title={
+                          shortInception && inceptionYears != null ?
+                            `成立约 ${inceptionYears.toFixed(1)} 年（不足 ${SHORT_INCEPTION_YEARS} 年）`
+                          : undefined
+                        }
+                      >
+                        {fmtMetaDate(inceptionDate)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {fmtPctCell(mb.annualReturnPct)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {fmtPctCell(mb.maxDrawdownPct)}
+                      </td>
+                      {!compactTable ? (
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {fmtPctCell(mb.annualVolPct)}
+                        </td>
+                      ) : null}
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {fmtRatio(sharpe)}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {fmtRatio(mb.calmar)}
+                      </td>
+                      <td className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}>
+                        {divYield != null ? fmtPctCell(divYield) : "—"}
+                      </td>
+                      <td className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}>
+                        {primary ? (
+                          <EtfProductCodeLink
+                            product={primary}
+                            etf={primaryEtf}
+                            className="fin-link"
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      {!compactTable ? (
+                        <td className="px-3 py-2">
+                          <span
+                            className={
+                              tone === "good"
+                                ? "fin-status-good"
+                                : tone === "warn"
+                                  ? "fin-status-warn"
+                                  : "fin-status-neutral"
+                            }
+                          >
+                            {dataAvailabilityLabel(avail)}
+                          </span>
+                        </td>
+                      ) : null}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs">
+                        <Link
+                          to={`/indices/${encodeURIComponent(def.meta.index_code)}`}
+                          className="fin-link"
+                        >
+                          详情
+                        </Link>
+                        {primary ? (
+                          <>
+                            <span className="fin-muted-separator" aria-hidden>
+                              |
+                            </span>
+                            {primaryNavigable ? (
+                              <Link
+                                to={`/etf/${encodeURIComponent(primary.code)}`}
+                                className="fin-link"
+                              >
+                                ETF
+                              </Link>
+                            ) : (
+                              <span
+                                className="fin-muted-text cursor-not-allowed"
+                                title="暂无行情，ETF 看板不可用"
+                              >
+                                ETF
+                              </span>
+                            )}
+                          </>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                },
+              )}
+            </tbody>
+          </table>
+          <p className="space-y-1 border-t border-fin-border px-3 py-2 text-xs fin-muted-text">
+            <span className="block">{INDEX_META_DATE_FOOTNOTE}</span>
+            <span className="block">{divYieldFootnote}</span>
+            <span className="block">
+              标普港股通红利低波指数、标普中国A股大盘红利低波50指数暂未获取数据，用跟踪的 ETF 行情数据替代。
+            </span>
+            <span className="block">
+              <span className="font-semibold text-[var(--fin-muted)]">
+                成立日不足 {SHORT_INCEPTION_YEARS} 年
+              </span>
+              ：成立日列略加重；行左侧细色条为弱提示（非警示）。
+            </span>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

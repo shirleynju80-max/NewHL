@@ -1,11 +1,20 @@
 /**
  * 价值底仓配置台：配置层口径（现金创造 / 股东回报）
- * 产品说明见 docs/product-redesign.md
+ * 产品框架见 docs/project-status.md
  */
-import { buildIndexSpreadRows } from "../data/indexCsv";
-import { indexSeriesForMode, type IndexValueMode } from "../data/indexCsv";
-import type { BondSeriesPoint, EtfDefinition, EtfMeta, IndexCategory, IndexDefinition, IndexMeta, IndexTrackingRow } from "../types";
-import { buildMetricRow } from "./indexPanelMetrics";
+import { buildIndexSpreadRows, indexSeriesForMode } from "../data/indexCsv";
+import { resolveBondAnchorForIndex } from "./bondAnchor";
+import { formatPct, formatPctValue } from "./formatDisplay";
+import { buildIndexOverviewFromSeries } from "./indexPanelMetrics";
+import type {
+  BondSeriesPoint,
+  EtfDefinition,
+  EtfMeta,
+  IndexCategory,
+  IndexDefinition,
+  IndexMeta,
+  IndexTrackingRow,
+} from "../types";
 
 export type ConfigDimensionId = "cash_creation" | "shareholder_return";
 export type ConfigDimensionFilter = "all" | ConfigDimensionId;
@@ -16,9 +25,17 @@ export type EtfLandingGroupId =
   | "shareholder_return_hk"
   | "other";
 
-export type DataAvailability = "ok" | "no_bars" | "sparse" | "missing_div_yield";
+export type DataAvailability =
+  | "ok"
+  | "no_bars"
+  | "sparse"
+  | "missing_div_yield";
 
-export type AllocationZoneId = "window" | "neutral" | "caution" | "insufficient";
+export type AllocationZoneId =
+  | "window"
+  | "neutral"
+  | "caution"
+  | "insufficient";
 
 export const CONFIG_DIMENSIONS: Record<
   ConfigDimensionId,
@@ -28,7 +45,7 @@ export const CONFIG_DIMENSIONS: Record<
     title: "现金创造",
     subtitle: "自由现金流指数",
     frameworkBlurb:
-      "观察企业主营业务产生现金的能力，适合作为长期质量底仓入口。v1 展示历史表现与数据完整性，不作估值时机判断。",
+      "与红利互补：关注企业能不能持续创造现金，而非分不分红。适合作为长期质量底仓的观察与定投标的，与股东回报搭配分散收益来源。",
   },
   shareholder_return: {
     title: "股东回报",
@@ -38,10 +55,31 @@ export const CONFIG_DIMENSIONS: Record<
   },
 };
 
-export const CONFIG_DIMENSION_OPTIONS: { id: ConfigDimensionId; title: string; subtitle: string }[] = [
-  { id: "cash_creation", title: CONFIG_DIMENSIONS.cash_creation.title, subtitle: CONFIG_DIMENSIONS.cash_creation.subtitle },
-  { id: "shareholder_return", title: CONFIG_DIMENSIONS.shareholder_return.title, subtitle: CONFIG_DIMENSIONS.shareholder_return.subtitle },
+export const CONFIG_DIMENSION_OPTIONS: {
+  id: ConfigDimensionId;
+  /** 指数研究等筛选芯片展示名（内部 id 不变） */
+  title: string;
+  subtitle: string;
+}[] = [
+  {
+    id: "cash_creation",
+    title: "现金流类",
+    subtitle: CONFIG_DIMENSIONS.cash_creation.subtitle,
+  },
+  {
+    id: "shareholder_return",
+    title: "红利类",
+    subtitle: CONFIG_DIMENSIONS.shareholder_return.subtitle,
+  },
 ];
+
+/** 指数研究表页脚说明 */
+export const INDEX_META_DATE_FOOTNOTE =
+  "指数采用全收益口径。基日为指数编制基日；成立日为指数正式发布/成立日期（指数公司口径）。";
+
+/** 配置总览：基日 vs 发布日（页脚一行，勿逐条重复） */
+export const INDEX_BASE_PUBLISH_FOOTNOTE =
+  "基日=回测起点，发布日=实盘起点；近5年指标可能含回测。";
 
 export const ETF_LANDING_GROUPS: Record<
   EtfLandingGroupId,
@@ -49,7 +87,7 @@ export const ETF_LANDING_GROUPS: Record<
 > = {
   cash_creation: {
     title: "现金创造类 ETF",
-    subtitle: "跟踪自由现金流相关指数，作为质量底仓候选观察。",
+    subtitle: "跟踪自由现金流相关指数，作为质量底仓观察。",
     emptyText: "暂无现金创造类产品。",
   },
   shareholder_return_cn: {
@@ -69,18 +107,35 @@ export const ETF_LANDING_GROUPS: Record<
   },
 };
 
-/** 配置层代表指数（用于首页卡片与完整性统计） */
+/** 配置层代表指数（用于首页卡片与完整性统计；与 etf_products 观察池主指数对齐） */
 export const REPRESENTATIVE_INDEX_CODES: Record<ConfigDimensionId, string[]> = {
-  cash_creation: ["932365", "980092", "FCFQCD"],
-  shareholder_return: ["H30269", "000922", "000015"],
+  cash_creation: ["980092", "932365", "932366", "932367", "932368", "FCFQCD"],
+  shareholder_return: [
+    "H30269",
+    "930955",
+    "000922",
+    "000015",
+    "SPCLLHCP.SPI",
+    "931468",
+    "000825",
+    "930914",
+    "931233",
+    "HSI114",
+    "CIS51002",
+    "SPAHLVCP.SPI",
+    "HSSCSOY.HI",
+  ],
 };
 
 const MIN_BARS_OK = 60;
 const MIN_BARS_SPARSE = 20;
 
-export function indexToConfigDimension(category: IndexCategory): ConfigDimensionId | null {
+export function indexToConfigDimension(
+  category: IndexCategory,
+): ConfigDimensionId | null {
   if (category === "现金流") return "cash_creation";
-  if (category === "A股红利" || category === "港股红利") return "shareholder_return";
+  if (category === "A股红利" || category === "港股红利")
+    return "shareholder_return";
   return null;
 }
 
@@ -95,7 +150,8 @@ export function etfToLandingGroup(meta: EtfMeta): EtfLandingGroupId {
 export function indexStyleTags(meta: IndexMeta): string[] {
   const tags = new Set<string>();
   const text = `${meta.name} ${meta.index_code}`;
-  if (meta.category === "现金流" || /自由现金流|现金流/.test(text)) tags.add("自由现金流");
+  if (meta.category === "现金流" || /自由现金流|现金流/.test(text))
+    tags.add("自由现金流");
   if (/低波|低波动/.test(text)) tags.add("低波");
   if (/质量/.test(text)) tags.add("质量");
   if (/央企|国企/.test(text)) tags.add("央企");
@@ -113,8 +169,13 @@ export function indexDataAvailability(def: IndexDefinition): DataAvailability {
   if (n < MIN_BARS_OK) return "sparse";
   const dim = indexToConfigDimension(def.meta.category);
   if (dim === "shareholder_return") {
-    const hasDiv = def.bars.some((b) => typeof b.div_yield_nominal_pct === "number" && !Number.isNaN(b.div_yield_nominal_pct));
-    if (!hasDiv && def.meta.fallback_div_yield_pct == null) return "missing_div_yield";
+    const hasDiv = def.bars.some(
+      (b) =>
+        typeof b.div_yield_nominal_pct === "number" &&
+        !Number.isNaN(b.div_yield_nominal_pct),
+    );
+    if (!hasDiv && def.meta.fallback_div_yield_pct == null)
+      return "missing_div_yield";
   }
   return "ok";
 }
@@ -141,7 +202,9 @@ export function dataAvailabilityLabel(status: DataAvailability): string {
   }
 }
 
-export function dataAvailabilityTone(status: DataAvailability): "good" | "warn" | "muted" {
+export function dataAvailabilityTone(
+  status: DataAvailability,
+): "good" | "warn" | "muted" {
   if (status === "ok") return "good";
   if (status === "sparse" || status === "missing_div_yield") return "warn";
   return "muted";
@@ -150,14 +213,14 @@ export function dataAvailabilityTone(status: DataAvailability): "good" | "warn" 
 /** 股东回报：利差配置观察（与 IndexDetailPage 原逻辑一致，供全站复用） */
 export function dividendAllocationObservation(
   spread: number | null | undefined,
-  divYield: number | null | undefined
+  divYield: number | null | undefined,
 ): { zone: AllocationZoneId; title: string; tone: string; body: string } {
   const hasDivYield = typeof divYield === "number" && Number.isFinite(divYield);
   if (typeof spread !== "number" || !Number.isFinite(spread)) {
     return {
       zone: "insufficient",
       title: "数据不足",
-      tone: "border-zinc-200 bg-zinc-50 text-zinc-700",
+      tone: "border-fin-border bg-fin-panel-muted text-[var(--fin-muted)]",
       body: "当前缺少可对齐的股息率或国债收益率。",
     };
   }
@@ -165,7 +228,7 @@ export function dividendAllocationObservation(
     return {
       zone: "window",
       title: "配置窗口",
-      tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      tone: "border-[rgba(140,212,165,0.32)] bg-[var(--fin-up-soft)] text-[var(--fin-up)]",
       body:
         spread >= 2.5
           ? "红利相对债券的收益补偿较高，可作为提高关注度的配置参考。"
@@ -177,21 +240,21 @@ export function dividendAllocationObservation(
       return {
         zone: "caution",
         title: "警惕（利差偏低）",
-        tone: "border-amber-200 bg-amber-50 text-amber-900",
+        tone: "border-[rgba(251,191,36,0.32)] bg-[var(--fin-amber-soft)] text-[#fde68a]",
         body: "股息率仍有吸引力，但相对债券的收益补偿不足，适合谨慎观察。",
       };
     }
     return {
       zone: "caution",
       title: "警惕区",
-      tone: "border-zinc-200 bg-zinc-50 text-zinc-700",
+      tone: "border-fin-border bg-fin-panel-muted text-[var(--fin-muted)]",
       body: "红利相对债券的收益补偿较低，配置性价比参考意义偏弱。",
     };
   }
   return {
     zone: "neutral",
     title: "中性观察",
-    tone: "border-amber-200 bg-amber-50 text-amber-900",
+    tone: "border-fin-border bg-fin-panel-muted text-[var(--fin-muted)]",
     body: "配置吸引力不极端，更适合结合价格趋势与仓位继续观察。",
   };
 }
@@ -205,13 +268,17 @@ export type DimensionIntegritySlice = {
 
 export function summarizeDimensionIntegrity(
   indices: IndexDefinition[],
-  dimension: ConfigDimensionId
+  dimension: ConfigDimensionId,
 ): DimensionIntegritySlice {
   const codes = REPRESENTATIVE_INDEX_CODES[dimension];
   const reps = codes
     .map((c) => indices.find((d) => d.meta.index_code === c))
     .filter((x): x is IndexDefinition => Boolean(x));
-  const withBars = reps.filter((d) => indexDataAvailability(d) === "ok" || indexDataAvailability(d) === "sparse").length;
+  const withBars = reps.filter(
+    (d) =>
+      indexDataAvailability(d) === "ok" ||
+      indexDataAvailability(d) === "sparse",
+  ).length;
   return {
     dimension,
     representativeTotal: codes.length,
@@ -231,74 +298,312 @@ export type DimensionCardSnapshot = {
   highlightIndices: { code: string; name: string; note: string }[];
 };
 
-function indexY5Metrics(def: IndexDefinition, mode: IndexValueMode = "tri") {
-  const series = indexSeriesForMode(def.bars, mode);
-  const row = buildMetricRow(def.meta.index_code, def.meta.name, series);
-  return row.windows.y5;
-}
-
-function latestSpreadForIndex(def: IndexDefinition, bondByDate: Record<string, BondSeriesPoint>) {
-  const rows = buildIndexSpreadRows(def, bondByDate);
+function latestSpreadForIndex(
+  def: IndexDefinition,
+  bondByDate: Record<string, BondSeriesPoint>,
+) {
+  const rows = buildIndexSpreadRows(
+    def,
+    bondByDate,
+    resolveBondAnchorForIndex(def),
+  );
   return rows.length ? rows[rows.length - 1]! : null;
 }
 
-function spreadPercentileForIndex(def: IndexDefinition, bondByDate: Record<string, BondSeriesPoint>): number | null {
-  const rows = buildIndexSpreadRows(def, bondByDate);
+function spreadPercentileForIndex(
+  def: IndexDefinition,
+  bondByDate: Record<string, BondSeriesPoint>,
+): number | null {
+  const rows = buildIndexSpreadRows(
+    def,
+    bondByDate,
+    resolveBondAnchorForIndex(def),
+  );
   if (!rows.length) return null;
   const latest = rows[rows.length - 1]!.spreadPct;
-  const sorted = rows.map((r) => r.spreadPct).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  const sorted = rows
+    .map((r) => r.spreadPct)
+    .filter((v) => Number.isFinite(v))
+    .sort((a, b) => a - b);
   if (!sorted.length) return null;
   const le = sorted.filter((v) => v <= latest).length;
   return Math.round((le / sorted.length) * 100);
 }
 
-function primaryTrackingLabel(code: string, tracking: IndexTrackingRow[]): string {
+function primaryTrackingLabel(
+  code: string,
+  tracking: IndexTrackingRow[],
+): string {
   const row = tracking.find((t) => t.index_code === code);
   if (!row?.etf_code) return "—";
   return row.note ? `${row.etf_code}（${row.note}）` : row.etf_code;
 }
 
-export function buildCashCreationCardSnapshot(
+function yearsSinceInception(inception?: string): number | null {
+  if (!inception || !/^\d{4}-\d{2}-\d{2}$/.test(inception)) return null;
+  const d = new Date(`${inception}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return (Date.now() - d.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+}
+
+function cashCreationPublished5ySummary(indices: IndexDefinition[]): string {
+  const cash = indices.filter(
+    (ix) => indexToConfigDimension(ix.meta.category) === "cash_creation",
+  );
+  const n = cash.filter(
+    (ix) => (yearsSinceInception(ix.meta.inception_date) ?? 0) >= 5,
+  ).length;
+  if (n === 0) return "库内暂无发布满5年的现金流指数";
+  if (n === 1) return "库内仅国证自由现金流发布满5年";
+  return `库内 ${n}/${cash.length} 只现金流指数发布满5年`;
+}
+
+export type CashCreationSpotlightProduct = {
+  etfCode: string;
+  etfName: string;
+  indexCode: string;
+  tag: string;
+  investable: boolean;
+};
+
+export type CashCreationHomeOverview = {
+  investableEtfCount: number;
+  cashIndexCount: number;
+  indicesWithBars: number;
+  hasPublished5yIndex: boolean;
+  spotlights: CashCreationSpotlightProduct[];
+};
+
+export type CashCreationPerfLine = {
+  indexCode: string;
+  displayName: string;
+  summary: string;
+  note?: string;
+};
+
+/** 配置总览「观察池指数」三栏展示（固定代表指数，与产品观察池口径一致） */
+export type ObservationPoolIndexEntry = { code: string; name: string };
+
+export type ObservationPoolChip = {
+  code: string;
+  name: string;
+  href: string;
+};
+
+export type ObservationPoolColumn = {
+  title: string;
+  chips: ObservationPoolChip[];
+};
+
+/** 配置总览底部「核心指数池」胶囊列表（名称取自行情库） */
+export function buildObservationPoolColumns(
   indices: IndexDefinition[],
-  tracking: IndexTrackingRow[]
-): DimensionCardSnapshot {
-  const integrity = summarizeDimensionIntegrity(indices, "cash_creation");
-  const highlights = REPRESENTATIVE_INDEX_CODES.cash_creation.map((code) => {
-    const def = indices.find((d) => d.meta.index_code === code);
-    if (!def) return { code, name: code, note: "未入库" };
-    const y5 = indexY5Metrics(def);
-    const y5Ann = y5?.annualReturnPct;
-    const dd = y5?.maxDrawdownPct;
-    const avail = dataAvailabilityLabel(indexDataAvailability(def));
-    const parts = [avail];
-    if (y5Ann != null) parts.push(`近5年年化 ${y5Ann}%`);
-    if (dd != null) parts.push(`回撤 ${dd}%`);
-    parts.push(`主跟踪 ${primaryTrackingLabel(code, tracking)}`);
-    return { code, name: def.meta.name, note: parts.join(" · ") };
+): ObservationPoolColumn[] {
+  const nameByCode = new Map(
+    indices.map((d) => [d.meta.index_code, d.meta.name]),
+  );
+  return OBSERVATION_POOL_INDEX_COLUMNS.map((col) => ({
+    title: col.title,
+    chips: col.indices.map((ix) => ({
+      code: ix.code,
+      name: nameByCode.get(ix.code) ?? ix.name,
+      href: `/indices/${encodeURIComponent(ix.code)}`,
+    })),
+  }));
+}
+
+export const OBSERVATION_POOL_INDEX_COLUMNS: {
+  title: string;
+  indices: ObservationPoolIndexEntry[];
+}[] = [
+  {
+    title: "现金流",
+    indices: [
+      { code: "932365", name: "中证全指自由现金流" },
+      { code: "980092", name: "国证自由现金流" },
+    ],
+  },
+  {
+    title: "A股红利",
+    indices: [
+      { code: "000922", name: "中证红利" },
+      { code: "H30269", name: "中证红利低波动" },
+    ],
+  },
+  {
+    title: "港股红利",
+    indices: [
+      { code: "HSI114", name: "恒生港股通高股息低波动" },
+      { code: "HSSCSOY.HI", name: "恒生港股通央企红利" },
+    ],
+  },
+];
+
+const CASH_HOME_PERF_SPECS: {
+  code: string;
+  displayName: string;
+  window: "all" | "y5";
+}[] = [
+  { code: "932368", displayName: "中证800自由现金流", window: "all" },
+  { code: "932365", displayName: "中证全指自由现金流", window: "all" },
+  { code: "980092", displayName: "国证自由现金流", window: "y5" },
+];
+
+export function buildCashCreationPerformanceLines(
+  indices: IndexDefinition[],
+): CashCreationPerfLine[] {
+  const byCode = new Map(indices.map((ix) => [ix.meta.index_code, ix]));
+  return CASH_HOME_PERF_SPECS.map(({ code, displayName, window }) => {
+    const def = byCode.get(code);
+    if (!def?.bars.length) {
+      return { indexCode: code, displayName, summary: "暂无行情" };
+    }
+    const series = indexSeriesForMode(def.bars, "tri");
+    const overview = buildIndexOverviewFromSeries(series, code, def.meta.name);
+    let block = window === "y5" ? overview?.y5 : overview?.all;
+    let note: string | undefined =
+      window === "y5" ? "发布满5年 · 近5年" : "基日回溯";
+    if (!block && window === "y5") {
+      block = overview?.all;
+      note = "基日回溯（近5年样本不足）";
+    }
+    if (!block) {
+      return { indexCode: code, displayName, summary: "样本不足" };
+    }
+    return {
+      indexCode: code,
+      displayName,
+      summary: `年化≈${formatPctValue(block.annualReturnPct)}% / 最大回撤≈${formatPctValue(block.maxDrawdownPct)}%`,
+      note,
+    };
+  });
+}
+
+/** @deprecated 请使用 etfProducts.buildDeskCandidates */
+export function buildConfigDeskCandidates(
+  indices: IndexDefinition[],
+  products: {
+    indexCode: string;
+    code: string;
+    isPrimary: boolean;
+    name?: string;
+    indexName?: string;
+  }[],
+): { code: string; name: string; etfCode: string }[] {
+  const primaryByIndex = new Map<string, string>();
+  for (const row of products) {
+    if (row.isPrimary) primaryByIndex.set(row.indexCode, row.code);
+  }
+  const codes = [...new Set(products.map((p) => p.indexCode))];
+  return codes.flatMap((code) => {
+    const def = indices.find((ix) => ix.meta.index_code === code);
+    if (!def) return [];
+    return {
+      code,
+      name: def.meta.name,
+      etfCode: primaryByIndex.get(code) ?? "—",
+    };
+  });
+}
+
+export function buildCashCreationHomeOverview(
+  indices: IndexDefinition[],
+  definitions: EtfDefinition[],
+  etfProducts: {
+    code: string;
+    name: string;
+    indexCode: string;
+    productGroup: string;
+    dataStatus: string;
+    isPrimary?: boolean;
+    aumCny?: number;
+  }[],
+): CashCreationHomeOverview {
+  const defByCode = new Map(definitions.map((d) => [d.meta.code, d]));
+
+  const cashIndices = indices.filter(
+    (ix) => indexToConfigDimension(ix.meta.category) === "cash_creation",
+  );
+  const indicesWithBars = cashIndices.filter(
+    (ix) => indexDataAvailability(ix) !== "no_bars",
+  ).length;
+  const hasPublished5yIndex = cashIndices.some(
+    (ix) => (yearsSinceInception(ix.meta.inception_date) ?? 0) >= 5,
+  );
+
+  const cashEtfs = etfProducts.filter(
+    (p) => p.productGroup === "cash_creation",
+  );
+  const investableEtfCount =
+    cashEtfs.length > 0
+      ? cashEtfs.filter(
+          (p) => p.dataStatus === "ok" || p.dataStatus === "partial",
+        ).length
+      : definitions.filter(
+          (d) =>
+            etfToLandingGroup(d.meta) === "cash_creation" &&
+            etfDataAvailability(d) !== "no_bars",
+        ).length;
+
+  const cashPrimaries = etfProducts
+    .filter((p) => p.productGroup === "cash_creation" && p.isPrimary === true)
+    .sort((a, b) => (b.aumCny ?? 0) - (a.aumCny ?? 0));
+
+  const spotlights = cashPrimaries.map((prod) => {
+    const def = defByCode.get(prod.code);
+    const investable =
+      prod.dataStatus === "ok" || prod.dataStatus === "partial"
+        ? true
+        : def
+          ? etfDataAvailability(def) !== "no_bars"
+          : false;
+    const tag =
+      prod.indexCode === "980092"
+        ? "国证 · 主跟踪"
+        : prod.indexCode === "FCFQCD"
+          ? "富时聚焦"
+          : prod.indexCode.startsWith("932")
+            ? "自由现金流"
+            : "主跟踪";
+    return {
+      etfCode: prod.code,
+      etfName: prod.name,
+      indexCode: prod.indexCode,
+      tag,
+      investable,
+    };
   });
 
   return {
+    investableEtfCount,
+    cashIndexCount: cashIndices.length,
+    indicesWithBars,
+    hasPublished5yIndex,
+    spotlights,
+  };
+}
+
+/** @deprecated 配置总览现金创造卡已改用 buildCashCreationHomeOverview；保留供测试或旧引用 */
+export function buildCashCreationCardSnapshot(
+  indices: IndexDefinition[],
+): DimensionCardSnapshot {
+  const integrity = summarizeDimensionIntegrity(indices, "cash_creation");
+  return {
     dimension: "cash_creation",
-    statusTitle: "质量底仓候选",
-    statusSubtitle: "先看长期表现与数据完整性",
+    statusTitle: "质量底仓",
+    statusSubtitle: "见配置总览叙事卡",
     tone: integrity.withBars >= 2 ? "good" : "neutral",
-    stats: [
-      { label: "代表指数行情", value: integrity.label },
-      { label: "配置判断", value: "暂不输出", note: "v1 不使用 FCF Yield 或估值分位" },
-    ],
-    bullets: [
-      "关注自由现金流指数的长期收益与回撤，不输出择时买卖点。",
-      "富时等部分指数行情仍在补齐，见数据完整性提示。",
-    ],
+    stats: [{ label: "代表指数行情", value: integrity.label }],
+    bullets: [cashCreationPublished5ySummary(indices)],
     integrity,
-    highlightIndices: highlights,
+    highlightIndices: [],
   };
 }
 
 export function buildShareholderReturnCardSnapshot(
   indices: IndexDefinition[],
   bondByDate: Record<string, BondSeriesPoint>,
-  tracking: IndexTrackingRow[]
+  tracking: IndexTrackingRow[],
 ): DimensionCardSnapshot {
   const integrity = summarizeDimensionIntegrity(indices, "shareholder_return");
   const anchor =
@@ -306,32 +611,60 @@ export function buildShareholderReturnCardSnapshot(
     indices.find((d) => d.meta.index_code === "000922") ??
     indices.find((d) => d.meta.category === "A股红利" && d.bars.length > 0);
   const latest = anchor ? latestSpreadForIndex(anchor, bondByDate) : null;
-  const percentile = anchor ? spreadPercentileForIndex(anchor, bondByDate) : null;
-  const obs = dividendAllocationObservation(latest?.spreadPct, latest?.divYieldPct);
+  const percentile = anchor
+    ? spreadPercentileForIndex(anchor, bondByDate)
+    : null;
+  const obs = dividendAllocationObservation(
+    latest?.spreadPct,
+    latest?.divYieldPct,
+  );
 
-  const highlights = REPRESENTATIVE_INDEX_CODES.shareholder_return.slice(0, 3).map((code) => {
-    const def = indices.find((d) => d.meta.index_code === code);
-    if (!def) return { code, name: code, note: "未入库" };
-    const sp = latestSpreadForIndex(def, bondByDate);
-    const parts = [dataAvailabilityLabel(indexDataAvailability(def))];
-    if (sp) parts.push(`利差 ${sp.spreadPct}%`);
-    parts.push(`主跟踪 ${primaryTrackingLabel(code, tracking)}`);
-    return { code, name: def.meta.name, note: parts.join(" · ") };
-  });
+  const highlights = REPRESENTATIVE_INDEX_CODES.shareholder_return
+    .slice(0, 6)
+    .map((code) => {
+      const def = indices.find((d) => d.meta.index_code === code);
+      if (!def) return { code, name: code, note: "未入库" };
+      const sp = latestSpreadForIndex(def, bondByDate);
+      const parts = [dataAvailabilityLabel(indexDataAvailability(def))];
+      if (sp) parts.push(`利差 ${formatPct(sp.spreadPct)}`);
+      parts.push(`主跟踪 ${primaryTrackingLabel(code, tracking)}`);
+      return { code, name: def.meta.name, note: parts.join(" · ") };
+    });
 
   return {
     dimension: "shareholder_return",
     statusTitle: obs.title,
     statusSubtitle: latest
-      ? `参考 ${anchor?.meta.name ?? "红利指数"} · 股息 ${latest.divYieldPct}% · 利差 ${latest.spreadPct}%`
+      ? `参考 ${anchor?.meta.name ?? "红利指数"} · 股息 ${formatPct(latest.divYieldPct)} · 利差 ${formatPct(latest.spreadPct)}`
       : "待补齐股息率与国债序列",
-    tone: obs.zone === "window" ? "good" : obs.zone === "caution" ? "warn" : "neutral",
+    tone:
+      obs.zone === "window"
+        ? "good"
+        : obs.zone === "caution"
+          ? "warn"
+          : "neutral",
     stats: [
-      { label: "最新股息率", value: latest ? `${latest.divYieldPct}%` : "—", note: latest?.date },
-      { label: "股债利差", value: latest ? `${latest.spreadPct}%` : "—", note: latest?.date },
-      { label: "利差历史分位", value: percentile == null ? "—" : `${percentile}%` },
+      {
+        label: "最新股息率",
+        value: latest ? formatPct(latest.divYieldPct) : "—",
+        note: latest?.date,
+      },
+      {
+        label: "中国10年期国债",
+        value: latest ? formatPct(latest.bondYieldPct) : "—",
+        note: latest?.date,
+      },
+      {
+        label: "股债利差",
+        value: latest ? formatPct(latest.spreadPct) : "—",
+        note: latest?.date,
+      },
+      {
+        label: "利差历史分位",
+        value: percentile == null ? "—" : formatPct(percentile),
+      },
     ],
-    bullets: [obs.body, "A 股红利可结合利差与历史分位；港股红利注意国债锚口径说明。"],
+    bullets: [obs.body],
     integrity,
     highlightIndices: highlights,
   };
@@ -341,22 +674,33 @@ export function buildHomeDimensionSnapshots(args: {
   indices: IndexDefinition[];
   bondByDate: Record<string, BondSeriesPoint>;
   indexTracking: IndexTrackingRow[];
-}): Record<ConfigDimensionId, DimensionCardSnapshot> {
+}): { shareholder_return: DimensionCardSnapshot } {
   return {
-    cash_creation: buildCashCreationCardSnapshot(args.indices, args.indexTracking),
-    shareholder_return: buildShareholderReturnCardSnapshot(args.indices, args.bondByDate, args.indexTracking),
+    shareholder_return: buildShareholderReturnCardSnapshot(
+      args.indices,
+      args.bondByDate,
+      args.indexTracking,
+    ),
   };
 }
 
-export function filterIndicesByDimension(indices: IndexDefinition[], dimension: ConfigDimensionId): IndexDefinition[] {
-  return indices.filter((d) => indexToConfigDimension(d.meta.category) === dimension);
+export function filterIndicesByDimension(
+  indices: IndexDefinition[],
+  dimension: ConfigDimensionId,
+): IndexDefinition[] {
+  return indices.filter(
+    (d) => indexToConfigDimension(d.meta.category) === dimension,
+  );
 }
 
 export function filterIndicesByDimensionOption(
   indices: IndexDefinition[],
-  dimension: ConfigDimensionFilter
+  dimension: ConfigDimensionFilter,
 ): IndexDefinition[] {
-  if (dimension === "all") return indices.filter((d) => indexToConfigDimension(d.meta.category) != null);
+  if (dimension === "all")
+    return indices.filter(
+      (d) => indexToConfigDimension(d.meta.category) != null,
+    );
   return filterIndicesByDimension(indices, dimension);
 }
 
@@ -376,9 +720,14 @@ export function groupEtfsForLanding(definitions: EtfDefinition[]) {
 }
 
 /** 站点级数据完整性一行摘要（首页提示条） */
-export function siteDataIntegrityLine(indices: IndexDefinition[], definitions: EtfDefinition[]): string {
+export function siteDataIntegrityLine(
+  indices: IndexDefinition[],
+  definitions: EtfDefinition[],
+): string {
   const cash = summarizeDimensionIntegrity(indices, "cash_creation");
   const div = summarizeDimensionIntegrity(indices, "shareholder_return");
-  const etfOk = definitions.filter((d) => etfDataAvailability(d) === "ok").length;
+  const etfOk = definitions.filter(
+    (d) => etfDataAvailability(d) === "ok",
+  ).length;
   return `指数代表行情 ${cash.label} · 红利代表 ${div.label} · ETF 可用 ${etfOk}/${definitions.length}`;
 }

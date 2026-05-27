@@ -9,7 +9,7 @@ export function forwardHoldFromBuyDay(
   bars: OhlcBar[],
   buyDate: string,
   params: EtfParams,
-  strategyId: string
+  strategyId: string,
 ): {
   buyDate: string;
   exitDate: string | null;
@@ -38,7 +38,7 @@ export function forwardHoldFromBuyDay(
   }
   const endIdx = exitIdx ?? sorted.length - 1;
   const exitClose = sorted[endIdx]!.close;
-  const pnlPct = Math.round(((exitClose / entry - 1) * 100) * 100) / 100;
+  const pnlPct = Math.round((exitClose / entry - 1) * 100 * 100) / 100;
   const mddWhileHeldPct = Math.round(maxDd * 10000) / 100;
   const holdDays = endIdx - buyIdx;
   const note =

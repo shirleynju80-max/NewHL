@@ -5,7 +5,9 @@ function barIndexByDate(bars: OhlcBar[], date: string): number {
   return bars.findIndex((b) => b.date === date);
 }
 
-export function buildRoundTrips(trades: TradePoint[]): Omit<RoundTripDetail, "round" | "buyNav" | "sellNav">[] {
+export function buildRoundTrips(
+  trades: TradePoint[],
+): Omit<RoundTripDetail, "round" | "buyNav" | "sellNav">[] {
   const ordered = [...trades]
     .filter((t) => t.side === "BUY" || t.side === "SELL")
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -34,7 +36,7 @@ export function buyHoldReturnPct(bars: OhlcBar[]): number {
   if (bars.length < 2) return 0;
   const a = bars[0].close;
   const b = bars[bars.length - 1].close;
-  return Math.round(((b / a - 1) * 100) * 100) / 100;
+  return Math.round((b / a - 1) * 100 * 100) / 100;
 }
 
 /** 按成交流水：最后一笔为买则视为当前仍持仓 */
@@ -48,7 +50,7 @@ export function findOpenBuy(trades: TradePoint[]): TradePoint | null {
 }
 
 export function attachNavToRounds(
-  rounds: Omit<RoundTripDetail, "round" | "buyNav" | "sellNav">[]
+  rounds: Omit<RoundTripDetail, "round" | "buyNav" | "sellNav">[],
 ): RoundTripDetail[] {
   let nav = 1;
   return rounds.map((r, i) => {
@@ -64,7 +66,10 @@ export function attachNavToRounds(
   });
 }
 
-export function avgFlatDays(bars: OhlcBar[], rounds: RoundTripDetail[]): number {
+export function avgFlatDays(
+  bars: OhlcBar[],
+  rounds: RoundTripDetail[],
+): number {
   if (rounds.length < 2) return 0;
   const gaps: number[] = [];
   for (let i = 1; i < rounds.length; i++) {
@@ -75,7 +80,42 @@ export function avgFlatDays(bars: OhlcBar[], rounds: RoundTripDetail[]): number 
     if (d > 0) gaps.push(d);
   }
   if (!gaps.length) return 0;
-  return Math.round((gaps.reduce((a, b) => a + b, 0) / gaps.length) * 100) / 100;
+  return (
+    Math.round((gaps.reduce((a, b) => a + b, 0) / gaps.length) * 100) / 100
+  );
+}
+
+/** 与 avgFlatDays 一致：完成买卖轮次不足 2 时不展示均值 */
+export const MIN_ROUNDS_FOR_AVG_HOLD_FLAT_DAYS = 2;
+
+export const HOLD_FLAT_AVG_TOO_FEW_ROUNDS_NOTE =
+  "买卖轮数太少，未计算平均持仓/空仓天数";
+
+export function canComputeAvgHoldFlatDays(roundCount: number): boolean {
+  return roundCount >= MIN_ROUNDS_FOR_AVG_HOLD_FLAT_DAYS;
+}
+
+export function formatAvgHoldDaysDisplay(
+  roundCount: number,
+  avgHoldDays: number,
+): string {
+  return canComputeAvgHoldFlatDays(roundCount) ? String(avgHoldDays) : "/";
+}
+
+export function formatAvgFlatDaysDisplay(
+  roundCount: number,
+  avgFlatDays: number,
+): string {
+  return canComputeAvgHoldFlatDays(roundCount) ? String(avgFlatDays) : "/";
+}
+
+export function formatAvgHoldFlatPairDisplay(
+  roundCount: number,
+  avgHoldDays: number,
+  avgFlatDays: number,
+): string {
+  if (!canComputeAvgHoldFlatDays(roundCount)) return "/ /";
+  return `${avgHoldDays} / ${avgFlatDays}`;
 }
 
 export type BacktestSummary = {
@@ -100,7 +140,7 @@ export type BacktestSummary = {
 export function computeBacktestSummary(
   bars: OhlcBar[],
   trades: TradePoint[],
-  rounds: RoundTripDetail[]
+  rounds: RoundTripDetail[],
 ): BacktestSummary {
   const bh = buyHoldReturnPct(bars);
   const series = buildEquitySeries(bars, trades);
@@ -109,13 +149,17 @@ export function computeBacktestSummary(
   const sells = trades.filter((t) => t.side === "SELL" && t.pnlPct != null);
   const buys = trades.filter((t) => t.side === "BUY");
   const wins = sells.filter((t) => (t.pnlPct ?? 0) > 0).length;
-  const winRate = sells.length ? Math.round((wins / sells.length) * 1000) / 1000 : 0;
+  const winRate = sells.length
+    ? Math.round((wins / sells.length) * 1000) / 1000
+    : 0;
   const open = findOpenBuy(trades);
   const closedRounds = rounds.length;
   const pendingBuyCount = open ? 1 : 0;
   const avgHold =
     rounds.length > 0
-      ? Math.round((rounds.reduce((a, r) => a + r.holdDays, 0) / rounds.length) * 100) / 100
+      ? Math.round(
+          (rounds.reduce((a, r) => a + r.holdDays, 0) / rounds.length) * 100,
+        ) / 100
       : 0;
   const flat = avgFlatDays(bars, rounds);
   return {

@@ -8,7 +8,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { BondSeriesPoint, EtfDefinition, IndexDefinition, IndexTrackingRow } from "../types";
+import type {
+  BondSeriesPoint,
+  EtfDefinition,
+  IndexDefinition,
+  IndexTrackingRow,
+} from "../types";
 import {
   buildCsvBundle,
   expandBondsToBarDates,
@@ -19,8 +24,23 @@ import {
   type AppDataBundle,
   type CsvMergeOptions,
 } from "../data/csvLoader";
-import { bondByDate as mockBondByDate, etfDefinitions as mockEtfDefinitions } from "../data/mock";
-import { configuredDataApiBaseUrl, fetchApiCsvBundle, type ApiCsvFiles } from "../api/dataBundle";
+import {
+  bondByDate as mockBondByDate,
+  etfDefinitions as mockEtfDefinitions,
+} from "../data/mock";
+import {
+  configuredDataApiBaseUrl,
+  fetchApiCsvBundle,
+  type ApiCsvFiles,
+} from "../api/dataBundle";
+import {
+  buildEtfProductCatalog,
+  type EtfProductRecord,
+} from "../lib/etfProducts";
+import {
+  parseDividendRepresentativePool,
+  type DividendRepresentativePool,
+} from "../lib/dividendRepresentativePool";
 
 type SourceKind = "mock" | "csv" | "csv_public" | "api";
 
@@ -29,6 +49,8 @@ type Ctx = {
   bondByDate: Record<string, BondSeriesPoint>;
   indices: IndexDefinition[];
   indexTracking: IndexTrackingRow[];
+  etfProducts: EtfProductRecord[];
+  dividendRepresentativePool: DividendRepresentativePool | null;
   indexCsvError: string | null;
   sourceKind: SourceKind;
   sourceLabel: string;
@@ -59,14 +81,36 @@ async function fetchTextIfOk(url: string): Promise<string | null> {
 }
 
 type PublicCsvLoadResult =
-  | { status: "ok"; bundle: AppDataBundle; indexCsvError: string | null }
+  | {
+      status: "ok";
+      bundle: AppDataBundle;
+      indexCsvError: string | null;
+      etfProductsCsv: string | null;
+      dividendRepresentativePool: DividendRepresentativePool | null;
+    }
   | { status: "missing" }
   | { status: "error"; message: string };
 
 type ApiDataLoadResult =
-  | { status: "ok"; bundle: AppDataBundle; indexCsvError: string | null; label: string }
+  | {
+      status: "ok";
+      bundle: AppDataBundle;
+      indexCsvError: string | null;
+      etfProductsCsv: string | null;
+      dividendRepresentativePool: DividendRepresentativePool | null;
+      label: string;
+    }
   | { status: "missing" }
   | { status: "error"; message: string };
+
+async function fetchDividendRepresentativePool(): Promise<DividendRepresentativePool | null> {
+  const base = import.meta.env.BASE_URL || "/";
+  const prefix = base.endsWith("/") ? base : `${base}/`;
+  const text = await fetchTextIfOk(
+    `${prefix}data/dividend_representative_pool.json?_t=${Date.now()}`,
+  );
+  return text ? parseDividendRepresentativePool(text) : null;
+}
 
 function allBundleDates(bundle: AppDataBundle): string[] {
   const dates = new Set<string>();
@@ -82,15 +126,25 @@ function allBundleDates(bundle: AppDataBundle): string[] {
 function bondMapForBundle(
   bundle: AppDataBundle,
   bondsText: string,
-  bondsMoreText?: string
+  bondsMoreText?: string,
 ): Record<string, BondSeriesPoint> {
   const main = parseBondsFileDualPurpose(bondsText).yieldCurve;
-  const more = bondsMoreText?.trim() ? parseBondsFileDualPurpose(bondsMoreText).yieldCurve : [];
-  const series = main.length && more.length ? mergeBondSeries(main, more) : more.length ? more : main;
+  const more = bondsMoreText?.trim()
+    ? parseBondsFileDualPurpose(bondsMoreText).yieldCurve
+    : [];
+  const series =
+    main.length && more.length
+      ? mergeBondSeries(main, more)
+      : more.length
+        ? more
+        : main;
   return expandBondsToBarDates(series, allBundleDates(bundle));
 }
 
-function withBondMap(bundle: AppDataBundle, bondByDate: Record<string, BondSeriesPoint>): AppDataBundle {
+function withBondMap(
+  bundle: AppDataBundle,
+  bondByDate: Record<string, BondSeriesPoint>,
+): AppDataBundle {
   return { ...bundle, bondByDate };
 }
 
@@ -100,12 +154,33 @@ function apiMergeOptions(files: ApiCsvFiles): CsvMergeOptions | undefined {
   if (files.barsMore?.trim()) merge.barsMore = files.barsMore;
   if (files.bondsMore?.trim()) merge.bondsMore = files.bondsMore;
   if (files.fundBars?.trim()) merge.fundBars = files.fundBars;
-  return merge.etfsMore || merge.barsMore || merge.bondsMore || merge.fundBars ? merge : undefined;
+  if (files.etfProducts?.trim()) merge.etfProducts = files.etfProducts;
+  return merge.etfsMore ||
+    merge.barsMore ||
+    merge.bondsMore ||
+    merge.fundBars ||
+    merge.etfProducts
+    ? merge
+    : undefined;
 }
 
-function parseApiFiles(files: ApiCsvFiles): { bundle: AppDataBundle; indexCsvError: string | null } {
-  const base = buildCsvBundle(files.etfs ?? "", files.bars ?? "", files.bonds ?? "", files.etfParams ?? "", apiMergeOptions(files));
-  return withIndexCsvSafe(base, files.indices ?? "", files.indexBars ?? "", files.indexTrackingEtfs ?? "");
+function parseApiFiles(files: ApiCsvFiles): {
+  bundle: AppDataBundle;
+  indexCsvError: string | null;
+} {
+  const base = buildCsvBundle(
+    files.etfs ?? "",
+    files.bars ?? "",
+    files.bonds ?? "",
+    files.etfParams ?? "",
+    apiMergeOptions(files),
+  );
+  return withIndexCsvSafe(
+    base,
+    files.indices ?? "",
+    files.indexBars ?? "",
+    files.indexTrackingEtfs ?? "",
+  );
 }
 
 async function tryFetchApiData(): Promise<ApiDataLoadResult> {
@@ -115,15 +190,29 @@ async function tryFetchApiData(): Promise<ApiDataLoadResult> {
     const payload = await fetchApiCsvBundle(apiBaseUrl);
     if (!payload) return { status: "missing" };
     const { bundle, indexCsvError } = parseApiFiles(payload.files);
-    const full = withBondMap(bundle, bondMapForBundle(bundle, payload.files.bonds ?? "", payload.files.bondsMore));
+    const full = withBondMap(
+      bundle,
+      bondMapForBundle(
+        bundle,
+        payload.files.bonds ?? "",
+        payload.files.bondsMore,
+      ),
+    );
     return {
       status: "ok",
       bundle: full,
       indexCsvError,
-      label: payload.generatedAt ? `数据 API · ${payload.generatedAt.slice(0, 10)}` : "数据 API",
+      etfProductsCsv: payload.files.etfProducts ?? null,
+      dividendRepresentativePool: await fetchDividendRepresentativePool(),
+      label: payload.generatedAt
+        ? `数据 API · ${payload.generatedAt.slice(0, 10)}`
+        : "数据 API",
     };
   } catch (e) {
-    return { status: "error", message: e instanceof Error ? e.message : String(e) };
+    return {
+      status: "error",
+      message: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 
@@ -153,14 +242,49 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
     if (bm?.trim()) merge.barsMore = bm;
     if (bom?.trim()) merge.bondsMore = bom;
     if (fb?.trim()) merge.fundBars = fb;
-    const hasMerge = Boolean(merge.etfsMore || merge.barsMore || merge.bondsMore || merge.fundBars);
-    const bundle = buildCsvBundle(etfs, bars, bonds, params, hasMerge ? merge : undefined);
+    const ep = await fetchTextIfOk(`${prefix}data/etf_products.csv?${bust}`);
+    if (ep?.trim()) merge.etfProducts = ep;
+    const dividendPoolText = await fetchTextIfOk(
+      `${prefix}data/dividend_representative_pool.json?${bust}`,
+    );
+    const hasMerge = Boolean(
+      merge.etfsMore ||
+        merge.barsMore ||
+        merge.bondsMore ||
+        merge.fundBars ||
+        merge.etfProducts,
+    );
+    const bundle = buildCsvBundle(
+      etfs,
+      bars,
+      bonds,
+      params,
+      hasMerge ? merge : undefined,
+    );
     const ix = await fetchTextIfOk(`${prefix}data/indices.csv?${bust}`);
     const ib = await fetchTextIfOk(`${prefix}data/index_bars.csv?${bust}`);
-    const it = await fetchTextIfOk(`${prefix}data/index_tracking_etfs.csv?${bust}`);
-    const { bundle: parsed, indexCsvError } = withIndexCsvSafe(bundle, ix ?? "", ib ?? "", it ?? "");
-    const full = withBondMap(parsed, bondMapForBundle(parsed, bonds, bom ?? undefined));
-    return { status: "ok" as const, bundle: full, indexCsvError };
+    const it = await fetchTextIfOk(
+      `${prefix}data/index_tracking_etfs.csv?${bust}`,
+    );
+    const { bundle: parsed, indexCsvError } = withIndexCsvSafe(
+      bundle,
+      ix ?? "",
+      ib ?? "",
+      it ?? "",
+    );
+    const full = withBondMap(
+      parsed,
+      bondMapForBundle(parsed, bonds, bom ?? undefined),
+    );
+    return {
+      status: "ok" as const,
+      bundle: full,
+      indexCsvError,
+      etfProductsCsv: ep,
+      dividendRepresentativePool: dividendPoolText
+        ? parseDividendRepresentativePool(dividendPoolText)
+        : null,
+    };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return { status: "error", message };
@@ -168,10 +292,15 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
 }
 
 export function DataSourceProvider({ children }: { children: ReactNode }) {
-  const [definitions, setDefinitions] = useState<EtfDefinition[]>(mockEtfDefinitions);
-  const [bondMap, setBondMap] = useState<Record<string, BondSeriesPoint>>(mockBondByDate);
+  const [definitions, setDefinitions] =
+    useState<EtfDefinition[]>(mockEtfDefinitions);
+  const [bondMap, setBondMap] =
+    useState<Record<string, BondSeriesPoint>>(mockBondByDate);
   const [indices, setIndices] = useState<IndexDefinition[]>([]);
   const [indexTracking, setIndexTracking] = useState<IndexTrackingRow[]>([]);
+  const [etfProductsCsv, setEtfProductsCsv] = useState<string | null>(null);
+  const [dividendRepresentativePool, setDividendRepresentativePool] =
+    useState<DividendRepresentativePool | null>(null);
   const [indexCsvError, setIndexCsvError] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<SourceKind>("mock");
   const [sourceLabel, setSourceLabel] = useState<string>("内置示例数据");
@@ -182,12 +311,23 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
 
   const getEtf = useCallback(
     (code: string) => definitions.find((d) => d.meta.code === code),
-    [definitions]
+    [definitions],
   );
 
   const getIndex = useCallback(
     (code: string) => indices.find((d) => d.meta.index_code === code),
-    [indices]
+    [indices],
+  );
+
+  const etfProducts = useMemo(
+    () =>
+      buildEtfProductCatalog({
+        definitions,
+        indices,
+        indexTracking,
+        csvText: etfProductsCsv,
+      }),
+    [definitions, indices, indexTracking, etfProductsCsv],
   );
 
   const loadFromDownloads = useCallback(async (files: FileList | File[]) => {
@@ -199,6 +339,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setBondMap(bundle.bondByDate);
       setIndices(bundle.indices);
       setIndexTracking(bundle.indexTracking);
+      setEtfProductsCsv(null);
       setIndexCsvError(idxErr);
       setSourceKind("csv");
       setSourceLabel("本机 CSV（下载等目录）");
@@ -215,6 +356,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setBondMap(mockBondByDate);
     setIndices([]);
     setIndexTracking([]);
+    setEtfProductsCsv(null);
     setIndexCsvError(null);
     setSourceKind("mock");
     setSourceLabel("内置示例数据");
@@ -234,6 +376,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setBondMap(api.bundle.bondByDate);
         setIndices(api.bundle.indices);
         setIndexTracking(api.bundle.indexTracking);
+        setEtfProductsCsv(api.etfProductsCsv);
+        setDividendRepresentativePool(api.dividendRepresentativePool);
         setIndexCsvError(api.indexCsvError);
         setSourceKind("api");
         setSourceLabel(api.label);
@@ -247,7 +391,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setLoadError(
           apiError
             ? `数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空，无法加载数据。`
-            : "public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。"
+            : "public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。",
         );
         return;
       }
@@ -255,7 +399,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setLoadError(
           apiError
             ? `数据 API 失败：${apiError}；重新加载 public/data 也失败：${pub.message}`
-            : `重新加载 public/data 失败：${pub.message}`
+            : `重新加载 public/data 失败：${pub.message}`,
         );
         return;
       }
@@ -264,6 +408,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setBondMap(pub.bundle.bondByDate);
       setIndices(pub.bundle.indices);
       setIndexTracking(pub.bundle.indexTracking);
+      setEtfProductsCsv(pub.etfProductsCsv);
+      setDividendRepresentativePool(pub.dividendRepresentativePool);
       setIndexCsvError(pub.indexCsvError);
       setSourceKind("csv_public");
       setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
@@ -290,6 +436,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setBondMap(api.bundle.bondByDate);
         setIndices(api.bundle.indices);
         setIndexTracking(api.bundle.indexTracking);
+        setEtfProductsCsv(api.etfProductsCsv);
+        setDividendRepresentativePool(api.dividendRepresentativePool);
         setSourceKind("api");
         setSourceLabel(api.label);
         setPublicCsvAutoLoading(false);
@@ -306,7 +454,9 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       }
       if (pub.status === "missing") {
         if (apiError) {
-          setLoadError(`自动加载数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空。当前使用内置示例数据。`);
+          setLoadError(
+            `自动加载数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空。当前使用内置示例数据。`,
+          );
         }
         setPublicCsvAutoLoading(false);
         return;
@@ -315,7 +465,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setLoadError(
           apiError
             ? `自动加载数据 API 失败：${apiError}；public/data 也失败：${pub.message}。当前使用内置示例数据。`
-            : `自动加载 public/data 失败：${pub.message}。当前使用内置示例数据；请确认 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`
+            : `自动加载 public/data 失败：${pub.message}。当前使用内置示例数据；请确认 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`,
         );
         setPublicCsvAutoLoading(false);
         return;
@@ -326,6 +476,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setBondMap(pub.bundle.bondByDate);
       setIndices(pub.bundle.indices);
       setIndexTracking(pub.bundle.indexTracking);
+      setEtfProductsCsv(pub.etfProductsCsv);
+      setDividendRepresentativePool(pub.dividendRepresentativePool);
       setSourceKind("csv_public");
       setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
       setPublicCsvAutoLoading(false);
@@ -341,6 +493,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       bondByDate: bondMap,
       indices,
       indexTracking,
+      etfProducts,
+      dividendRepresentativePool,
       indexCsvError,
       sourceKind,
       sourceLabel,
@@ -358,6 +512,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       bondMap,
       indices,
       indexTracking,
+      etfProducts,
+      dividendRepresentativePool,
       indexCsvError,
       sourceKind,
       sourceLabel,
@@ -369,14 +525,19 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       reloadPublicCsv,
       getEtf,
       getIndex,
-    ]
+    ],
   );
 
-  return <DataSourceContext.Provider value={value}>{children}</DataSourceContext.Provider>;
+  return (
+    <DataSourceContext.Provider value={value}>
+      {children}
+    </DataSourceContext.Provider>
+  );
 }
 
 export function useDataSource(): Ctx {
   const v = useContext(DataSourceContext);
-  if (!v) throw new Error("useDataSource must be used within DataSourceProvider");
+  if (!v)
+    throw new Error("useDataSource must be used within DataSourceProvider");
   return v;
 }
