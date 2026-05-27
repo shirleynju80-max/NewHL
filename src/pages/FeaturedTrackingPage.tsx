@@ -567,12 +567,10 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
           .filter((s) => s.zoneLabel === label)
           .map((s) => ({
             code: group.focusRow.product?.code ?? s.etf.meta.code,
-            name: group.focusRow.product?.name ?? s.etf.meta.name,
-            metric: s.metricLine,
           })),
       );
       const codes = Array.from(new Set(matched.map((m) => m.code)));
-      return { label, strategyCount: matched.length, etfCount: codes.length, codes, sample: matched[0] };
+      return { label, strategyCount: matched.length, etfCount: codes.length, codes };
     });
   }, [groups]);
 
@@ -608,11 +606,6 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
                 ? `${item.strategyCount} 条策略 · ${item.codes.join("、")}`
                 : "暂无策略进入该区间"}
             </p>
-            {item.sample ? (
-              <p className="mt-1 truncate font-mono text-[10px] text-[var(--fin-dim)]">
-                {item.sample.metric}
-              </p>
-            ) : null}
           </div>
         ))}
       </div>
