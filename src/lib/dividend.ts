@@ -4,7 +4,9 @@ import type { BondAnchorId, BondSeriesPoint, EtfDefinition } from "../types";
 export function bondAnchorForEtf(etf: EtfDefinition): BondAnchorId | null {
   if (etf.meta.product_kind !== "红利_含股息分红") return null;
   if (!etf.meta.dividend_market_scope) return null;
-  return etf.meta.dividend_market_scope === "A股红利" ? "CN_10Y" : getHkBondAnchorPreference();
+  return etf.meta.dividend_market_scope === "A股红利"
+    ? "CN_10Y"
+    : getHkBondAnchorPreference();
 }
 
 export type SpreadRow = {
@@ -18,7 +20,7 @@ export type SpreadRow = {
 export function buildSpreadSeries(
   etf: EtfDefinition,
   bondByDate: Record<string, BondSeriesPoint>,
-  bondAnchor?: BondAnchorId
+  bondAnchor?: BondAnchorId,
 ): SpreadRow[] {
   const anchor = bondAnchor ?? bondAnchorForEtf(etf);
   if (!anchor) return [];

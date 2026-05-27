@@ -6,8 +6,13 @@ import {
   setHkBondAnchorPreference,
 } from "../lib/bondAnchor";
 
-export function useHkBondAnchorPreference(): readonly [BondAnchorId, (anchor: BondAnchorId) => void] {
-  const [anchor, setAnchorState] = useState<BondAnchorId>(() => getHkBondAnchorPreference());
+export function useHkBondAnchorPreference(): readonly [
+  BondAnchorId,
+  (anchor: BondAnchorId) => void,
+] {
+  const [anchor, setAnchorState] = useState<BondAnchorId>(() =>
+    getHkBondAnchorPreference(),
+  );
 
   useEffect(() => {
     const sync = () => setAnchorState(getHkBondAnchorPreference());

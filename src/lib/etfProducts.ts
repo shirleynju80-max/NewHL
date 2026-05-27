@@ -1,5 +1,9 @@
 import { parseCsv, rowsToObjects } from "./csv";
-import type { EtfDefinition, IndexDefinition, IndexTrackingRow } from "../types";
+import type {
+  EtfDefinition,
+  IndexDefinition,
+  IndexTrackingRow,
+} from "../types";
 
 export type EtfProductGroupId =
   | "cash_creation"
@@ -8,7 +12,11 @@ export type EtfProductGroupId =
   | "otc_fund"
   | "other";
 
-export type EtfProductDataStatus = "ok" | "partial" | "missing" | "needs_review";
+export type EtfProductDataStatus =
+  | "ok"
+  | "partial"
+  | "missing"
+  | "needs_review";
 
 export type EtfProduct = {
   code: string;
@@ -34,7 +42,10 @@ export type EtfProduct = {
   note?: string;
 };
 
-export type EtfProductLandingGroups<T = EtfProduct> = Record<EtfProductGroupId, T[]> & {
+export type EtfProductLandingGroups<T = EtfProduct> = Record<
+  EtfProductGroupId,
+  T[]
+> & {
   cash: T[];
   cn: T[];
   hk: T[];
@@ -120,8 +131,14 @@ function mustGroup(raw: string): EtfProductGroupId {
 
 function mustStatus(raw: string): EtfProductDataStatus {
   const value = raw.trim();
-  const statuses: EtfProductDataStatus[] = ["ok", "partial", "missing", "needs_review"];
-  if ((statuses as string[]).includes(value)) return value as EtfProductDataStatus;
+  const statuses: EtfProductDataStatus[] = [
+    "ok",
+    "partial",
+    "missing",
+    "needs_review",
+  ];
+  if ((statuses as string[]).includes(value))
+    return value as EtfProductDataStatus;
   throw new Error(`etf_products.csv data_status 无效: ${raw}`);
 }
 
@@ -132,11 +149,14 @@ function optExchange(raw: string | undefined): EtfProduct["exchange"] {
   return undefined;
 }
 
-export function normalizeEtfProductRow(row: Record<string, string>): EtfProduct {
+export function normalizeEtfProductRow(
+  row: Record<string, string>,
+): EtfProduct {
   const code = row.code?.trim();
   const indexCode = row.index_code?.trim();
   if (!code) throw new Error("etf_products.csv 存在缺少 code 的行");
-  if (!indexCode) throw new Error(`etf_products.csv 产品 ${code} 缺少 index_code`);
+  if (!indexCode)
+    throw new Error(`etf_products.csv 产品 ${code} 缺少 index_code`);
   return {
     code,
     name: row.name?.trim() || code,
@@ -170,7 +190,9 @@ export function parseEtfProductsCsv(text: string): EtfProduct[] {
   return rowsToObjects(headers, body).map(normalizeEtfProductRow);
 }
 
-function productGroupOf(product: EtfProduct | EtfProductRecord): EtfProductGroupId {
+function productGroupOf(
+  product: EtfProduct | EtfProductRecord,
+): EtfProductGroupId {
   return "product_group" in product ? product.product_group : product.group;
 }
 
@@ -182,15 +204,21 @@ function productPrimaryOf(product: EtfProduct | EtfProductRecord): boolean {
   return "is_primary" in product ? product.is_primary : product.isPrimary;
 }
 
-function productFirstTradeDateOf(product: EtfProduct | EtfProductRecord): string | undefined {
-  return "first_trade_date" in product ? product.first_trade_date : (product as EtfProductRecord).firstTradeDate;
+function productFirstTradeDateOf(
+  product: EtfProduct | EtfProductRecord,
+): string | undefined {
+  return "first_trade_date" in product
+    ? product.first_trade_date
+    : (product as EtfProductRecord).firstTradeDate;
 }
 
 function productSortKey(product: EtfProduct | EtfProductRecord): string {
   return `${productGroupOf(product)}:${productIndexCodeOf(product)}:${productPrimaryOf(product) ? "0" : "1"}:${productFirstTradeDateOf(product) || "9999"}:${product.code}`;
 }
 
-export function groupEtfProductsForLanding<T extends EtfProduct | EtfProductRecord>(products: T[]): EtfProductLandingGroups<T> {
+export function groupEtfProductsForLanding<
+  T extends EtfProduct | EtfProductRecord,
+>(products: T[]): EtfProductLandingGroups<T> {
   const grouped: EtfProductLandingGroups<T> = {
     cash_creation: [],
     shareholder_return_cn: [],
@@ -206,7 +234,9 @@ export function groupEtfProductsForLanding<T extends EtfProduct | EtfProductReco
     grouped[productGroupOf(product)].push(product);
   }
   for (const group of GROUPS) {
-    grouped[group].sort((a, b) => productSortKey(a).localeCompare(productSortKey(b)));
+    grouped[group].sort((a, b) =>
+      productSortKey(a).localeCompare(productSortKey(b)),
+    );
   }
   grouped.cash = grouped.cash_creation;
   grouped.cn = grouped.shareholder_return_cn;
@@ -215,18 +245,26 @@ export function groupEtfProductsForLanding<T extends EtfProduct | EtfProductReco
   return grouped;
 }
 
-export function getProductsForIndex(products: EtfProduct[], indexCode: string): EtfProduct[] {
+export function getProductsForIndex(
+  products: EtfProduct[],
+  indexCode: string,
+): EtfProduct[] {
   return products
     .filter((product) => product.index_code === indexCode)
     .sort((a, b) => productSortKey(a).localeCompare(productSortKey(b)));
 }
 
-export function getPrimaryProductForIndex(products: EtfProduct[], indexCode: string): EtfProduct | undefined {
+export function getPrimaryProductForIndex(
+  products: EtfProduct[],
+  indexCode: string,
+): EtfProduct | undefined {
   const matches = getProductsForIndex(products, indexCode);
   return matches.find((product) => product.is_primary) ?? matches[0];
 }
 
-export function etfProductDataStatusLabel(status: EtfProductDataStatus): string {
+export function etfProductDataStatusLabel(
+  status: EtfProductDataStatus,
+): string {
   switch (status) {
     case "ok":
       return "数据可用";
@@ -249,9 +287,9 @@ export function productDataStatusHint(status: EtfProductDataStatus): string {
     case "ok":
       return "行情已同步";
     case "partial":
-      return "属性已更新，行情待同步";
+      return "暂未提供行情数据";
     case "missing":
-      return "待上市或暂无行情";
+      return "暂未提供行情数据";
     case "needs_review":
       return "待人工核实";
     default:
@@ -259,10 +297,46 @@ export function productDataStatusHint(status: EtfProductDataStatus): string {
   }
 }
 
-export function productDataStatusTone(status: EtfProductDataStatus): "good" | "warn" | "muted" {
+export function productDataStatusTone(
+  status: EtfProductDataStatus,
+): "good" | "warn" | "muted" {
   if (status === "ok") return "good";
   if (status === "partial" || status === "needs_review") return "warn";
   return "muted";
+}
+
+/** 产品选择页：无行情展示灰色「暂无」 */
+export function productSelectionDataStatusHint(
+  status: EtfProductDataStatus,
+): string {
+  switch (status) {
+    case "ok":
+      return "行情已接入";
+    case "partial":
+    case "missing":
+      return "暂无";
+    case "needs_review":
+      return "待核实";
+    default:
+      return "—";
+  }
+}
+
+export function productSelectionDataStatusTone(
+  status: EtfProductDataStatus,
+): "good" | "warn" | "muted" {
+  if (status === "ok") return "good";
+  if (status === "needs_review") return "warn";
+  return "muted";
+}
+
+/** 产品详情页可进入：行情已同步，或本地已有日 K */
+export function etfProductDetailNavigable(
+  product: Pick<EtfProductRecord, "dataStatus">,
+  etf?: { bars: readonly unknown[] } | null,
+): boolean {
+  if (product.dataStatus === "ok") return true;
+  return (etf?.bars?.length ?? 0) > 0;
 }
 
 function toRecord(product: EtfProduct): EtfProductRecord {
@@ -297,21 +371,30 @@ export function parseEtfProductRecordsCsv(text: string): EtfProductRecord[] {
   return parseEtfProductsCsv(text).map(toRecord);
 }
 
-function indexToGroup(index: IndexDefinition | undefined, productType: IndexTrackingRow["product_type"]): EtfProductGroupId {
+function indexToGroup(
+  index: IndexDefinition | undefined,
+  productType: IndexTrackingRow["product_type"],
+): EtfProductGroupId {
   if (productType === "otc_fund") return "otc_fund";
   if (index?.meta.category === "现金流") return "cash_creation";
   if (index?.meta.category === "港股红利") return "shareholder_return_hk";
   return "shareholder_return_cn";
 }
 
-function inferExchange(code: string, productType: IndexTrackingRow["product_type"]): EtfProductRecord["exchange"] {
+function inferExchange(
+  code: string,
+  productType: IndexTrackingRow["product_type"],
+): EtfProductRecord["exchange"] {
   if (productType === "otc_fund") return "OTC";
   if (/^(50|51|52|53|56|58)/.test(code)) return "SH";
   if (/^(15|16|18)/.test(code)) return "SZ";
   return undefined;
 }
 
-function firstTradeDateFor(definitions: EtfDefinition[], code: string): string | undefined {
+function firstTradeDateFor(
+  definitions: EtfDefinition[],
+  code: string,
+): string | undefined {
   const def = definitions.find((item) => item.meta.code === code);
   return def?.bars[0]?.date;
 }
@@ -330,7 +413,9 @@ export function buildEtfProductCatalog({
   if (csvText?.trim()) return parseEtfProductRecordsCsv(csvText);
   const seen = new Set<string>();
   return indexTracking.map((row) => {
-    const index = indices.find((item) => item.meta.index_code === row.index_code);
+    const index = indices.find(
+      (item) => item.meta.index_code === row.index_code,
+    );
     const def = definitions.find((item) => item.meta.code === row.etf_code);
     const isPrimary = !seen.has(row.index_code);
     seen.add(row.index_code);
@@ -347,7 +432,9 @@ export function buildEtfProductCatalog({
       totalFeePct: row.fee_pct,
       feePct: row.fee_pct,
       isPrimary,
-      dataStatus: firstTradeDateFor(definitions, row.etf_code) ? "ok" : "missing",
+      dataStatus: firstTradeDateFor(definitions, row.etf_code)
+        ? "ok"
+        : "missing",
       note: row.note,
     };
   });
@@ -357,7 +444,9 @@ function recordSortKey(product: EtfProductRecord): string {
   return `${product.group}:${product.indexCode}:${product.isPrimary ? "0" : "1"}:${product.firstTradeDate || "9999"}:${product.code}`;
 }
 
-export function groupEtfProductRecordsForLanding(products: EtfProductRecord[]): Record<EtfProductGroupId, EtfProductRecord[]> {
+export function groupEtfProductRecordsForLanding(
+  products: EtfProductRecord[],
+): Record<EtfProductGroupId, EtfProductRecord[]> {
   const grouped: Record<EtfProductGroupId, EtfProductRecord[]> = {
     cash_creation: [],
     shareholder_return_cn: [],
@@ -366,17 +455,71 @@ export function groupEtfProductRecordsForLanding(products: EtfProductRecord[]): 
     other: [],
   };
   for (const product of products) grouped[product.group].push(product);
-  for (const group of GROUPS) grouped[group].sort((a, b) => recordSortKey(a).localeCompare(recordSortKey(b)));
+  for (const group of GROUPS)
+    grouped[group].sort((a, b) =>
+      recordSortKey(a).localeCompare(recordSortKey(b)),
+    );
   return grouped;
 }
 
-export function productsForIndex(products: EtfProductRecord[], indexCode: string): EtfProductRecord[] {
-  return products.filter((product) => product.indexCode === indexCode).sort((a, b) => recordSortKey(a).localeCompare(recordSortKey(b)));
+export function productsForIndex(
+  products: EtfProductRecord[],
+  indexCode: string,
+): EtfProductRecord[] {
+  return products
+    .filter((product) => product.indexCode === indexCode)
+    .sort((a, b) => recordSortKey(a).localeCompare(recordSortKey(b)));
 }
 
-export function primaryProductForIndex(products: EtfProductRecord[], indexCode: string): EtfProductRecord | undefined {
+export function primaryProductForIndex(
+  products: EtfProductRecord[],
+  indexCode: string,
+): EtfProductRecord | undefined {
   const matches = productsForIndex(products, indexCode);
   return matches.find((product) => product.isPrimary) ?? matches[0];
+}
+
+/** 策略研究等场景：仅主跟踪 ETF，且已有 K 线 */
+export function primaryEtfCodesWithBars(
+  definitions: { meta: { code: string }; bars: unknown[] }[],
+  products: EtfProductRecord[],
+): string[] {
+  const primaryCodes = new Set(
+    products.filter((p) => p.isPrimary).map((p) => p.code),
+  );
+  return definitions
+    .filter((d) => primaryCodes.has(d.meta.code) && d.bars.length > 0)
+    .map((d) => d.meta.code)
+    .sort();
+}
+
+export function buildProductSearchHaystack(
+  code: string,
+  product: EtfProductRecord | undefined,
+  etfName?: string,
+): string {
+  const parts = [
+    code,
+    product?.name,
+    product?.indexCode,
+    product?.indexName,
+    product?.issuer,
+    etfName,
+  ].filter((x): x is string => Boolean(x && String(x).trim()));
+  return parts.join(" ").toLowerCase();
+}
+
+export function matchesProductSearch(
+  haystack: string,
+  query: string,
+): boolean {
+  const tokens = query
+    .trim()
+    .toLowerCase()
+    .split(/[\s,，/、]+/)
+    .filter(Boolean);
+  if (!tokens.length) return true;
+  return tokens.every((t) => haystack.includes(t));
 }
 
 const PRODUCT_GROUP_SORT: Record<EtfProductGroupId, number> = {
@@ -410,7 +553,7 @@ export type DeskCandidateRow = {
 /** 配置驾驶舱「代表入口」：按观察池指数聚合，主产品来自 is_primary */
 export function buildDeskCandidates(
   indices: { meta: { index_code: string; name: string } }[],
-  products: EtfProductRecord[]
+  products: EtfProductRecord[],
 ): DeskCandidateRow[] {
   const primaryByIndex = new Map<string, string>();
   const countByIndex = new Map<string, number>();
@@ -432,7 +575,10 @@ export function buildDeskCandidates(
       const total = countByIndex.get(code) ?? 0;
       return {
         code,
-        name: def?.meta.name ?? products.find((p) => p.indexCode === code)?.indexName ?? code,
+        name:
+          def?.meta.name ??
+          products.find((p) => p.indexCode === code)?.indexName ??
+          code,
         etfCode: primaryByIndex.get(code) ?? "—",
         productCount: total,
         referenceCount: Math.max(0, total - (primaryByIndex.has(code) ? 1 : 0)),
@@ -453,8 +599,76 @@ export type EtfProductsByIndexGroup = {
   products: EtfProductRecord[];
 };
 
+/** 产品选择页：同指数最多展示的 ETF 候选数 */
+export const MAX_ETF_CANDIDATES_PER_INDEX = 4;
+
+export function limitIndexGroupCandidates(
+  products: EtfProductRecord[],
+  max = MAX_ETF_CANDIDATES_PER_INDEX,
+  preferredCodes?: string[],
+): EtfProductRecord[] {
+  if (preferredCodes?.length) {
+    const pref = new Set(preferredCodes);
+    const byCode = new Map(products.map((p) => [p.code, p]));
+    const picked: EtfProductRecord[] = [];
+    for (const code of preferredCodes) {
+      const p = byCode.get(code);
+      if (p) picked.push(p);
+    }
+    const primary = products.find((p) => p.isPrimary);
+    if (primary && !pref.has(primary.code)) {
+      picked.unshift(primary);
+    }
+    const seen = new Set<string>();
+    const deduped = picked.filter((p) => {
+      if (seen.has(p.code)) return false;
+      seen.add(p.code);
+      return true;
+    });
+    if (deduped.length > 0) {
+      return deduped.slice(0, Math.max(max, preferredCodes.length));
+    }
+  }
+  const sorted = [...products].sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    const da = a.firstTradeDate ?? "9999";
+    const db = b.firstTradeDate ?? "9999";
+    if (da !== db) return da.localeCompare(db);
+    return a.code.localeCompare(b.code);
+  });
+  return sorted.slice(0, max);
+}
+
+export type ProductsDimensionFilter =
+  | "all"
+  | "cash_creation"
+  | "shareholder_return_cn"
+  | "shareholder_return_hk";
+
+export type ProductsDataStatusFilter = "all" | "ok" | "pending";
+
+export type ProductsPageFilterOptions = {
+  query: string;
+  dimension: ProductsDimensionFilter;
+  dataStatus: ProductsDataStatusFilter;
+  primaryOnly: boolean;
+  /** 红利量化代表（按指数 3–5 只）；来自 dividend_representative_pool.json */
+  representativeByIndex?: Record<string, string[]>;
+};
+
+function productMatchesDataFilter(
+  p: EtfProductRecord,
+  dataStatus: ProductsDataStatusFilter,
+): boolean {
+  if (dataStatus === "all") return true;
+  if (dataStatus === "ok") return p.dataStatus === "ok";
+  return p.dataStatus !== "ok";
+}
+
 /** 产品选择页：按跟踪指数聚合，组内主跟踪优先 */
-export function groupEtfProductsByIndex(products: EtfProductRecord[]): EtfProductsByIndexGroup[] {
+export function groupEtfProductsByIndex(
+  products: EtfProductRecord[],
+): EtfProductsByIndexGroup[] {
   const byIndex = new Map<string, EtfProductRecord[]>();
   for (const product of products) {
     const list = byIndex.get(product.indexCode) ?? [];
@@ -485,7 +699,47 @@ export function groupEtfProductsByIndex(products: EtfProductRecord[]): EtfProduc
     });
 }
 
-export function maxEtfProductsUpdatedAt(products: EtfProductRecord[]): string | null {
+export function filterProductIndexGroups(
+  groups: EtfProductsByIndexGroup[],
+  options: ProductsPageFilterOptions,
+): EtfProductsByIndexGroup[] {
+  const q = options.query.trim().toLowerCase();
+
+  return groups
+    .map((group) => {
+      let products = limitIndexGroupCandidates(
+        group.products,
+        MAX_ETF_CANDIDATES_PER_INDEX,
+        options.representativeByIndex?.[group.indexCode],
+      );
+      if (options.dimension !== "all" && group.productGroup !== options.dimension) {
+        return { ...group, products: [] };
+      }
+      if (options.primaryOnly) {
+        products = products.filter((p) => p.isPrimary);
+      }
+      products = products.filter((p) =>
+        productMatchesDataFilter(p, options.dataStatus),
+      );
+      return { ...group, products };
+    })
+    .filter((group) => {
+      if (group.products.length === 0) return false;
+      if (!q) return true;
+      const hay = [
+        group.indexCode,
+        group.indexName,
+        ...group.products.map((p) => `${p.code} ${p.name}`),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+}
+
+export function maxEtfProductsUpdatedAt(
+  products: EtfProductRecord[],
+): string | null {
   let max = "";
   for (const product of products) {
     const u = product.updatedAt?.trim();
@@ -496,7 +750,7 @@ export function maxEtfProductsUpdatedAt(products: EtfProductRecord[]): string | 
 
 export function indexCodesForProductGroup(
   products: EtfProductRecord[],
-  group: EtfProductGroupId | "shareholder_return"
+  group: EtfProductGroupId | "shareholder_return",
 ): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -504,7 +758,8 @@ export function indexCodesForProductGroup(
     if (!p.isPrimary) continue;
     const match =
       group === "shareholder_return"
-        ? p.productGroup === "shareholder_return_cn" || p.productGroup === "shareholder_return_hk"
+        ? p.productGroup === "shareholder_return_cn" ||
+          p.productGroup === "shareholder_return_hk"
         : p.productGroup === group;
     if (!match || seen.has(p.indexCode)) continue;
     seen.add(p.indexCode);

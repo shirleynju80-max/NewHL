@@ -68,13 +68,9 @@ TRACKING_NOTES = {
 }
 
 EXTRA_TRACKING_ROWS = [
-    {"index_code": "931157", "etf_code": "007751", "note": "景顺长城沪港深红利成长低波A", "fee_pct": "", "product_type": "otc_fund"},
-    {"index_code": "932366", "etf_code": "563900", "note": "摩根沪深300自由现金流ETF", "fee_pct": ""},
-    {"index_code": "932368", "etf_code": "563580", "note": "万家中证800自由现金流ETF", "fee_pct": ""},
-    {"index_code": "932368", "etf_code": "516460", "note": "鹏华中证800自由现金流ETF", "fee_pct": ""},
-    {"index_code": "932368", "etf_code": "563680", "note": "汇添富中证800自由现金流ETF", "fee_pct": ""},
-    {"index_code": "932368", "etf_code": "159119", "note": "招商中证800自由现金流ETF", "fee_pct": ""},
-    {"index_code": "932368", "etf_code": "159229", "note": "广发中证800自由现金流ETF", "fee_pct": ""},
+    # 931157/007751 已写入 index_tracking_etfs.csv（otc_fund 主产品），勿在此重复。
+    {"index_code": "932366", "etf_code": "563900", "note": "摩根沪深300自由现金流ETF；产品落地参考，不作为盘中默认监控", "fee_pct": ""},
+    {"index_code": "932368", "etf_code": "563580", "note": "万家中证800自由现金流ETF；产品落地参考，不作为盘中默认监控", "fee_pct": ""},
 ]
 
 

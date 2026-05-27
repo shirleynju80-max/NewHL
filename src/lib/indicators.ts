@@ -44,8 +44,12 @@ export function rsi(closes: number[], period: number): (number | null)[] {
 export function bollinger(
   closes: number[],
   period: number,
-  stdMult: number
-): { mid: (number | null)[]; upper: (number | null)[]; lower: (number | null)[] } {
+  stdMult: number,
+): {
+  mid: (number | null)[];
+  upper: (number | null)[];
+  lower: (number | null)[];
+} {
   const mid = sma(closes, period);
   const upper: (number | null)[] = [];
   const lower: (number | null)[] = [];

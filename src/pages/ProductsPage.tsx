@@ -1,82 +1,211 @@
-import { useMemo } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useDataSource } from "../context/DataSourceContext";
 import { PageHeader } from "../components/PageHeader";
 import {
   EtfProductsDataFootnote,
   EtfSelectionGuide,
-  filterListedEtfProducts,
   ProductsByIndexSections,
 } from "../components/ProductsLandingTable";
-import { groupEtfProductsByIndex, maxEtfProductsUpdatedAt } from "../lib/etfProducts";
+import {
+  filterProductIndexGroups,
+  groupEtfProductsByIndex,
+  limitIndexGroupCandidates,
+  maxEtfProductsUpdatedAt,
+  type ProductsDataStatusFilter,
+  type ProductsDimensionFilter,
+} from "../lib/etfProducts";
+
+const DIMENSION_FILTERS: {
+  id: ProductsDimensionFilter;
+  label: string;
+}[] = [
+  { id: "all", label: "全部" },
+  { id: "cash_creation", label: "现金创造" },
+  { id: "shareholder_return_cn", label: "A股红利" },
+  { id: "shareholder_return_hk", label: "港股红利" },
+];
+
+const DATA_FILTERS: { id: ProductsDataStatusFilter; label: string }[] = [
+  { id: "all", label: "全部" },
+  { id: "ok", label: "行情已接入" },
+  { id: "pending", label: "暂无" },
+];
 
 export function ProductsPage() {
-  const { etfProducts, getEtf } = useDataSource();
+  const { etfProducts, dividendRepresentativePool } = useDataSource();
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [dimension, setDimension] = useState<ProductsDimensionFilter>("all");
+  const [dataStatus, setDataStatus] = useState<ProductsDataStatusFilter>("all");
+  const [primaryOnly, setPrimaryOnly] = useState(false);
 
-  const listedProducts = useMemo(
-    () => filterListedEtfProducts(etfProducts, getEtf),
-    [etfProducts, getEtf]
+  const indexGroups = useMemo(
+    () => groupEtfProductsByIndex(etfProducts),
+    [etfProducts],
   );
 
-  const indexGroups = useMemo(() => groupEtfProductsByIndex(listedProducts), [listedProducts]);
+  const filteredGroups = useMemo(
+    () =>
+      filterProductIndexGroups(indexGroups, {
+        query: deferredQuery,
+        dimension,
+        dataStatus,
+        primaryOnly,
+        representativeByIndex: dividendRepresentativePool?.byIndex,
+      }),
+    [
+      indexGroups,
+      deferredQuery,
+      dimension,
+      dataStatus,
+      primaryOnly,
+      dividendRepresentativePool?.byIndex,
+    ],
+  );
 
   const poolStats = useMemo(() => {
-    const primary = listedProducts.filter((p) => p.isPrimary).length;
+    const primary = etfProducts.filter((p) => p.isPrimary).length;
+    const candidateSlots = indexGroups.reduce(
+      (n, g) => n + limitIndexGroupCandidates(g.products).length,
+      0,
+    );
     return {
-      poolTotal: etfProducts.length,
-      listed: listedProducts.length,
-      primary,
-      reference: listedProducts.length - primary,
       indices: indexGroups.length,
+      candidates: candidateSlots,
+      primary,
       dataUpdatedAt: maxEtfProductsUpdatedAt(etfProducts),
     };
-  }, [etfProducts, listedProducts, indexGroups.length]);
+  }, [etfProducts, indexGroups]);
+
+  const filterResultCount = useMemo(() => {
+    const etfs = filteredGroups.reduce((n, g) => n + g.products.length, 0);
+    return { indices: filteredGroups.length, etfs };
+  }, [filteredGroups]);
+
+  const hasActiveFilters =
+    deferredQuery.trim() !== "" ||
+    dimension !== "all" ||
+    dataStatus !== "all" ||
+    primaryOnly;
 
   return (
-    <div className="space-y-8">
+    <div className="ft-page space-y-6">
       <PageHeader
         kicker="执行层"
         title="产品选择"
-        breadcrumbs={[
-          { label: "配置总览", to: "/" },
-          { label: "产品选择" },
-        ]}
-        description={
-          <>
-            按<strong>跟踪指数</strong>列出已上市交易的 ETF（主跟踪 + 同指数参考）。暂未成立或尚无本地行情的产品不在此页展示；选择时优先看规模与综合费率。
-          </>
-        }
+        breadcrumbs={[{ label: "配置总览", to: "/" }, { label: "产品选择" }]}
+        description="先选定指数逻辑，再在同指数 ETF 中比较规模、费率、成立时间与数据状态；列表优先展示量化代表候选（近 5 年收益/回撤/波动 + 高相关去重），不做收益率排名。"
       >
-        <dl className="mt-4 flex flex-wrap gap-6 text-sm">
-          <div>
-            <dt className="fin-label">本页产品</dt>
-            <dd className="font-mono font-semibold text-[var(--fin-text)]">{poolStats.listed} 只</dd>
-          </div>
+        <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="fin-label">覆盖指数</dt>
-            <dd className="font-mono font-semibold text-[var(--fin-text)]">{poolStats.indices} 个</dd>
+            <dd className="font-mono font-semibold text-[var(--fin-text)]">
+              {poolStats.indices} 个
+            </dd>
+          </div>
+          <div>
+            <dt className="fin-label">ETF 候选</dt>
+            <dd className="font-mono font-semibold text-[var(--fin-text)]">
+              {poolStats.candidates} 只
+            </dd>
           </div>
           <div>
             <dt className="fin-label">主跟踪</dt>
-            <dd className="font-mono font-semibold text-[var(--fin-blue)]">{poolStats.primary} 只</dd>
+            <dd className="font-mono font-semibold text-[var(--fin-blue)]">
+              {poolStats.primary} 只
+            </dd>
           </div>
           <div>
-            <dt className="fin-label">参考产品</dt>
-            <dd className="font-mono font-semibold fin-muted-text">{poolStats.reference} 只</dd>
+            <dt className="fin-label">规模/费率更新</dt>
+            <dd className="font-mono text-xs font-semibold text-[var(--fin-text)]">
+              {poolStats.dataUpdatedAt ?? "—"}
+            </dd>
           </div>
         </dl>
       </PageHeader>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(240px,300px)]">
-        <ProductsByIndexSections groups={indexGroups} />
+      <section className="fin-panel space-y-3 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[min(100%,220px)] flex-1 text-sm">
+            <span className="fin-label">搜索</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="指数或 ETF 代码、名称"
+              className="fin-select fin-interactive mt-1 block w-full rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          {hasActiveFilters ?
+            <button
+              type="button"
+              className="fin-chip-filter px-3 py-2 text-sm"
+              onClick={() => {
+                setQuery("");
+                setDimension("all");
+                setDataStatus("all");
+                setPrimaryOnly(false);
+              }}
+            >
+              重置筛选
+            </button>
+          : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="fin-label shrink-0">维度</span>
+          {DIMENSION_FILTERS.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setDimension(d.id)}
+              className={`fin-chip-filter px-2.5 py-1 text-xs ${dimension === d.id ? "fin-chip-filter-active" : ""}`}
+            >
+              {d.label}
+            </button>
+          ))}
+          <span className="fin-label ml-2 shrink-0">数据</span>
+          {DATA_FILTERS.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setDataStatus(d.id)}
+              className={`fin-chip-filter px-2.5 py-1 text-xs ${dataStatus === d.id ? "fin-chip-filter-active" : ""}`}
+            >
+              {d.label}
+            </button>
+          ))}
+          <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs fin-muted-text">
+            <input
+              type="checkbox"
+              checked={primaryOnly}
+              onChange={(e) => setPrimaryOnly(e.target.checked)}
+              className="rounded border-fin-border"
+            />
+            仅看主产品
+          </label>
+        </div>
+
+        {hasActiveFilters ?
+          <p className="text-xs fin-muted-text">
+            当前 {filterResultCount.indices} 个指数 · {filterResultCount.etfs}{" "}
+            只候选 ETF
+          </p>
+        : null}
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(220px,280px)]">
+        <ProductsByIndexSections
+          groups={filteredGroups}
+          emptyMessage="暂无符合筛选条件的指数候选，请调整搜索或筛选条件。"
+        />
         <EtfSelectionGuide />
       </div>
 
       <footer className="border-t border-fin-border pt-4">
-        <EtfProductsDataFootnote
-          poolTotal={poolStats.poolTotal}
-          listedCount={poolStats.listed}
-          dataUpdatedAt={poolStats.dataUpdatedAt}
-        />
+        <EtfProductsDataFootnote dataUpdatedAt={poolStats.dataUpdatedAt} />
       </footer>
     </div>
   );

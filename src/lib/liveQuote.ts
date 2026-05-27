@@ -2,7 +2,13 @@ import { configuredDataApiBaseUrl } from "../api/dataBundle";
 import { tryWebThenApiBars } from "./marketDataSync";
 import type { OhlcBar } from "../types";
 
-export type LiveQuoteSource = "eastmoney" | "web" | "api" | "local";
+export type LiveQuoteSource =
+  | "eastmoney"
+  | "sina"
+  | "tencent"
+  | "web"
+  | "api"
+  | "local";
 
 export type LiveQuote = {
   price: number;
@@ -39,23 +45,44 @@ export function quoteFromLocalBars(bars: OhlcBar[]): LiveQuote | null {
     quoteTime: now,
     fetchedAt: now,
     source: "local",
-    detail: last.date >= shanghaiTodayYmd() ? "本地 barsmore 当日定点" : "本地最新收盘",
+    detail:
+      last.date >= shanghaiTodayYmd()
+        ? "本地 barsmore 当日定点"
+        : "本地最新收盘",
   };
 }
 
 async function fetchQuoteFromApiUrl(url: string): Promise<LiveQuote | null> {
   try {
-    const r = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" } });
+    const r = await fetch(url, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
     if (!r.ok) return null;
     const j = (await r.json()) as QuoteApiPayload;
-    if (!j.ok || typeof j.price !== "number" || !Number.isFinite(j.price) || j.price <= 0) return null;
+    if (
+      !j.ok ||
+      typeof j.price !== "number" ||
+      !Number.isFinite(j.price) ||
+      j.price <= 0
+    )
+      return null;
     const fetchedAt = new Date().toISOString();
     return {
       price: j.price,
       tradeDate: j.tradeDate ?? shanghaiTodayYmd(),
       quoteTime: j.quoteTime ?? fetchedAt,
       fetchedAt,
-      source: j.source === "eastmoney" ? "eastmoney" : j.source === "api" ? "api" : "web",
+      source:
+        j.source === "eastmoney"
+          ? "eastmoney"
+          : j.source === "sina"
+            ? "sina"
+            : j.source === "tencent"
+              ? "tencent"
+          : j.source === "api"
+            ? "api"
+            : "web",
       detail: j.detail,
     };
   } catch {
@@ -64,14 +91,21 @@ async function fetchQuoteFromApiUrl(url: string): Promise<LiveQuote | null> {
 }
 
 async function fetchSiteQuoteApi(code: string): Promise<LiveQuote | null> {
-  const sameOrigin = await fetchQuoteFromApiUrl(`/api/quote?code=${encodeURIComponent(code)}`);
+  const sameOrigin = await fetchQuoteFromApiUrl(
+    `/api/quote?code=${encodeURIComponent(code)}`,
+  );
   if (sameOrigin) return sameOrigin;
   const base = configuredDataApiBaseUrl();
   if (!base) return null;
-  return fetchQuoteFromApiUrl(`${base}/api/quote?code=${encodeURIComponent(code)}`);
+  return fetchQuoteFromApiUrl(
+    `${base}/api/quote?code=${encodeURIComponent(code)}`,
+  );
 }
 
-async function fetchQuoteFromRemoteBars(code: string, localBars: OhlcBar[]): Promise<LiveQuote | null> {
+async function fetchQuoteFromRemoteBars(
+  code: string,
+  localBars: OhlcBar[],
+): Promise<LiveQuote | null> {
   const remote = await tryWebThenApiBars(code, localBars);
   if (!remote.ok || !remote.bars?.length) return null;
   const sorted = [...remote.bars].sort((a, b) => a.date.localeCompare(b.date));
@@ -88,8 +122,11 @@ async function fetchQuoteFromRemoteBars(code: string, localBars: OhlcBar[]): Pro
   };
 }
 
-/** 解析最新价：东财/网关实时 → 行情 API 日 K → 本地合并 K 线。 */
-export async function fetchLiveQuote(code: string, localBars: OhlcBar[]): Promise<LiveQuote> {
+/** 解析最新价：实时源/网关 → 行情 API 日 K → 本地合并 K 线。 */
+export async function fetchLiveQuote(
+  code: string,
+  localBars: OhlcBar[],
+): Promise<LiveQuote> {
   const site = await fetchSiteQuoteApi(code);
   if (site) return site;
 
@@ -102,7 +139,8 @@ export async function fetchLiveQuote(code: string, localBars: OhlcBar[]): Promis
   const fallbackClose = localBars.at(-1)?.close;
   const now = new Date().toISOString();
   return {
-    price: Number.isFinite(fallbackClose) && fallbackClose! > 0 ? fallbackClose! : 1,
+    price:
+      Number.isFinite(fallbackClose) && fallbackClose! > 0 ? fallbackClose! : 1,
     tradeDate: localBars.at(-1)?.date ?? shanghaiTodayYmd(),
     quoteTime: now,
     fetchedAt: now,
@@ -113,6 +151,8 @@ export async function fetchLiveQuote(code: string, localBars: OhlcBar[]): Promis
 
 export function formatQuoteSourceLabel(source: LiveQuoteSource): string {
   if (source === "eastmoney") return "东方财富实时";
+  if (source === "sina") return "新浪实时";
+  if (source === "tencent") return "腾讯实时";
   if (source === "web") return "行情 Web";
   if (source === "api") return "行情 API";
   return "本地收盘";

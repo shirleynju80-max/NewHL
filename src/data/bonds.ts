@@ -19,10 +19,16 @@ export function buildBondSeries(dates: string[]): BondSeriesPoint[] {
     us += (r2() - 0.5) * 0.05;
     cn = Math.min(3.2, Math.max(2.1, cn));
     us = Math.min(5.0, Math.max(3.2, us));
-    return { date, cn10y_pct: Math.round(cn * 100) / 100, us10y_pct: Math.round(us * 100) / 100 };
+    return {
+      date,
+      cn10y_pct: Math.round(cn * 100) / 100,
+      us10y_pct: Math.round(us * 100) / 100,
+    };
   });
 }
 
-export function bondMap(series: BondSeriesPoint[]): Record<string, BondSeriesPoint> {
+export function bondMap(
+  series: BondSeriesPoint[],
+): Record<string, BondSeriesPoint> {
   return Object.fromEntries(series.map((b) => [b.date, b]));
 }

@@ -63,8 +63,14 @@ HSI_ACCESS_TOKEN=<从已登录 Index360 localStorage.token 读取> \
 中证官网公开接口暂未找到可直接下载的历史 DP 序列；`/perf/indexCsiDsPe` 的 `peg` 字段已确认不是股息率。当前已确认可用的红利/现金流指数主股息率使用红色火箭指数详情页的 `股息率(DID)` 序列：
 
 ```bash
+# 仅查询红色火箭侧最近观测日，写入 public/data/redrocket_div_yield_meta.json（供指数研究页脚）
+python3 scripts/index_data_sync/fetch_redrocket_div_yield_refresh.py
+
+# 将 DID 序列落库到 index_bars（同步结束也会更新 meta）
 python3 scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
 ```
+
+`redrocket_div_yield_meta.json` 中 `source_latest_date` 为各指数 API 最近 `tradeDate` 的全局最大值，即页面展示的「数据更新至」日期。
 
 来源与字段：
 
@@ -147,6 +153,33 @@ python3 scripts/index_data_sync/sync_h30269_dividend_yield_legulegu.py
 - 场内 ETF/LOF：行情来自 `bars.csv` / `barsmore.csv` + 实时爬虫。
 - 开放式基金（如 `007751`）：净值写入 `fund_bars.csv`，加载时并入 ETF 看板；**同样走 `/etf/007751`**，不再外链天天基金。
 
+### 场内 ETF 分红与前复权全量刷新
+
+`sync_etf_realtime.py` 适合定点补当日快照 / T-1 日 K，但 ETF 分红除权后，东方财富
+`fqt=1` 前复权历史序列可能整体变化。此时不能只拼接最新一行，需要用分红事件触发全量刷新。
+
+```bash
+# 检查全部场内 ETF：抓取 F10 分红送配；分红签名变化或历史口径漂移时刷新 barsmore
+python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py
+
+# 强制刷新指定 ETF 的全量前复权历史
+python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880,512890 --force
+
+# 仅验证，不写文件
+python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880 --dry-run
+```
+
+输出文件：
+
+| 文件 | 说明 |
+|------|------|
+| `public/data/etf_dividends.csv` | ETF 分红事件：权益登记日、除息日、每份现金分红、发放日 |
+| `public/data/barsmore.csv` | 被刷新 ETF 的全量前复权 OHLC；加载时覆盖 `bars.csv` 同日旧值 |
+| `public/data/etf_adjusted_bars_meta.json` | 每只 ETF 分红事件签名、最近检查/刷新日期、重合历史差异数 |
+
+建议调度：每周或每月运行一次；红利 ETF 集中除息期（通常 1 月附近）可临时提高频率。
+如果该脚本刷新了历史，再运行 `sync_etf_realtime.py` 补当日实时快照。
+
 ```bash
 python3 scripts/index_data_sync/sync_otc_fund_bars_em.py
 ```
@@ -164,11 +197,28 @@ python3 scripts/index_data_sync/sync_otc_fund_bars_em.py
 
 ## 待接入（S&P / 富时历史行情）
 
-`SPCLLHCP.SPI`、`SPAHLVCP.SPI`、`FCFQCD` 暂无 `index_bars` 序列。探测脚本：
+`SPCLLHCP.SPI`、`SPAHLVCP.SPI` 暂无 `index_bars` 序列；`FCFQCD` 已由 iFinD 价格指数 xlsx + factsheet 元数据导入。探测脚本：
 
 ```bash
 python3 scripts/index_data_sync/probe_intl_index_sources.py
 ```
+
+### Indices-API（pypi-indices-api）试用
+
+第三方 [indices-api.com](https://indices-api.com) Python 包 `pypi-indices-api`，覆盖 **GSPC、FTSE、HSI** 等 100+ 主流全球指数，**不包含** 本项目所需的 `SPCLLHCP` / `SPCLLHCT` / `SPAHLVCP` / `FCFQCD`（S&P DJI / FTSE Russell 编制的 A 股/港股策略指数）。
+
+```bash
+# 无 Key：静态对照 + 安装说明
+python3 -m pip install pypi-indices-api --target scripts/.vendor_indices_api
+python3 scripts/index_data_sync/probe_indices_api.py
+
+# 有 Key（https://indices-api.com/register 免费试用）
+export INDICES_API_KEY='your_key'
+python3 scripts/index_data_sync/probe_indices_api.py
+python3 scripts/index_data_sync/probe_indices_api.py --timeseries   # 额外测日频 timeseries
+```
+
+**勿** 将 `GSPC`/`FTSE` 写入 `SPCLLHCP.SPI` 等 `index_code`；有授权历史 CSV 仍走 `import_sp_dividend_low_vol_csv.py`。
 
 `SPCLLHCP.SPI` 属于 S&P DJI 指数，不在中证接口内。当前只在 `indices.csv` 和 `index_tracking_etfs.csv` 保留元信息与产品映射，不用 Yahoo 单日行情填充历史。
 
@@ -190,6 +240,16 @@ python3 scripts/index_data_sync/probe_intl_index_sources.py
 - Yahoo Finance chart API：本环境对 `^SPCNLOVHD5`、`SPCLLHCT`、`SPCLLHCP`、`SPAHLVCP`、`FCFQCD` 均 **HTTP 403**（可能限流/地区策略）；不可作为稳定自动化源。
 - S&P 官方指数页：本环境 **HTTP 403**（Security Controls）；编制说明需浏览器或授权渠道。
 - 富时 ground rules PDF：可下载（约 400KB），为编制文档而非日频 OHLC；历史仍需 LSEG/授权数据或人工 CSV。
+
+### 富时 FCFQCD（iFinD + factsheet）
+
+```bash
+python3 scripts/index_data_sync/import_ftse_fcfqcd_ifind_xlsx.py \
+  "/path/to/com.51ifind富时中国A股自由现金流聚焦(FCFQCD.FS)-历史价格.xlsx"
+```
+
+- 富时 **仅** 维护这一份 iFinD 价格指数；「收盘价」同时写入 `price_close` 与 `tri_close`（前端走势与绩效均用该序列）。
+- 同步更新 `indices.csv` 基日/发布日/编制说明（对照 factsheet PDF，factsheet 总收益表为宣传口径，非日频行情源）。
 
 如果后续拿到 S&P DJI、Wind、Choice、Bloomberg 或其他可验证来源导出的 CSV，可用导入脚本写入：
 

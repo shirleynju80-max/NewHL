@@ -30,13 +30,17 @@ export function setHkBondAnchorPreference(anchor: BondAnchorId): void {
   }
 }
 
-export function resolveBondAnchorForIndex(def: Pick<IndexDefinition, "meta">): BondAnchorId {
+export function resolveBondAnchorForIndex(
+  def: Pick<IndexDefinition, "meta">,
+): BondAnchorId {
   if (def.meta.market === "H") return getHkBondAnchorPreference();
   return defaultBondAnchorForMarket(def.meta.market);
 }
 
 export function bondAnchorLabel(anchor: BondAnchorId): string {
-  return anchor === "CN_10Y" ? "中国 10 年期国债收益率（%）" : "美国 10 年期国债收益率（%）";
+  return anchor === "CN_10Y"
+    ? "中国 10 年期国债收益率（%）"
+    : "美国 10 年期国债收益率（%）";
 }
 
 export function bondAnchorShortLabel(anchor: BondAnchorId): string {
@@ -47,7 +51,7 @@ export function bondYieldFromRow(
   bondRow: { cn10y_pct: number; us10y_pct: number } | undefined,
   anchor: BondAnchorId,
   fallbackCn = 2.5,
-  fallbackUs = 4.0
+  fallbackUs = 4.0,
 ): number {
   if (!bondRow) return anchor === "CN_10Y" ? fallbackCn : fallbackUs;
   return anchor === "CN_10Y" ? bondRow.cn10y_pct : bondRow.us10y_pct;

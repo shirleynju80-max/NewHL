@@ -20,7 +20,7 @@ export function computeWindowedBacktest(
   strategyId: string,
   paramVersion: string,
   i0: number,
-  i1: number
+  i1: number,
 ): WindowedBacktest {
   const n = bars.length;
   if (n === 0) {
@@ -36,6 +36,12 @@ export function computeWindowedBacktest(
   const winLen = b - a + 1;
   const sigWin = sigChunk.slice(off, off + winLen);
   const barsWin = bars.slice(a, b + 1);
-  const tradesWin = buildTrades(barsWin, sigWin, paramVersion, strategyId, params);
+  const tradesWin = buildTrades(
+    barsWin,
+    sigWin,
+    paramVersion,
+    strategyId,
+    params,
+  );
   return { barsWin, signalsWin: sigWin, tradesWin, i0: a, i1: b };
 }

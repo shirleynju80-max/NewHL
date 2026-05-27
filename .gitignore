@@ -5,11 +5,29 @@ dist
 .env
 .env.*
 
+# 构建与导出产物
+*.tsbuildinfo
+static-page-exports/
+static-page-exports.zip
+
+# 无关 agent 技能包（勿提交）
+.agents/
+.claude/
+
 # 真实行情/参数 CSV 勿提交（保留 public/data/README.txt 即可）
 public/data/*.csv
-# bars.csv 可由 GitHub Actions（TickFlow）同步后纳入版本库；其余 CSV 仍建议仅本地
 !public/data/bars.csv
 
-# 本地 Python 测 TickFlow 等
+# 本地 Python
 scripts/.venv/
+scripts/.vendor_indices_api/
 .venv/
+
+# 脚本一次性输出（分析报告等）
+scripts/output/
+
+# Cursor 本地技能/缓存（勿提交）
+.cursor/
+
+# Worker 子包 lock（按需本地安装）
+workers/data-api/package-lock.json

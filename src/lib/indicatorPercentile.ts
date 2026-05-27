@@ -57,8 +57,10 @@ function zoneFromPosition(pct: number): PercentileZone {
 }
 
 function hintFor(zone: PercentileZone, pct: number): string {
-  if (zone === "buy_hint") return `贴近买侧（标尺≤${formatPctValue(BUY_PCT)}%）`;
-  if (zone === "sell_hint") return `贴近卖侧（标尺≥${formatPctValue(SELL_PCT)}%）`;
+  if (zone === "buy_hint")
+    return `贴近买侧（标尺≤${formatPctValue(BUY_PCT)}%）`;
+  if (zone === "sell_hint")
+    return `贴近卖侧（标尺≥${formatPctValue(SELL_PCT)}%）`;
   return `中性（${formatPctValue(pct)}%）`;
 }
 
@@ -70,7 +72,7 @@ export function strategyPercentileContext(
   bars: OhlcBar[],
   params: EtfParams,
   strategyId: string,
-  mergedBars?: OhlcBar[]
+  mergedBars?: OhlcBar[],
 ): IndicatorPercentileContext | null {
   if (bars.length < 3) return null;
   const source = mergedBars ?? bars;
@@ -83,7 +85,11 @@ export function strategyPercentileContext(
     const m = ma2[last];
     if (m == null || m === 0) return null;
     const devPct = ((c2[last] - m) / m) * 100;
-    const pct = linearBandPosition(devPct, MA_CUSTOM_DEV_LOW, MA_CUSTOM_DEV_HIGH);
+    const pct = linearBandPosition(
+      devPct,
+      MA_CUSTOM_DEV_LOW,
+      MA_CUSTOM_DEV_HIGH,
+    );
     const zone = zoneFromPosition(pct);
     return {
       metricName: `价偏离MA${rule.buyMaPeriod}%`,
@@ -139,8 +145,10 @@ export function strategyPercentileContext(
   const c2 = closesFromBars(source);
   const f2 = sma(c2, pair.fastP);
   const s2 = sma(c2, pair.slowP);
-  if (f2[last] == null || s2[last] == null || source[last].close === 0) return null;
-  const g = (((f2[last] as number) - (s2[last] as number)) / source[last].close) * 100;
+  if (f2[last] == null || s2[last] == null || source[last].close === 0)
+    return null;
+  const g =
+    (((f2[last] as number) - (s2[last] as number)) / source[last].close) * 100;
   const pct = linearBandPosition(g, MA_SPREAD_PCT_LOW, MA_SPREAD_PCT_HIGH);
   const zone = zoneFromPosition(pct);
   return {
@@ -157,7 +165,7 @@ export function indicatorValueLabelAtDate(
   bars: OhlcBar[],
   params: EtfParams,
   strategyId: string,
-  date: string
+  date: string,
 ): string {
   const idx = bars.findIndex((b) => b.date === date);
   if (idx < 0) return "—";
@@ -194,6 +202,7 @@ export function indicatorValueLabelAtDate(
   const fast = sma(closes, pair.fastP);
   const slow = sma(closes, pair.slowP);
   if (fast[idx] == null || slow[idx] == null) return "—";
-  const g = (((fast[idx] as number) - (slow[idx] as number)) / bars[idx].close) * 100;
+  const g =
+    (((fast[idx] as number) - (slow[idx] as number)) / bars[idx].close) * 100;
   return `价差%=${Math.round(g * 10000) / 10000}`;
 }

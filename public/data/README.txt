@@ -17,4 +17,4 @@
 
 合并后若某标的在 etfs / bars 中已存在，但 etf_params.csv 中无对应 etf_code，会自动补一行默认参数；若仅有 bars 有新 code 而无 etfs 行，会生成占位标的（名称中会提示补全）。
 
-国债若为 xlsx，请导出为 CSV 后放入本目录。列说明见项目根目录 README.md「用 CSV 先跑通」一节。
+国债若为 xlsx，请导出为 CSV 后放入本目录。列说明见 docs/csv-schema.md。

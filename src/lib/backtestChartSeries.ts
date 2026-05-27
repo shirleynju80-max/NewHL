@@ -28,9 +28,16 @@ export type ChartRow = PriceIndicatorRow & {
   sellMark?: number;
 };
 
-export function mergeTradeMarkers(rows: PriceIndicatorRow[], trades: TradePoint[]): ChartRow[] {
-  const buyDates = new Set(trades.filter((t) => t.side === "BUY").map((t) => t.date));
-  const sellDates = new Set(trades.filter((t) => t.side === "SELL").map((t) => t.date));
+export function mergeTradeMarkers(
+  rows: PriceIndicatorRow[],
+  trades: TradePoint[],
+): ChartRow[] {
+  const buyDates = new Set(
+    trades.filter((t) => t.side === "BUY").map((t) => t.date),
+  );
+  const sellDates = new Set(
+    trades.filter((t) => t.side === "SELL").map((t) => t.date),
+  );
   return rows.map((r) => ({
     ...r,
     buyMark: buyDates.has(r.date) ? r.price : undefined,
@@ -44,7 +51,7 @@ export function buildPriceIndicatorRows(
   params: EtfParams,
   strategyId: string,
   i0: number,
-  i1: number
+  i1: number,
 ): PriceIndicatorRow[] {
   const n = bars.length;
   if (!n || i0 > i1) return [];
@@ -97,20 +104,41 @@ export function buildPriceIndicatorRows(
       price: Number(bars[i].close.toFixed(6)),
     };
     if (maCustomMode && fast && slow) {
-      row.maFast = fast[i] != null ? Math.round((fast[i] as number) * 10000) / 10000 : null;
-      row.maSlow = slow[i] != null ? Math.round((slow[i] as number) * 10000) / 10000 : null;
+      row.maFast =
+        fast[i] != null
+          ? Math.round((fast[i] as number) * 10000) / 10000
+          : null;
+      row.maSlow =
+        slow[i] != null
+          ? Math.round((slow[i] as number) * 10000) / 10000
+          : null;
     } else if (rsiMode && rsiSeries) {
       const v = rsiSeries[i];
       row.rsi = v != null ? Math.round(v * 100) / 100 : null;
       row.rsiOverbought = ob;
       row.rsiOversold = os;
     } else if (bollMode && bbUpper && bbLower && bbMid) {
-      row.bbUpper = bbUpper[i] != null ? Math.round((bbUpper[i] as number) * 10000) / 10000 : null;
-      row.bbLower = bbLower[i] != null ? Math.round((bbLower[i] as number) * 10000) / 10000 : null;
-      row.bbMid = bbMid[i] != null ? Math.round((bbMid[i] as number) * 10000) / 10000 : null;
+      row.bbUpper =
+        bbUpper[i] != null
+          ? Math.round((bbUpper[i] as number) * 10000) / 10000
+          : null;
+      row.bbLower =
+        bbLower[i] != null
+          ? Math.round((bbLower[i] as number) * 10000) / 10000
+          : null;
+      row.bbMid =
+        bbMid[i] != null
+          ? Math.round((bbMid[i] as number) * 10000) / 10000
+          : null;
     } else if (fast && slow) {
-      row.maFast = fast[i] != null ? Math.round((fast[i] as number) * 10000) / 10000 : null;
-      row.maSlow = slow[i] != null ? Math.round((slow[i] as number) * 10000) / 10000 : null;
+      row.maFast =
+        fast[i] != null
+          ? Math.round((fast[i] as number) * 10000) / 10000
+          : null;
+      row.maSlow =
+        slow[i] != null
+          ? Math.round((slow[i] as number) * 10000) / 10000
+          : null;
     }
     rows.push(row);
   }
