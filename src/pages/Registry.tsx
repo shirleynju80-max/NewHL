@@ -384,7 +384,7 @@ export function RegistryPage() {
     () =>
       dataMode === "bundle" && selectedDef && !selectedBacktestEligible
         ? selectedIsOtcFund
-          ? "场外基金使用净值序列，不参与本页日 K 网格回测；可在精选跟踪和产品详情中查看净值口径结果。"
+          ? "场外基金使用净值序列，不参与此处的日 K 网格回测；可在精选跟踪和产品详情中查看。"
           : etfBacktestIneligibleReason(
               selectedDef,
               selectedProduct,
@@ -668,7 +668,7 @@ export function RegistryPage() {
       setGridResult(null);
       setGridErr(
         dataMode === "bundle"
-          ? "当前标的 K 线不足 40 根或未加载。请确认数据源已包含 bars，并选择有数据的标的。"
+          ? "当前标的 K 线不足 40 根或未加载。请确认数据已加载，并选择有数据的标的。"
           : "请先上传 bars.csv 并选择标的；K 线需不少于 40 根。",
       );
       return;
@@ -749,7 +749,7 @@ export function RegistryPage() {
         e.paramVersion === row.paramVersion,
     );
     if (dup) {
-      setToast("该组合已在观测列表中（含本页已注册项）。");
+      setToast("该组合已在观测列表中（含已注册项）。");
       return;
     }
     const kind: RegisteredStrategyKind = row.family;
@@ -894,7 +894,7 @@ export function RegistryPage() {
           </div>
         ) : (
           <p className="fin-alert-warn--compact mt-4">
-            当前数据源没有可回测标的，请先在配置总览确认 public/data 已加载。
+            当前没有可回测标的，请先在配置总览确认数据已加载。
           </p>
         )}
 
@@ -948,7 +948,7 @@ export function RegistryPage() {
           selectedDef &&
           selectedBacktestEligible && (
             <p className="mt-4 rounded-lg border border-fin-border bg-fin-panel-muted/80 px-3 py-2 text-xs fin-muted-text">
-              看板 CSV 默认参数：策略{" "}
+              看板默认参数：策略{" "}
               {formatPct(boardVerifySummary.strategyReturnPct)} · 超额{" "}
               {formatPct(boardVerifySummary.excessReturnPct)} ·
               点击上方执行网格回测查看 Top 组合。
@@ -984,7 +984,7 @@ export function RegistryPage() {
                 setGridErr(null);
               }}
             />
-            当前数据源 K 线（与看板一致）
+            站点数据（与看板一致）
           </label>
           <label className="fin-choice has-[:checked]:bg-[var(--fin-blue-soft)] has-[:checked]:text-[var(--fin-text)]">
             <input
@@ -997,7 +997,7 @@ export function RegistryPage() {
                 setGridErr(null);
               }}
             />
-            本页上传 bars.csv
+            上传行情文件
           </label>
         </div>
 
@@ -1495,7 +1495,7 @@ export function RegistryPage() {
               boardVerifySummary &&
               selectedDef && (
                 <p className="mt-3 rounded-lg border border-fin-border bg-fin-panel-muted/80 px-3 py-2 text-[11px] text-[var(--fin-text)]">
-                  看板默认参数（CSV）：策略{" "}
+                  看板默认参数：策略{" "}
                   {formatPct(boardVerifySummary.strategyReturnPct)} · 超额{" "}
                   {formatPct(boardVerifySummary.excessReturnPct)} · 回撤{" "}
                   {formatPct(boardVerifySummary.maxDrawdownPct)} · 胜率{" "}
@@ -1558,7 +1558,7 @@ export function RegistryPage() {
           </span>
         </summary>
         <p className="mt-2 text-xs fin-muted-text">
-          灰标=数据源默认；蓝标=观测注册可删。加入后可在单标的页策略参数下拉中选择。
+          灰标为默认参数；蓝标为自选注册、可删除。加入后可在产品详情页的策略参数中选择。
         </p>
 
         {etfDefinitions.length === 0 ? (
@@ -1608,7 +1608,7 @@ export function RegistryPage() {
         {uploadOnlyRegistered.length > 0 && (
           <div className="fin-alert-warn--compact mt-4">
             <h4 className="text-xs font-semibold text-[var(--fin-amber)]">
-              仅上传 CSV 出现的标的（未在数据源定义中）
+              仅在上传文件中的标的（未在站点产品列表中）
             </h4>
             <ul className="mt-2 space-y-1.5">
               {uploadOnlyRegistered.map((r) => (
@@ -1664,7 +1664,7 @@ function ObservationRow({
                 : "bg-fin-panel-muted fin-muted-text"
             }`}
           >
-            {registered ? "观测注册" : "数据源默认"}
+            {registered ? "自选注册" : "默认参数"}
           </span>
           <span className="font-medium text-[var(--fin-text)]">
             {variant.label}

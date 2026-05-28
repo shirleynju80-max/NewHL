@@ -593,7 +593,7 @@ export function MonitorPage() {
         description={
           <>
             用 <strong>ETF 实时价格</strong>
-            重算已登记策略的标尺区间，只展示各指数主跟踪 ETF 的盘中执行状态。详细口径见下方「标尺说明」。
+            根据实时价格更新各策略的买卖标尺，展示各指数主跟踪 ETF 的盘中状态。含义见下方「标尺说明」。
           </>
         }
       />
@@ -792,9 +792,8 @@ export function MonitorPage() {
           标尺说明（默认折叠）
         </summary>
         <p className="mt-3 leading-relaxed">
-          对纳入监控的 ETF，列出 <strong>etf_params.csv 登记的全部策略参数</strong>
-          （含 RSI / 布林带等多套）在「昨收全日 K + ETF
-          实时最新价」合成下的标尺与提醒。标尺 %
+          对纳入监控的 ETF，列出<strong>已登记的全部策略</strong>
+          （含 RSI、布林带等多套）在「昨日收盘 + 当前实时价」下的标尺与提醒。标尺 %
           表示当前指标值在策略买、卖阈值之间的线性位置（0 贴近买侧，100
           贴近卖侧），不是历史经验分位，也<strong>不是</strong>
           指数实时点位。RSI 按超卖到超买区间线性映射；布林按当前价在下轨到上轨之间的位置线性映射。标尺

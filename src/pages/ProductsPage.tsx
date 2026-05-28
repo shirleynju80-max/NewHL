@@ -94,7 +94,7 @@ export function ProductsPage() {
         kicker="执行层"
         title="产品选择"
         breadcrumbs={[{ label: "配置总览", to: "/" }, { label: "产品选择" }]}
-        description="先选定指数逻辑，再在同指数 ETF 中比较规模、费率、成立时间与数据状态；列表优先展示量化代表候选（近 5 年收益/回撤/波动 + 高相关去重），不做收益率排名。"
+        description="先选定指数逻辑，再在同指数 ETF 中比较规模、费率、成立时间与数据状态。"
       >
         <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -196,15 +196,13 @@ export function ProductsPage() {
         : null}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_minmax(220px,280px)]">
-        <ProductsByIndexSections
-          groups={filteredGroups}
-          emptyMessage="暂无符合筛选条件的指数候选，请调整搜索或筛选条件。"
-        />
-        <EtfSelectionGuide />
-      </div>
+      <ProductsByIndexSections
+        groups={filteredGroups}
+        emptyMessage="暂无符合筛选条件的指数候选，请调整搜索或筛选条件。"
+      />
 
-      <footer className="border-t border-fin-border pt-4">
+      <footer className="space-y-4 border-t border-fin-border pt-6">
+        <EtfSelectionGuide />
         <EtfProductsDataFootnote dataUpdatedAt={poolStats.dataUpdatedAt} />
       </footer>
     </div>

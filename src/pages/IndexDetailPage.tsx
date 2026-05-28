@@ -740,7 +740,7 @@ export function IndexDetailPage() {
             {def.meta.index_code}
           </p>
           <p className="mt-2 text-xs fin-muted-text">
-            指数研究 · 图表与绩效仅使用 index_bars 全收益序列
+            指数研究 · 图表与绩效基于指数全收益序列
           </p>
           {primaryProduct ? (
             <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -1189,11 +1189,7 @@ export function IndexDetailPage() {
         <section className="fin-alert-warn">
           <p className="font-medium">暂无指数日序列</p>
           <p className="mt-2 opacity-90">
-            请在{" "}
-            <code className="fin-inline-code">index_bars.csv</code>{" "}
-            中为该 <code className="fin-inline-code">index_code</code>{" "}
-            提供 <code className="fin-inline-code">tri_close</code>{" "}
-            等列；本页不读取 ETF 行情作替代。
+            暂无该指数的全收益日序列数据，图表与绩效无法展示。请补充指数行情数据后刷新；此处不使用 ETF 行情代替指数。
           </p>
         </section>
       )}
@@ -1210,8 +1206,7 @@ export function IndexDetailPage() {
             <p className="mt-1 text-xs fin-muted-text leading-relaxed">
               <strong>{def.meta.market === "A" ? "A 股" : "港股"}</strong>
               指数：股息率与 <strong>{bondLabel}</strong>{" "}
-              对齐至同一交易日。时间窗与上方市场表现图联动；数据仅来自
-              index_bars / bonds，不含 ETF。
+              对齐至同一交易日；时间段与上方市场表现图联动，数据为指数与国债收益率序列，不含 ETF。
               <span className="mt-1 block text-xs fin-muted-text">
                 仅作配置观察参考，非投资建议，非交易信号。
               </span>
@@ -1452,14 +1447,10 @@ export function IndexDetailPage() {
             <div className="fin-alert-warn--compact mt-4 p-4 text-sm">
               <p className="font-medium">暂不展示股息率与利差图</p>
               <p className="mt-2 leading-relaxed opacity-90">
-                当前 index_bars 未包含已确认口径的历史股息率。此前探测到的中证{" "}
-                <code className="fin-inline-code">indexCsiDsPe</code>{" "}
-                字段与 factsheet 股息率不一致，已停止作为 DP
-                使用；该模块将在接入可靠历史股息率后自动恢复。
+                当前尚无可靠的历史股息率序列，股息率与利差图暂无法展示；接入数据后将自动恢复。
               </p>
               <p className="mt-2 text-xs opacity-80">
-                国债收益率仍来自
-                bonds.csv；本模块不会用前向填充或估算值补股息率。
+                国债收益率仍正常展示；股息率不做前向填充或估算补全。
               </p>
             </div>
           )}
@@ -1485,7 +1476,7 @@ export function IndexDetailPage() {
 
       {spFallbackWithEtf ? (
         <div className="px-6 pb-10 text-xs fin-muted-text leading-relaxed">
-          标普指数数据暂未获取，用etf数据近似替代。
+          标普指数暂无官方全收益序列，部分图表以主跟踪 ETF 行情近似展示。
         </div>
       ) : null}
     </div>

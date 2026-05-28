@@ -303,7 +303,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     useState<DividendRepresentativePool | null>(null);
   const [indexCsvError, setIndexCsvError] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<SourceKind>("mock");
-  const [sourceLabel, setSourceLabel] = useState<string>("内置示例数据");
+  const [sourceLabel, setSourceLabel] = useState<string>("示例数据");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [publicCsvAutoLoading, setPublicCsvAutoLoading] = useState(true);
   const [reloadingPublicCsv, setReloadingPublicCsv] = useState(false);
@@ -342,7 +342,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setEtfProductsCsv(null);
       setIndexCsvError(idxErr);
       setSourceKind("csv");
-      setSourceLabel("本机 CSV（下载等目录）");
+      setSourceLabel("本机上传数据");
       userTouchedRef.current = true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -359,7 +359,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setEtfProductsCsv(null);
     setIndexCsvError(null);
     setSourceKind("mock");
-    setSourceLabel("内置示例数据");
+    setSourceLabel("示例数据");
     setLoadError(null);
   }, []);
 
@@ -390,16 +390,16 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       if (pub.status === "missing") {
         setLoadError(
           apiError
-            ? `数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空，无法加载数据。`
-            : "public/data/bars.csv 不存在或为空，无法从 public/data 重新加载。",
+            ? `在线数据加载失败：${apiError}；本地行情数据也不可用，无法加载。`
+            : "本地行情数据不可用，无法重新加载。",
         );
         return;
       }
       if (pub.status === "error") {
         setLoadError(
           apiError
-            ? `数据 API 失败：${apiError}；重新加载 public/data 也失败：${pub.message}`
-            : `重新加载 public/data 失败：${pub.message}`,
+            ? `在线数据加载失败：${apiError}；重新加载本地数据也失败：${pub.message}`
+            : `重新加载本地数据失败：${pub.message}`,
         );
         return;
       }
@@ -455,7 +455,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       if (pub.status === "missing") {
         if (apiError) {
           setLoadError(
-            `自动加载数据 API 失败：${apiError}；public/data/bars.csv 也不存在或为空。当前使用内置示例数据。`,
+            `在线数据加载失败：${apiError}；本地行情数据也不可用。当前显示示例数据。`,
           );
         }
         setPublicCsvAutoLoading(false);
@@ -464,8 +464,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       if (pub.status === "error") {
         setLoadError(
           apiError
-            ? `自动加载数据 API 失败：${apiError}；public/data 也失败：${pub.message}。当前使用内置示例数据。`
-            : `自动加载 public/data 失败：${pub.message}。当前使用内置示例数据；请确认 public/data/bars.csv 存在且非空（etfs / etf_params / bonds 可缺省），或在本页用文件选择器载入。`,
+            ? `在线数据加载失败：${apiError}；本地数据也失败：${pub.message}。当前显示示例数据。`
+            : `本地数据加载失败：${pub.message}。当前显示示例数据；请确认站点数据已部署，或使用页面上的文件选择器上传行情文件。`,
         );
         setPublicCsvAutoLoading(false);
         return;

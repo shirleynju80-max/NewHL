@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { EtfProductDetailLink } from "./EtfProductDetailLink";
 import { useDataSource } from "../context/DataSourceContext";
-import { useStrategyRegistry } from "../context/StrategyRegistryContext";
 import {
   ETF_PRODUCT_GROUP_LABELS,
   productCandidateTags,
@@ -15,10 +14,6 @@ import {
   isQuantRepresentative,
   type DividendRepresentativePool,
 } from "../lib/dividendRepresentativePool";
-import {
-  getProductParamVariants,
-  paramVariantsSummaryLine,
-} from "../lib/paramVariants";
 import { ProductAumCell, ProductFeeCell } from "./ProductTableCells";
 
 function statusClass(tone: ReturnType<typeof productSelectionDataStatusTone>) {
@@ -33,34 +28,31 @@ function dimensionChipLabel(group: EtfProductsByIndexGroup): string {
 
 export function EtfSelectionGuide() {
   return (
-    <aside className="products-guide fin-panel space-y-4 p-5 text-sm fin-muted-text">
+    <section className="fin-panel space-y-3 p-5 text-sm fin-muted-text">
       <h2 className="text-base font-semibold text-[var(--fin-text)]">
         选择 ETF 看什么
       </h2>
-      <ul className="space-y-2 text-xs leading-relaxed">
+      <ul className="grid gap-2 text-xs leading-relaxed sm:grid-cols-2 lg:grid-cols-3">
         <li>
-          <strong className="text-[var(--fin-text)]">规模</strong> — 过小关注清盘与流动性。
+          <strong className="text-[var(--fin-text)]">规模</strong> — 过小需关注清盘与流动性。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">费率</strong> — 同指数比综合费率。
+          <strong className="text-[var(--fin-text)]">费率</strong> — 同指数下比综合费率。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">成立时间</strong> — 首交易日越早，样本通常越长。
+          <strong className="text-[var(--fin-text)]">成立时间</strong> — 首交易日越早，历史样本通常越长。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">流动性 / 折溢价</strong> — 暂未接入。
+          <strong className="text-[var(--fin-text)]">流动性</strong> — 暂未接入。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">跟踪误差</strong> — 同指数横向参考。
+          <strong className="text-[var(--fin-text)]">折溢价</strong> — 暂未接入。
+        </li>
+        <li>
+          <strong className="text-[var(--fin-text)]">跟踪误差</strong> — 暂未接入。
         </li>
       </ul>
-      <p className="border-t border-fin-border pt-3 text-xs fin-muted-text">
-        同一指数下短期收益差异不作为默认排序依据；主产品用于盘中监控，其余为同指数落地参考。
-        「量化代表」来自近 5 年收益/回撤/波动综合筛选与高相关去重（见{" "}
-        <code className="text-[10px]">dividend_representative_pool.json</code>
-        ）。
-      </p>
-    </aside>
+    </section>
   );
 }
 
@@ -107,18 +99,11 @@ function IndexCandidateMobileCards({
   dividendPool?: DividendRepresentativePool | null;
 }) {
   const { getEtf } = useDataSource();
-  const { entries } = useStrategyRegistry();
 
   return (
     <ul className="divide-y divide-fin-border md:hidden">
       {products.map((p) => {
         const etf = getEtf(p.code);
-        const paramLine =
-          etf
-            ? paramVariantsSummaryLine(
-                getProductParamVariants(etf, p, entries),
-              )
-            : "";
         const tone = productSelectionDataStatusTone(p.dataStatus);
         const firstTrade = etf ? etfListingStartDate(etf, p) : p.firstTradeDate;
         return (
@@ -155,14 +140,6 @@ function IndexCandidateMobileCards({
                   </span>
                 </dd>
               </div>
-              {paramLine ? (
-                <div className="col-span-2">
-                  <dt className="fin-label">登记参数</dt>
-                  <dd className="line-clamp-2 text-[10px] text-[var(--fin-dim)]">
-                    {paramLine}
-                  </dd>
-                </div>
-              ) : null}
             </dl>
             <EtfProductDetailLink product={p} etf={etf} />
           </li>
@@ -180,7 +157,6 @@ function IndexCandidateCompareTable({
   dividendPool?: DividendRepresentativePool | null;
 }) {
   const { getEtf } = useDataSource();
-  const { entries } = useStrategyRegistry();
 
   return (
     <table className="products-compare-table hidden w-full text-xs md:table">
@@ -191,7 +167,6 @@ function IndexCandidateCompareTable({
           <th className="px-3 py-2 text-right font-normal">规模</th>
           <th className="px-3 py-2 text-right font-normal">综合费率</th>
           <th className="px-3 py-2 text-left font-normal">首交易日</th>
-          <th className="px-3 py-2 text-left font-normal">登记参数</th>
           <th className="px-3 py-2 text-left font-normal">数据状态</th>
           <th className="px-3 py-2 text-left font-normal">操作</th>
         </tr>
@@ -217,23 +192,6 @@ function IndexCandidateCompareTable({
                 <ProductFeeCell p={p} />
               </td>
               <td className="px-3 py-2 font-mono align-top">{firstTrade ?? "—"}</td>
-              <td
-                className="px-3 py-2 align-top text-[10px] text-[var(--fin-dim)]"
-                title={
-                  etf
-                    ? paramVariantsSummaryLine(
-                        getProductParamVariants(etf, p, entries),
-                      )
-                    : undefined
-                }
-              >
-                {etf
-                  ? paramVariantsSummaryLine(
-                      getProductParamVariants(etf, p, entries),
-                    ) ||
-                    "—"
-                  : "—"}
-              </td>
               <td className="px-3 py-2 align-top">
                 <span className={statusClass(tone)}>
                   {productSelectionDataStatusHint(p.dataStatus)}
@@ -326,10 +284,7 @@ export function EtfProductsDataFootnote({
 }) {
   return (
     <p className="text-xs leading-relaxed fin-muted-text">
-      规模、综合费率更新至 {dataUpdatedAt ?? "—"}（东方财富基金 F10，按月同步）。
-      候选理由来自产品表 note 中的「候选维度」；成交额、折溢价、跟踪误差字段尚未接入。
-      首交易日优先取 <code className="rounded bg-fin-panel-muted px-1">etf_products.csv</code>
-      ，缺失时回退本地日 K。
+      规模、综合费率更新至 {dataUpdatedAt ?? "—"}。候选理由来自产品备注；首交易日以产品登记为准，缺失时用本地行情首日。
     </p>
   );
 }

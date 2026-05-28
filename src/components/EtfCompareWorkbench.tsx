@@ -595,7 +595,7 @@ export function EtfCompareWorkbench() {
           </p>
         </div>
         {etfProducts.length === 0 ? (
-          <p className="mt-3 text-sm fin-muted-text">暂无观察池产品，请检查 CSV。</p>
+          <p className="mt-3 text-sm fin-muted-text">暂无观察池产品，请确认数据已加载。</p>
         ) : (
           <div className="compare-pool-shell mt-2 px-2">
             <CompactPoolRow

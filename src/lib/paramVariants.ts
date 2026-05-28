@@ -43,7 +43,7 @@ export function getParamVariants(
         {
           key: `${etf.meta.code}|${etf.meta.param_version}`,
           label: stripQuotedAnnotations(
-            `数据源默认 · ${strategyKindLabel(etf.meta.strategy_id)} · ${etf.meta.param_version}`,
+            `默认参数 · ${strategyKindLabel(etf.meta.strategy_id)} · ${etf.meta.param_version}`,
           ),
           strategyId: etf.meta.strategy_id,
           paramVersion: etf.meta.param_version,
