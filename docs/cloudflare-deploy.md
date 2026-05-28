@@ -90,6 +90,10 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 | `CLOUDFLARE_API_TOKEN` | wrangler 部署 Worker / 上传 R2 / Pages |
 | `CLOUDFLARE_ACCOUNT_ID` | wrangler 账户 ID |
 | `VITE_DATA_API_BASE_URL` | Pages 构建时注入 Worker URL |
+| `HSI_ACCESS_TOKEN` | 恒生 Index360 登录 token；用于 `index-t1-sync` 自动补齐 `HSI114`/`HSSCSOY.HI` |
+| `FEISHU_WEBHOOK_URL` | （可选）飞书机器人 webhook，接收指数同步告警 |
+| `FEISHU_BOT_SECRET` | （可选但建议）飞书机器人签名密钥；开启签名校验时必填 |
+| `WECOM_WEBHOOK_URL` | （可选）企业微信机器人 webhook，接收指数同步告警 |
 
 本地一键上传脚本：`npm run r2:upload`（等价于 `scripts/cloudflare/upload_public_data_to_r2.sh`）。
 

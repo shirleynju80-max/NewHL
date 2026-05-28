@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      HSI_STALE_DAYS: "3"
     steps:
       - uses: actions/checkout@v4
 
@@ -29,17 +31,167 @@ jobs:
       - name: Sync index price / total return series
         run: python scripts/index_data_sync/sync_a_share_dividend_indices.py
 
+      - name: Sync Hang Seng index series (optional)
+        id: sync_hsi
+        if: ${{ secrets.HSI_ACCESS_TOKEN != '' }}
+        continue-on-error: true
+        env:
+          HSI_ACCESS_TOKEN: ${{ secrets.HSI_ACCESS_TOKEN }}
+        run: python scripts/index_data_sync/sync_hsi_indices.py
+
+      - name: Warn if HSI token likely expired
+        if: ${{ secrets.HSI_ACCESS_TOKEN != '' && steps.sync_hsi.outcome == 'failure' }}
+        run: |
+          echo "::warning::HSI sync failed; token likely expired or invalid. Please refresh repository secret HSI_ACCESS_TOKEN."
+
+      - name: Warn if HSI token missing
+        if: ${{ secrets.HSI_ACCESS_TOKEN == '' }}
+        run: |
+          echo "::warning::HSI_ACCESS_TOKEN is missing; Hang Seng indices will not be updated in this run."
+
       - name: Sync H30269 RedRocket DID
         run: python scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
+
+      - name: Check HSI recency guardrail
+        id: check_hsi_freshness
+        run: |
+          python - <<'PY'
+          import csv
+          import datetime as dt
+          import os
+          from pathlib import Path
+
+          stale_days = int(os.environ.get("HSI_STALE_DAYS", "3"))
+          targets = ["HSI114", "HSSCSOY.HI"]
+          path = Path("public/data/index_bars.csv")
+          latest = {k: "" for k in targets}
+          with path.open(newline="", encoding="utf-8-sig") as f:
+            for row in csv.DictReader(f):
+              code = row.get("index_code", "")
+              d = row.get("date", "")
+              if code in latest and d > latest[code]:
+                latest[code] = d
+
+          today = dt.date.today()
+          stale = []
+          for code, date_str in latest.items():
+            if not date_str:
+              stale.append((code, "missing"))
+              continue
+            d = dt.date.fromisoformat(date_str)
+            lag = (today - d).days
+            if lag > stale_days:
+              stale.append((code, f"{date_str} lag={lag}d"))
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            out.write(f"hsi_latest={latest}\n")
+            out.write(f"hsi_stale={'none' if not stale else stale}\n")
+
+          if stale:
+            print("HSI stale detected:", stale)
+            raise SystemExit(1)
+          print("HSI freshness check passed:", latest)
+          PY
 
       - name: Commit index data if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/index_bars.csv public/data/indices.csv public/data/index_tracking_etfs.csv
+          git add -f public/data/index_bars.csv public/data/indices.csv public/data/index_tracking_etfs.csv public/data/redrocket_div_yield_meta.json
           if git diff --staged --quiet; then
             echo "No changes to index data"
           else
             git commit -m "chore(data): sync index t-1 data"
             git push
           fi
+
+      - name: Notify Feishu / WeCom webhook on warnings or failure
+        if: ${{ always() }}
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          FEISHU_BOT_SECRET: ${{ secrets.FEISHU_BOT_SECRET }}
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+          HSI_TOKEN_PRESENT: ${{ secrets.HSI_ACCESS_TOKEN != '' }}
+          HSI_SYNC_OUTCOME: ${{ steps.sync_hsi.outcome }}
+          HSI_STALE: ${{ steps.check_hsi_freshness.outputs.hsi_stale }}
+          HSI_LATEST: ${{ steps.check_hsi_freshness.outputs.hsi_latest }}
+          JOB_STATUS: ${{ job.status }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          python - <<'PY'
+          import base64
+          import hashlib
+          import hmac
+          import os
+          import time
+          import requests
+
+          status = os.getenv("JOB_STATUS", "")
+          token_present = os.getenv("HSI_TOKEN_PRESENT", "") == "true"
+          hsi_outcome = os.getenv("HSI_SYNC_OUTCOME", "")
+          hsi_stale = os.getenv("HSI_STALE", "")
+          hsi_latest = os.getenv("HSI_LATEST", "")
+          run_url = f"{os.getenv('SERVER_URL')}/{os.getenv('REPO')}/actions/runs/{os.getenv('RUN_ID')}"
+
+          warnings = []
+          if not token_present:
+            warnings.append("HSI_ACCESS_TOKEN missing")
+          if token_present and hsi_outcome == "failure":
+            warnings.append("HSI sync failed, token likely expired")
+          if hsi_stale and hsi_stale != "none":
+            warnings.append(f"HSI stale: {hsi_stale}")
+
+          should_notify = status != "success" or bool(warnings)
+          if not should_notify:
+            print("No warning/failure; skip webhook notification.")
+            raise SystemExit(0)
+
+          level = "WARN" if status == "success" else "ERROR"
+          text = (
+            f"[{level}] Index T-1 sync {status}\n"
+            f"Repo: {os.getenv('REPO')}\n"
+            f"HSI latest: {hsi_latest}\n"
+            f"Warnings: {', '.join(warnings) if warnings else 'none'}\n"
+            f"Run: {run_url}"
+          )
+
+          feishu = os.getenv("FEISHU_WEBHOOK_URL", "").strip()
+          feishu_secret = os.getenv("FEISHU_BOT_SECRET", "").strip()
+          if feishu:
+            try:
+              payload = {"msg_type": "text", "content": {"text": text}}
+              # 飞书签名校验：timestamp + '\n' + secret 做 HMAC-SHA256，再 base64
+              if feishu_secret:
+                timestamp = str(int(time.time()))
+                string_to_sign = f"{timestamp}\n{feishu_secret}".encode("utf-8")
+                sign = base64.b64encode(
+                  hmac.new(
+                    string_to_sign,
+                    digestmod=hashlib.sha256,
+                  ).digest()
+                ).decode("utf-8")
+                payload["timestamp"] = timestamp
+                payload["sign"] = sign
+              requests.post(
+                feishu,
+                json=payload,
+                timeout=15,
+              ).raise_for_status()
+              print("Feishu notification sent.")
+            except Exception as e:
+              print(f"Feishu notification failed: {e}")
+
+          wecom = os.getenv("WECOM_WEBHOOK_URL", "").strip()
+          if wecom:
+            try:
+              requests.post(
+                wecom,
+                json={"msgtype": "text", "text": {"content": text}},
+                timeout=15,
+              ).raise_for_status()
+              print("WeCom notification sent.")
+            except Exception as e:
+              print(f"WeCom notification failed: {e}")
+          PY
