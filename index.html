@@ -13,6 +13,40 @@
   </head>
   <body class="antialiased">
     <div id="root"></div>
+    <script>
+      (function () {
+        var msg = null;
+        function show() {
+          var root = document.getElementById("root");
+          if (!root || root.childElementCount > 0) return;
+          root.innerHTML =
+            '<div style="padding:24px;font-family:system-ui,sans-serif;color:#e8e8e8;background:#0a0c10;min-height:100vh">' +
+            '<p style="font-weight:600;margin:0 0 8px">价值底仓配置台</p>' +
+            '<p style="opacity:.85;margin:0 0 12px">' +
+            (msg || "页面脚本未加载，可能是浏览器缓存了旧版本。") +
+            "</p>" +
+            '<p style="opacity:.65;font-size:14px;margin:0 0 8px">请尝试：Safari → 设置 → 清除历史与网站数据；或关闭该站点所有标签页后重新打开。</p>' +
+            '<p style="opacity:.65;font-size:14px;margin:0">也可访问：<a href="/?v=' +
+            Date.now() +
+            '" style="color:#7dd3fc">带新参数的链接</a></p></div>';
+        }
+        window.addEventListener(
+          "error",
+          function (ev) {
+            if (ev.target && ev.target.tagName === "SCRIPT") {
+              msg = "脚本加载失败（" + (ev.target.src || "module") + "），请清除缓存后重试。";
+              show();
+            }
+          },
+          true,
+        );
+        window.addEventListener("unhandledrejection", function () {
+          msg = msg || "应用启动失败，请清除缓存后重试。";
+          show();
+        });
+        setTimeout(show, 10000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
