@@ -18,6 +18,7 @@ jobs:
       contents: write
     env:
       HSI_STALE_DAYS: "3"
+      HSI_ACCESS_TOKEN: ${{ secrets.HSI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,19 +34,17 @@ jobs:
 
       - name: Sync Hang Seng index series (optional)
         id: sync_hsi
-        if: ${{ secrets.HSI_ACCESS_TOKEN != '' }}
+        if: ${{ env.HSI_ACCESS_TOKEN != '' }}
         continue-on-error: true
-        env:
-          HSI_ACCESS_TOKEN: ${{ secrets.HSI_ACCESS_TOKEN }}
         run: python scripts/index_data_sync/sync_hsi_indices.py
 
       - name: Warn if HSI token likely expired
-        if: ${{ secrets.HSI_ACCESS_TOKEN != '' && steps.sync_hsi.outcome == 'failure' }}
+        if: ${{ env.HSI_ACCESS_TOKEN != '' && steps.sync_hsi.outcome == 'failure' }}
         run: |
           echo "::warning::HSI sync failed; token likely expired or invalid. Please refresh repository secret HSI_ACCESS_TOKEN."
 
       - name: Warn if HSI token missing
-        if: ${{ secrets.HSI_ACCESS_TOKEN == '' }}
+        if: ${{ env.HSI_ACCESS_TOKEN == '' }}
         run: |
           echo "::warning::HSI_ACCESS_TOKEN is missing; Hang Seng indices will not be updated in this run."
 
@@ -111,7 +110,7 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_BOT_SECRET: ${{ secrets.FEISHU_BOT_SECRET }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
-          HSI_TOKEN_PRESENT: ${{ secrets.HSI_ACCESS_TOKEN != '' }}
+          HSI_TOKEN_PRESENT: ${{ env.HSI_ACCESS_TOKEN != '' }}
           HSI_SYNC_OUTCOME: ${{ steps.sync_hsi.outcome }}
           HSI_STALE: ${{ steps.check_hsi_freshness.outputs.hsi_stale }}
           HSI_LATEST: ${{ steps.check_hsi_freshness.outputs.hsi_latest }}
