@@ -29,6 +29,8 @@ class CsiTarget:
     code: str
     tri_code: str
     tracking_etf: str
+    # 是否预期存在可拉取的官方全收益序列（TRI）
+    tri_expected: bool = True
     market: str = "A"
     category: str = "A股红利"
 
@@ -243,26 +245,31 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
 
     summary: dict[str, dict[str, Any]] = {}
     new_rows: list[dict[str, str]] = []
+    tri_fallback_codes: list[str] = []
     for target in CSI_TARGETS:
         basic = fetch_basic_info(target.code)
         start_date = normalize_date(basic.get("basicDate")) or normalize_date(basic.get("publishDate")) or "2000-01-01"
         price = fetch_close_series(target.code, start_date)
-        tri_source = "official-tri"
-        try:
-            tri = fetch_close_series(target.tri_code, start_date)
-        except requests.HTTPError as exc:
-            code = getattr(getattr(exc, "response", None), "status_code", None)
-            if code == 403:
-                # 中证接口偶发对部分 TRI 代码返回 403；降级为价格序列，避免整条同步失败。
-                tri = price
-                tri_source = "fallback-price-on-403"
-                print(
-                    f"[warn] TRI {target.tri_code} got 403; fallback to price series for {target.code}",
-                )
-            else:
-                raise
+        tri_source = "not-available"
+        tri = {}
+        if target.tri_expected:
+            tri_source = "official-tri"
+            try:
+                tri = fetch_close_series(target.tri_code, start_date)
+            except requests.HTTPError as exc:
+                code = getattr(getattr(exc, "response", None), "status_code", None)
+                if code == 403:
+                    # 仅当该指数“按口径应有 TRI”时才允许临时用价格替代，并显式告警。
+                    tri = price
+                    tri_source = "fallback-price-on-403"
+                    tri_fallback_codes.append(target.code)
+                    print(
+                        f"::warning::TRI {target.tri_code} got 403; fallback to price series for {target.code}",
+                    )
+                else:
+                    raise
         div = fetch_dividend_yield(target.code)
-        dates = sorted(set(price) & set(tri))
+        dates = sorted(set(price) & set(tri)) if tri else sorted(price)
         count_div = 0
         for date in dates:
             div_value = div.get(date)
@@ -272,7 +279,7 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
                 {
                     "index_code": target.code,
                     "date": date,
-                    "tri_close": f"{tri[date]:.4f}",
+                    "tri_close": f"{tri[date]:.4f}" if tri else "",
                     "price_close": f"{price[date]:.4f}",
                     "div_yield_nominal_pct": "" if div_value is None else f"{div_value:.4f}",
                 }
@@ -281,9 +288,9 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             "rows": len(dates),
             "div_rows": count_div,
             "range": [dates[0], dates[-1]] if dates else None,
+            "tri_expected": target.tri_expected,
+            "tri_source": tri_source,
         }
-        if tri_source != "official-tri":
-            summary[target.code]["tri_source"] = tri_source
     for target in CNINDEX_TARGETS:
         meta_by_code = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
         start_date = meta_by_code.get(target.code, {}).get("base_date") or "2000-01-01"
@@ -308,6 +315,10 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             "source": "cnindex-price-only",
         }
     write_csv(INDEX_BARS, fieldnames, new_rows + kept)
+    if tri_fallback_codes:
+        print(
+            f"::warning::TRI fallback used for expected-TRI indices: {', '.join(sorted(tri_fallback_codes))}",
+        )
     return summary
 
 
