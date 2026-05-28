@@ -247,7 +247,20 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
         basic = fetch_basic_info(target.code)
         start_date = normalize_date(basic.get("basicDate")) or normalize_date(basic.get("publishDate")) or "2000-01-01"
         price = fetch_close_series(target.code, start_date)
-        tri = fetch_close_series(target.tri_code, start_date)
+        tri_source = "official-tri"
+        try:
+            tri = fetch_close_series(target.tri_code, start_date)
+        except requests.HTTPError as exc:
+            code = getattr(getattr(exc, "response", None), "status_code", None)
+            if code == 403:
+                # 中证接口偶发对部分 TRI 代码返回 403；降级为价格序列，避免整条同步失败。
+                tri = price
+                tri_source = "fallback-price-on-403"
+                print(
+                    f"[warn] TRI {target.tri_code} got 403; fallback to price series for {target.code}",
+                )
+            else:
+                raise
         div = fetch_dividend_yield(target.code)
         dates = sorted(set(price) & set(tri))
         count_div = 0
@@ -269,6 +282,8 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             "div_rows": count_div,
             "range": [dates[0], dates[-1]] if dates else None,
         }
+        if tri_source != "official-tri":
+            summary[target.code]["tri_source"] = tri_source
     for target in CNINDEX_TARGETS:
         meta_by_code = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
         start_date = meta_by_code.get(target.code, {}).get("base_date") or "2000-01-01"

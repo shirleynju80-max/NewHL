@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
-import { ProductFeeCell } from "../components/ProductTableCells";
 import { useDataSource } from "../context/DataSourceContext";
 import { useStrategyRegistry } from "../context/StrategyRegistryContext";
 import { buildTrades } from "../lib/backtest";
@@ -13,12 +12,16 @@ import {
   type BacktestSummary,
 } from "../lib/backtestSummary";
 import type { EtfProductRecord } from "../lib/etfProducts";
-import { formatAumCny, formatPct, formatSignedPct } from "../lib/formatDisplay";
+import { formatPct, formatSignedPct } from "../lib/formatDisplay";
 import { etfProductStrategyEligible } from "../lib/etfListingAge";
 import { strategyPercentileContext } from "../lib/indicatorPercentile";
-import { fetchLiveQuote, type LiveQuote } from "../lib/liveQuote";
+import {
+  fetchLiveQuote,
+  formatQuoteSourceLabel,
+  type LiveQuote,
+} from "../lib/liveQuote";
 import { getProductParamVariants } from "../lib/paramVariants";
-import { computeSignals, latestSignal, mergeIntraday1345 } from "../lib/strategy";
+import { computeSignals, mergeIntraday1345, usesBollStrategy } from "../lib/strategy";
 import { strategyKindLabel, variantMonitorCompact } from "../lib/strategyLabels";
 import {
   metricOhlcForIndexRow,
@@ -99,9 +102,14 @@ type StrategyRow = {
   product: EtfProductRecord;
   variant: ParamStrategyVariant;
   summary: BacktestSummary;
+  strategyAnnualPct: number | null;
+  latestPrice: number;
+  prevClose: number;
+  quoteSource: LiveQuote["source"] | null;
   signalPct: number | null;
   zoneLabel: string;
   metricLine: string;
+  isBollinger: boolean;
   currentState: string;
 };
 
@@ -193,7 +201,8 @@ function strategyRowsForEtf(
 ): StrategyRow[] {
   if (!etf || !product || etf.bars.length < 80) return [];
   if (!etfProductStrategyEligible(etf, product)) return [];
-  const snap = quote?.price ?? etf.bars[etf.bars.length - 1]?.close;
+  const prevClose = etf.bars[etf.bars.length - 1]?.close ?? 0;
+  const snap = quote?.price ?? prevClose;
   const merged = snap ? mergeIntraday1345(etf.bars, snap) : etf.bars;
   return getProductParamVariants(etf, product, entries)
     .map((variant) => {
@@ -207,30 +216,50 @@ function strategyRowsForEtf(
       );
       const rounds = attachNavToRounds(buildRoundTrips(trades));
       const summary = computeBacktestSummary(etf.bars, trades, rounds);
+      const nYears = (etf.bars.length - 1) / 252;
+      const strategyAnnualPct =
+        nYears > 0
+          ? (Math.pow(1 + summary.strategyReturnPct / 100, 1 / nYears) - 1) * 100
+          : null;
       const intradayCtx = strategyPercentileContext(
         etf.bars,
         variant.params,
         variant.strategyId,
         merged,
       );
-      const sig = latestSignal(computeSignals(merged, variant.params, variant.strategyId));
+      const intradaySignals = computeSignals(
+        merged,
+        variant.params,
+        variant.strategyId,
+      );
+      const lastSig = intradaySignals[intradaySignals.length - 1] ?? "HOLD";
+      const isBollinger = usesBollStrategy(variant.strategyId);
       return {
         etf,
         product,
         variant,
         summary,
+        strategyAnnualPct,
+        latestPrice: snap,
+        prevClose,
+        quoteSource: quote?.source ?? null,
         signalPct: intradayCtx?.percentile ?? null,
         zoneLabel: zoneLabelFromPercentile(intradayCtx?.percentile),
         metricLine:
           intradayCtx != null
             ? `${intradayCtx.metricName}=${intradayCtx.metricValue}`
             : "—",
+        isBollinger,
         currentState:
-          sig === "BUY"
+          lastSig === "BUY"
             ? "买入触发"
-            : sig === "SELL"
+            : lastSig === "SELL"
               ? "卖出触发"
-              : summary.position,
+              : intradayCtx?.zone === "buy_hint"
+                ? "买入侧观察"
+                : intradayCtx?.zone === "sell_hint"
+                  ? "卖出侧观察"
+                  : summary.position,
       };
     })
     .sort((a, b) => b.summary.excessReturnPct - a.summary.excessReturnPct);
@@ -638,14 +667,12 @@ function EtfStrategySection({
               <th className="px-4 py-3 text-left font-normal">ETF / 指数</th>
               <th className="px-3 py-3 text-left font-normal">策略</th>
               <th className="px-3 py-3 text-right font-normal">策略收益</th>
+              <th className="px-3 py-3 text-right font-normal">策略年化</th>
               <th className="px-3 py-3 text-right font-normal">买入持有</th>
               <th className="px-3 py-3 text-right font-normal">超额</th>
-              <th className="px-3 py-3 text-right font-normal">回撤</th>
-              <th className="px-3 py-3 text-right font-normal">波动</th>
               <th className="px-3 py-3 text-right font-normal">胜率/轮次</th>
               <th className="px-3 py-3 text-left font-normal">均持/空仓</th>
               <th className="px-3 py-3 text-left font-normal">今日盘中信号</th>
-              <th className="px-3 py-3 text-right font-normal">规模/费率</th>
             </tr>
           </thead>
           <tbody>
@@ -696,6 +723,9 @@ function EtfStrategySection({
                     {formatPct(strategy.summary.strategyReturnPct)}
                   </td>
                   <td className="px-3 py-3 text-right align-top font-mono">
+                    {formatPct(strategy.strategyAnnualPct)}
+                  </td>
+                  <td className="px-3 py-3 text-right align-top font-mono">
                     {formatPct(strategy.summary.buyHoldReturnPct)}
                   </td>
                   <td
@@ -706,12 +736,6 @@ function EtfStrategySection({
                     }`}
                   >
                     {formatSignedPct(strategy.summary.excessReturnPct)}
-                  </td>
-                  <td className="px-3 py-3 text-right align-top font-mono">
-                    {formatPct(strategy.summary.maxDrawdownPct)}
-                  </td>
-                  <td className="px-3 py-3 text-right align-top font-mono">
-                    {formatPct(strategy.summary.annualVolPct)}
                   </td>
                   <td className="px-3 py-3 text-right align-top font-mono">
                     {formatPct(strategy.summary.winRate * 100, 0)} /{" "}
@@ -729,35 +753,25 @@ function EtfStrategySection({
                       {strategy.zoneLabel}
                     </span>
                     <p className="mt-1 font-mono text-[10px] fin-muted-text">
-                      分位 {formatPct(strategy.signalPct, 1)} · {strategy.metricLine}
+                      分位 {formatPct(strategy.signalPct, 1)}
+                      {!strategy.isBollinger ? ` · ${strategy.metricLine}` : ""}
                     </p>
                     <p className="mt-1 text-[10px] fin-muted-text">
                       当前状态：{strategy.currentState}
                     </p>
+                    <p className="mt-1 text-[10px] fin-muted-text">
+                      最新价 {strategy.latestPrice.toFixed(4)} / 昨收 {strategy.prevClose.toFixed(4)}
+                      {strategy.quoteSource
+                        ? ` · ${formatQuoteSourceLabel(strategy.quoteSource)}`
+                        : ""}
+                    </p>
                   </td>
-                  {si === 0 ? (
-                    <td
-                      rowSpan={rowSpan}
-                      className="featured-etf-group-cell px-3 py-3 text-right align-top"
-                    >
-                      {product ? (
-                        <div className="font-mono">
-                          <p>{formatAumCny(product.aumCny)}</p>
-                          <p className="fin-muted-text">
-                            费率 <ProductFeeCell p={product} />
-                          </p>
-                        </div>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  ) : null}
                 </tr>
               ));
             })}
             {!groups.length ? (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center fin-muted-text">
+                <td colSpan={9} className="px-4 py-6 text-center fin-muted-text">
                   暂无可评估策略（需满 2 年上市且已登记参数）。
                 </td>
               </tr>

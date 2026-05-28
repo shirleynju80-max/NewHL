@@ -871,6 +871,7 @@
     left: 0;
     top: calc(100% + 6px);
     z-index: 40;
+    display: none;
     width: max-content;
     max-width: min(18rem, 70vw);
     padding: 0.45rem 0.6rem;
@@ -882,17 +883,14 @@
     line-height: 1.45;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     opacity: 0;
-    visibility: hidden;
     pointer-events: none;
-    transition:
-      opacity 0.12s ease,
-      visibility 0.12s ease;
+    transition: opacity 0.12s ease;
   }
 
   .ft-metric-hint-wrap:hover .ft-metric-hint-popover,
   .ft-metric-hint-wrap:focus-within .ft-metric-hint-popover {
+    display: block;
     opacity: 1;
-    visibility: visible;
     pointer-events: auto;
   }
 
@@ -1252,6 +1250,45 @@
   .ft-compare-cols-table--data-right tbody td .ft-compare-value {
     justify-content: flex-end;
     width: 100%;
+  }
+
+  @media (max-width: 640px) {
+    .ft-two-columns {
+      @apply gap-5;
+      flex-direction: column;
+    }
+
+    .ft-card {
+      flex: none;
+      min-width: 0;
+      width: 100%;
+    }
+
+    .ft-card-header {
+      @apply px-5 pt-5;
+    }
+
+    .ft-card-body {
+      @apply px-5 pb-5;
+    }
+
+    .ft-core-metrics {
+      @apply px-4;
+    }
+
+    .ft-metric-hint-popover {
+      position: fixed;
+      left: 1rem;
+      right: 1rem;
+      bottom: 1rem;
+      top: auto;
+      width: auto;
+      max-width: none;
+    }
+
+    .ft-compare-cols-table tbody th[scope="row"] {
+      @apply whitespace-normal pr-2;
+    }
   }
 
   .ft-compare-row-labels {

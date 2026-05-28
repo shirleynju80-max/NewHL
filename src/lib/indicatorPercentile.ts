@@ -113,7 +113,7 @@ export function strategyPercentileContext(
     const pb = clamp01to100(((c2[last] - lo) / span) * 100);
     const zone = zoneFromPosition(pb);
     return {
-      metricName: "%B（轨间位置）",
+      metricName: "分位数",
       metricValue: `${Math.round(pb * 100) / 100}`,
       percentile: pb,
       zone,
@@ -188,7 +188,7 @@ export function indicatorValueLabelAtDate(
     const span = u - lo;
     if (span <= 0) return "—";
     const pb = Math.round(((closes[idx] - lo) / span) * 10000) / 100;
-    return `%B≈${pb}`;
+    return `分位≈${pb}`;
   }
   if (usesRsiStrategy(strategyId)) {
     const rv = getRsiVariant(params);

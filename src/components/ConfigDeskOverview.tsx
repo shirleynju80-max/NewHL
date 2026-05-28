@@ -113,7 +113,8 @@ function CompareMetricCell({
 export function ConfigDeskOverview({
   shareholderCard,
 }: ConfigDeskOverviewProps) {
-  const { indices, bondByDate, etfProducts } = useDataSource();
+  const { indices, bondByDate, etfProducts, publicCsvAutoLoading, reloadingPublicCsv } =
+    useDataSource();
   const cashDim = CONFIG_DIMENSIONS.cash_creation;
   const divDim = CONFIG_DIMENSIONS.shareholder_return;
 
@@ -206,6 +207,8 @@ export function ConfigDeskOverview({
                     <p className="ft-small-note">{comparison.footnote}</p>
                   ) : null}
                 </>
+              ) : publicCsvAutoLoading || reloadingPublicCsv ? (
+                <p className="ft-small-note">现金流与沪深300对比数据加载中…</p>
               ) : (
                 <p className="ft-small-note">
                   暂无近5年对比数据（需国证自由现金流 980092 与沪深300 000300

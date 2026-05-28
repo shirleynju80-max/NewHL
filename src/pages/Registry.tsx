@@ -234,6 +234,8 @@ export function RegistryPage() {
     definitions: etfDefinitions,
     getEtf,
     etfProducts,
+    publicCsvAutoLoading,
+    reloadingPublicCsv,
   } = useDataSource();
   const { entries, addEntry, removeEntry } = useStrategyRegistry();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -296,6 +298,8 @@ export function RegistryPage() {
     () => (dataMode === "bundle" ? bundleCodes : barCodes),
     [dataMode, bundleCodes, barCodes],
   );
+  const bundleLoading =
+    dataMode === "bundle" && (publicCsvAutoLoading || reloadingPublicCsv);
 
   const eligibleSelectableCodes = useMemo(() => {
     if (dataMode !== "bundle") return selectableCodes;
@@ -794,7 +798,11 @@ export function RegistryPage() {
       />
 
       <section className="fin-panel p-5">
-        {selectableCodes.length > 0 ? (
+        {bundleLoading ? (
+          <p className="text-sm fin-muted-text">
+            正在加载站点产品与行情数据…
+          </p>
+        ) : selectableCodes.length > 0 ? (
           <div className="space-y-3">
             <label className="block text-sm">
               <span className="fin-label">落地产品（ETF）</span>
@@ -873,7 +881,7 @@ export function RegistryPage() {
           </div>
         ) : null}
 
-        {selectableCodes.length > 0 ? (
+        {bundleLoading ? null : selectableCodes.length > 0 ? (
           <div className="mt-4 flex flex-wrap items-end gap-4">
             <label className="text-sm fin-muted-text">
               <span className="text-xs font-medium fin-muted-text">
@@ -914,7 +922,9 @@ export function RegistryPage() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled={!barsForRun || barsForRun.length < 40 || gridBusy}
+            disabled={
+              bundleLoading || !barsForRun || barsForRun.length < 40 || gridBusy
+            }
             onClick={() => void runBacktest()}
             className="fin-btn-primary px-6 py-2.5 disabled:opacity-50"
           >

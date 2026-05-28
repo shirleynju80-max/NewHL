@@ -593,7 +593,7 @@ export function MonitorPage() {
         description={
           <>
             用 <strong>ETF 实时价格</strong>
-            根据实时价格更新各策略的买卖标尺，展示各指数主跟踪 ETF 的盘中状态。含义见下方「标尺说明」。
+            更新各策略的买卖标尺，展示各指数主跟踪 ETF 的盘中状态。含义见下方「标尺说明」。
           </>
         }
       />
