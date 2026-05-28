@@ -18,6 +18,7 @@ jobs:
       contents: write
     env:
       HSI_STALE_DAYS: "3"
+      HSI_SYNC_RETRIES: "3"
       HSI_ACCESS_TOKEN: ${{ secrets.HSI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +37,31 @@ jobs:
         id: sync_hsi
         if: ${{ env.HSI_ACCESS_TOKEN != '' }}
         continue-on-error: true
-        run: python scripts/index_data_sync/sync_hsi_indices.py
+        run: |
+          set +e
+          n="${HSI_SYNC_RETRIES:-3}"
+          [ "$n" -ge 1 ] 2>/dev/null || n=3
+          attempt=1
+          ok=0
+          while [ "$attempt" -le "$n" ]; do
+            echo "HSI sync attempt ${attempt}/${n}"
+            python scripts/index_data_sync/sync_hsi_indices.py
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+              ok=1
+              break
+            fi
+            # token 类失败大概率不可恢复，不再盲重试
+            if [ "$rc" -ne 0 ] && [ "$attempt" -lt "$n" ]; then
+              echo "HSI sync failed (rc=$rc), retrying in $((attempt * 20))s ..."
+              sleep $((attempt * 20))
+            fi
+            attempt=$((attempt + 1))
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "HSI sync failed after ${n} attempts."
+            exit 1
+          fi
 
       - name: Warn if HSI token likely expired
         if: ${{ env.HSI_ACCESS_TOKEN != '' && steps.sync_hsi.outcome == 'failure' }}
@@ -72,15 +97,26 @@ jobs:
                 latest[code] = d
 
           today = dt.date.today()
+          def business_days_between(start: dt.date, end: dt.date) -> int:
+            if end <= start:
+              return 0
+            days = 0
+            cur = start
+            while cur < end:
+              cur += dt.timedelta(days=1)
+              if cur.weekday() < 5:
+                days += 1
+            return days
+
           stale = []
           for code, date_str in latest.items():
             if not date_str:
               stale.append((code, "missing"))
               continue
             d = dt.date.fromisoformat(date_str)
-            lag = (today - d).days
+            lag = business_days_between(d, today)
             if lag > stale_days:
-              stale.append((code, f"{date_str} lag={lag}d"))
+              stale.append((code, f"{date_str} lag={lag}bd"))
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write(f"hsi_latest={latest}\n")

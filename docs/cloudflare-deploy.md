@@ -95,6 +95,8 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 | `FEISHU_BOT_SECRET` | （可选但建议）飞书机器人签名密钥；开启签名校验时必填 |
 | `WECOM_WEBHOOK_URL` | （可选）企业微信机器人 webhook，接收指数同步告警 |
 
+说明：`index-t1-sync` 默认会对恒生同步做最多 3 次重试（网络抖动自愈），并按**工作日**检测 `HSI114` / `HSSCSOY.HI` 是否陈旧（默认阈值 3 个工作日）。
+
 本地一键上传脚本：`npm run r2:upload`（等价于 `scripts/cloudflare/upload_public_data_to_r2.sh`）。
 
 ## 6. 自动更新建议
