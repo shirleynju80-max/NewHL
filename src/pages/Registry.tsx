@@ -445,6 +445,10 @@ export function RegistryPage() {
       matchesProductSearch(o.haystack, q),
     );
   }, [productPickerOptions, productQuery]);
+  const selectedProductOption = useMemo(
+    () => productPickerOptions.find((o) => o.code === selectedCode),
+    [productPickerOptions, selectedCode],
+  );
 
   const selectProduct = useCallback(
     (code: string) => {
@@ -804,101 +808,100 @@ export function RegistryPage() {
           </p>
         ) : selectableCodes.length > 0 ? (
           <div className="space-y-3">
-            <label className="block text-sm">
-              <span className="fin-label">落地产品（ETF）</span>
-              <input
-                type="search"
-                value={productQuery}
-                onChange={(e) => setProductQuery(e.target.value)}
-                placeholder="代码或产品名称"
-                className="fin-input mt-1 block w-full max-w-xl px-3 py-2 text-sm"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </label>
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem] lg:items-end">
+              <label className="block text-sm">
+                <span className="fin-label">落地产品（ETF）</span>
+                <input
+                  type="search"
+                  value={productQuery}
+                  onChange={(e) => setProductQuery(e.target.value)}
+                  placeholder="输入代码或名称后筛选切换"
+                  className="fin-input mt-1 block w-full px-3 py-2 text-sm"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label className="text-sm fin-muted-text">
+                <span className="text-xs font-medium fin-muted-text">
+                  训练集占比
+                </span>
+                <select
+                  value={trainRatioPct}
+                  onChange={(e) => setTrainRatioPct(Number(e.target.value))}
+                  className="fin-input mt-1 block w-full px-2 py-2"
+                >
+                  {TRAIN_RATIO_PCT_OPTIONS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
             {selectedCode ? (
-              <p className="text-sm">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm">
+                <span className="fin-label">当前</span>
                 <span className="font-mono font-semibold text-[var(--fin-text)]">
                   {selectedCode}
                 </span>
-                {productPickerOptions.find((o) => o.code === selectedCode)
-                  ?.name ? (
+                {selectedProductOption?.name ? (
                   <span className="fin-muted-text">
-                    {" "}
-                    ·{" "}
-                    {
-                      productPickerOptions.find((o) => o.code === selectedCode)!
-                        .name
-                    }
+                    {selectedProductOption.name}
                   </span>
                 ) : null}
-              </p>
+              </div>
             ) : null}
-            <div
-              className="flex max-h-40 flex-wrap gap-2 overflow-y-auto"
-              role="listbox"
-              aria-label="可选落地产品"
-            >
-              {filteredProductOptions.length > 0 ? (
-                filteredProductOptions.map((o) => {
-                  const active = selectedCode === o.code;
-                  return (
-                    <button
-                      key={o.code}
-                      type="button"
-                      role="option"
-                      aria-selected={active}
-                      onClick={() => selectProduct(o.code)}
-                      className={`fin-chip-filter rounded-full px-3 py-1.5 text-left text-sm ${
-                        active ? "fin-chip-filter-active" : ""
-                      }`}
-                    >
-                      <span className="font-mono font-medium">{o.code}</span>
-                      {o.name !== o.code ? (
-                        <span
-                          className={`ml-1.5 text-[11px] ${active ? "opacity-90" : "fin-muted-text"}`}
-                        >
-                          {o.name}
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })
-              ) : (
-                <p className="text-xs fin-muted-text">无匹配产品</p>
-              )}
-            </div>
-            {productQuery.trim() ? (
-              <p className="text-xs fin-muted-text">
-                匹配 {filteredProductOptions.length} /{" "}
-                {productPickerOptions.length} 只主跟踪产品
-              </p>
-            ) : (
-              <p className="text-xs fin-muted-text">
-                共 {productPickerOptions.length} 只主跟踪产品（不含同指数候选 ETF）
-              </p>
-            )}
-          </div>
-        ) : null}
 
-        {bundleLoading ? null : selectableCodes.length > 0 ? (
-          <div className="mt-4 flex flex-wrap items-end gap-4">
-            <label className="text-sm fin-muted-text">
-              <span className="text-xs font-medium fin-muted-text">
-                训练集占比
-              </span>
-              <select
-                value={trainRatioPct}
-                onChange={(e) => setTrainRatioPct(Number(e.target.value))}
-                className="fin-input mt-1 block px-2 py-1.5"
+            <details
+              className="rounded-md border border-fin-border bg-fin-panel-muted/50"
+              open={productQuery.trim() ? true : undefined}
+            >
+              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs [&::-webkit-details-marker]:hidden">
+                <span className="font-medium text-[var(--fin-text)]">
+                  切换产品
+                </span>
+                <span className="fin-muted-text">
+                  {productQuery.trim()
+                    ? `匹配 ${filteredProductOptions.length} / ${productPickerOptions.length} 只`
+                    : `${productPickerOptions.length} 只主跟踪产品`}
+                </span>
+              </summary>
+              <div
+                className="flex max-h-44 flex-wrap gap-2 overflow-y-auto border-t border-fin-border p-3"
+                role="listbox"
+                aria-label="可选落地产品"
               >
-                {TRAIN_RATIO_PCT_OPTIONS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}%
-                  </option>
-                ))}
-              </select>
-            </label>
+                {filteredProductOptions.length > 0 ? (
+                  filteredProductOptions.map((o) => {
+                    const active = selectedCode === o.code;
+                    return (
+                      <button
+                        key={o.code}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => selectProduct(o.code)}
+                        className={`fin-chip-filter rounded-full px-3 py-1.5 text-left text-sm ${
+                          active ? "fin-chip-filter-active" : ""
+                        }`}
+                      >
+                        <span className="font-mono font-medium">{o.code}</span>
+                        {o.name !== o.code ? (
+                          <span
+                            className={`ml-1.5 text-[11px] ${active ? "opacity-90" : "fin-muted-text"}`}
+                          >
+                            {o.name}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-xs fin-muted-text">无匹配产品</p>
+                )}
+              </div>
+            </details>
           </div>
         ) : (
           <p className="fin-alert-warn--compact mt-4">

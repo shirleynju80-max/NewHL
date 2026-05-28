@@ -68,6 +68,7 @@ export default {
         {
           ok: true,
           price: q.price,
+          prevClose: q.prevClose,
           tradeDate: q.tradeDate,
           quoteTime: q.quoteTime,
           source: q.source,

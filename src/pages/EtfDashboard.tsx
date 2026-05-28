@@ -33,10 +33,7 @@ import {
   formatAvgHoldFlatPairDisplay,
   type BacktestSummary,
 } from "../lib/backtestSummary";
-import {
-  indicatorValueLabelAtDate,
-  strategyPercentileContext,
-} from "../lib/indicatorPercentile";
+import { strategyPercentileContext } from "../lib/indicatorPercentile";
 import { EtfRegisteredParamsList } from "../components/EtfRegisteredParamsList";
 import { getProductParamVariants } from "../lib/paramVariants";
 import { formatAumCny, formatPct, formatSignedPct } from "../lib/formatDisplay";
@@ -47,6 +44,7 @@ import {
   etfListingStartDate,
   isCashCreationEtf,
 } from "../lib/etfListingAge";
+import { resolvePreviousClose } from "../lib/liveQuote";
 import {
   ETF_PRODUCT_GROUP_LABELS,
   productDataStatusLabel,
@@ -63,16 +61,16 @@ import {
 } from "../lib/strategy";
 import type { EtfParams, OhlcBar, TradePoint } from "../types";
 
-type TabId = "backtest" | "intraday" | "ledger" | "methodology";
+type TabId = "backtest" | "intraday" | "methodology";
 
 function tabFromSearchParam(raw: string | null): TabId | null {
   if (
     raw === "backtest" ||
     raw === "intraday" ||
-    raw === "ledger" ||
     raw === "methodology"
   )
     return raw;
+  if (raw === "ledger") return "backtest";
   return null;
 }
 
@@ -168,6 +166,10 @@ function StrategyHoverTooltip({
       }}
     >
       <dl className="space-y-1 fin-muted-text">
+        <div className="flex justify-between gap-4">
+          <dt>日期</dt>
+          <dd className="font-mono text-[var(--fin-text)]">{date}</dd>
+        </div>
         <div className="flex justify-between gap-4">
           <dt>收盘价</dt>
           <dd className="font-mono text-[var(--fin-text)]">
@@ -585,13 +587,15 @@ export function EtfDashboardPage() {
     };
   }, []);
 
-  const lastClose = etf?.bars[etf.bars.length - 1]?.close ?? 1;
   const intradayActive = tab === "intraday";
   const liveQuote = useLiveQuote(
     etf?.meta.code,
     etf?.bars ?? [],
     intradayActive,
   );
+  const lastClose = etf?.bars.length
+    ? resolvePreviousClose(etf.bars, liveQuote.quote)
+    : 1;
   const snapClose = liveQuote.price ?? lastClose;
 
   const mergedForIntra = useMemo(() => {
@@ -638,7 +642,6 @@ export function EtfDashboardPage() {
   const tabs: { id: TabId; label: string; hide?: boolean }[] = [
     { id: "backtest", label: "策略回测", hide: !strategyEligible },
     { id: "intraday", label: "盘中信号", hide: !strategyEligible },
-    { id: "ledger", label: "信号台账", hide: !strategyEligible },
     { id: "methodology", label: "指数研究入口" },
   ];
 
@@ -1502,8 +1505,8 @@ export function EtfDashboardPage() {
                 盘中信号
               </h3>
               <p className="mt-1 text-xs text-fin-muted leading-relaxed">
-                以实时最新价覆盖当日最后一根 K
-                的收盘，对下表各策略重算信号与标尺 %（非历史分位）。
+                以行情快照覆盖当日最后一根 K
+                的收盘；实时源不可用时回退到最新日 K 或本地收盘，对下表各策略重算信号与标尺 %（非历史分位）。
               </p>
             </div>
             <IntradayQuoteBar
@@ -1581,47 +1584,6 @@ export function EtfDashboardPage() {
             <p className="text-xs fin-muted-text">
               区间：标尺 ≤20% 为临近买，20%–80% 为中性，≥80% 为临近卖。
             </p>
-          </div>
-        </section>
-      )}
-
-      {tab === "ledger" && strategyEligible && (
-        <section className="fin-panel overflow-hidden">
-          <div className="max-h-[28rem] overflow-y-auto">
-            <table className="min-w-full text-sm">
-              <thead className="fin-table-head text-xs">
-                <tr>
-                  <th className="px-6 py-4">日期</th>
-                  <th className="px-6 py-4">方向</th>
-                  <th className="px-6 py-4">策略指标值</th>
-                  <th className="px-6 py-4">原因</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-fin-border">
-                {[...fullTrades].reverse().map((t, i) => (
-                  <tr
-                    key={`${t.date}-${t.side}-${i}`}
-                    className="hover:bg-fin-panel-muted/80"
-                  >
-                    <td className="px-6 py-3 font-mono fin-muted-text">
-                      {t.date}
-                    </td>
-                    <td className="px-6 py-3 font-medium">{t.side}</td>
-                    <td className="px-6 py-3 font-mono fin-muted-text">
-                      {activeVariant
-                        ? indicatorValueLabelAtDate(
-                            etf.bars,
-                            activeVariant.params,
-                            activeVariant.strategyId,
-                            t.date,
-                          )
-                        : "—"}
-                    </td>
-                    <td className="px-6 py-3 fin-muted-text">{t.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         </section>
       )}

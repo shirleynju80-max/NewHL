@@ -12,6 +12,7 @@ export type LiveQuoteSource =
 
 export type LiveQuote = {
   price: number;
+  prevClose?: number;
   tradeDate: string;
   /** 行情源侧时间戳（ISO），无则同 fetchedAt */
   quoteTime: string;
@@ -23,6 +24,7 @@ export type LiveQuote = {
 type QuoteApiPayload = {
   ok?: boolean;
   price?: number;
+  prevClose?: number;
   tradeDate?: string;
   quoteTime?: string;
   source?: LiveQuoteSource;
@@ -39,8 +41,10 @@ export function quoteFromLocalBars(bars: OhlcBar[]): LiveQuote | null {
   const last = sorted[sorted.length - 1]!;
   if (!Number.isFinite(last.close) || last.close <= 0) return null;
   const now = new Date().toISOString();
+  const prev = sorted[sorted.length - 2]?.close;
   return {
     price: last.close,
+    prevClose: Number.isFinite(prev) && prev! > 0 ? prev : undefined,
     tradeDate: last.date,
     quoteTime: now,
     fetchedAt: now,
@@ -70,6 +74,12 @@ async function fetchQuoteFromApiUrl(url: string): Promise<LiveQuote | null> {
     const fetchedAt = new Date().toISOString();
     return {
       price: j.price,
+      prevClose:
+        typeof j.prevClose === "number" &&
+        Number.isFinite(j.prevClose) &&
+        j.prevClose > 0
+          ? j.prevClose
+          : undefined,
       tradeDate: j.tradeDate ?? shanghaiTodayYmd(),
       quoteTime: j.quoteTime ?? fetchedAt,
       fetchedAt,
@@ -112,8 +122,10 @@ async function fetchQuoteFromRemoteBars(
   const last = sorted[sorted.length - 1]!;
   if (!Number.isFinite(last.close) || last.close <= 0) return null;
   const fetchedAt = new Date().toISOString();
+  const prev = sorted[sorted.length - 2]?.close;
   return {
     price: last.close,
+    prevClose: Number.isFinite(prev) && prev! > 0 ? prev : undefined,
     tradeDate: last.date,
     quoteTime: fetchedAt,
     fetchedAt,
@@ -141,6 +153,7 @@ export async function fetchLiveQuote(
   return {
     price:
       Number.isFinite(fallbackClose) && fallbackClose! > 0 ? fallbackClose! : 1,
+    prevClose: previousCloseFromBars(localBars),
     tradeDate: localBars.at(-1)?.date ?? shanghaiTodayYmd(),
     quoteTime: now,
     fetchedAt: now,
@@ -156,6 +169,62 @@ export function formatQuoteSourceLabel(source: LiveQuoteSource): string {
   if (source === "web") return "行情 Web";
   if (source === "api") return "行情 API";
   return "本地收盘";
+}
+
+export function isRealtimeQuoteSource(
+  source: LiveQuoteSource | null | undefined,
+): boolean {
+  return source === "eastmoney" || source === "sina" || source === "tencent";
+}
+
+export function formatQuotePriceLabel(
+  source: LiveQuoteSource | null | undefined,
+): string {
+  if (isRealtimeQuoteSource(source)) return "实时价";
+  if (source === "web" || source === "api") return "最新日 K";
+  return "本地收盘";
+}
+
+function previousCloseFromBars(
+  bars: OhlcBar[],
+  beforeDate?: string,
+): number | undefined {
+  const sorted = [...bars]
+    .filter((b) => Number.isFinite(b.close) && b.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!sorted.length) return undefined;
+  const candidates = beforeDate
+    ? sorted.filter((b) => b.date < beforeDate)
+    : sorted;
+  const prev = candidates[candidates.length - 1]?.close;
+  return Number.isFinite(prev) && prev! > 0 ? prev : undefined;
+}
+
+export function resolvePreviousClose(
+  bars: OhlcBar[],
+  quote?: LiveQuote | null,
+): number {
+  if (
+    typeof quote?.prevClose === "number" &&
+    Number.isFinite(quote.prevClose) &&
+    quote.prevClose > 0
+  ) {
+    return quote.prevClose;
+  }
+  const beforeQuoteDate = quote?.tradeDate
+    ? previousCloseFromBars(bars, quote.tradeDate)
+    : undefined;
+  if (beforeQuoteDate != null) return beforeQuoteDate;
+
+  const sorted = [...bars]
+    .filter((b) => Number.isFinite(b.close) && b.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!sorted.length) return 1;
+  const last = sorted[sorted.length - 1]!;
+  if (last.date >= shanghaiTodayYmd() && sorted.length >= 2) {
+    return sorted[sorted.length - 2]!.close;
+  }
+  return last.close;
 }
 
 export function formatQuoteFetchedAt(iso: string): string {

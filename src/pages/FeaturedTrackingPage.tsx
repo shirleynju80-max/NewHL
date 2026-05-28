@@ -17,7 +17,9 @@ import { etfProductStrategyEligible } from "../lib/etfListingAge";
 import { strategyPercentileContext } from "../lib/indicatorPercentile";
 import {
   fetchLiveQuote,
+  formatQuotePriceLabel,
   formatQuoteSourceLabel,
+  resolvePreviousClose,
   type LiveQuote,
 } from "../lib/liveQuote";
 import { getProductParamVariants } from "../lib/paramVariants";
@@ -201,7 +203,7 @@ function strategyRowsForEtf(
 ): StrategyRow[] {
   if (!etf || !product || etf.bars.length < 80) return [];
   if (!etfProductStrategyEligible(etf, product)) return [];
-  const prevClose = etf.bars[etf.bars.length - 1]?.close ?? 0;
+  const prevClose = resolvePreviousClose(etf.bars, quote);
   const snap = quote?.price ?? prevClose;
   const merged = snap ? mergeIntraday1345(etf.bars, snap) : etf.bars;
   return getProductParamVariants(etf, product, entries)
@@ -647,6 +649,12 @@ function EtfStrategySection({
 }: {
   groups: EtfStrategyGroup[];
 }) {
+  const quoteSourceSuffix = (source: LiveQuote["source"] | null): string => {
+    if (!source) return "";
+    const sourceLabel = formatQuoteSourceLabel(source);
+    const priceLabel = formatQuotePriceLabel(source);
+    return sourceLabel === priceLabel ? "" : ` · ${sourceLabel}`;
+  };
 
   return (
     <section className="fin-panel overflow-hidden">
@@ -656,7 +664,7 @@ function EtfStrategySection({
         </h2>
         <p className="mt-1 text-xs fin-muted-text">
           按 ETF 分组展示已登记参数；组内按超额收益降序。回测口径与 ETF
-          详情页一致；盘中信号使用实时价可用时的快照。现金流类产品满
+          详情页一致；盘中信号优先使用实时价，缺失时回退最新日 K 或本地收盘。现金流类产品满
           2 年并登记策略后会自动纳入。
         </p>
       </header>
@@ -760,10 +768,10 @@ function EtfStrategySection({
                       当前状态：{strategy.currentState}
                     </p>
                     <p className="mt-1 text-[10px] fin-muted-text">
-                      最新价 {strategy.latestPrice.toFixed(4)} / 昨收 {strategy.prevClose.toFixed(4)}
-                      {strategy.quoteSource
-                        ? ` · ${formatQuoteSourceLabel(strategy.quoteSource)}`
-                        : ""}
+                      {formatQuotePriceLabel(strategy.quoteSource)}{" "}
+                      {strategy.latestPrice.toFixed(4)} / 昨收{" "}
+                      {strategy.prevClose.toFixed(4)}
+                      {quoteSourceSuffix(strategy.quoteSource)}
                     </p>
                   </td>
                 </tr>

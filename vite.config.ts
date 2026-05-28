@@ -29,6 +29,7 @@ function quoteApiDevMiddleware(): Connect.NextHandleFunction {
       JSON.stringify({
         ok: true,
         price: q.price,
+        prevClose: q.prevClose,
         tradeDate: q.tradeDate,
         quoteTime: q.quoteTime,
         source: "eastmoney",

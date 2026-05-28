@@ -15,25 +15,19 @@ npx wrangler r2 bucket create newhl-data
 
 ## 2. 上传本地 CSV 到 R2
 
-在项目根目录执行：
+在项目根目录执行（推荐，默认上传到远端 R2）：
 
 ```bash
-npx wrangler r2 object put newhl-data/etfs.csv --file public/data/etfs.csv
-npx wrangler r2 object put newhl-data/bars.csv --file public/data/bars.csv
-npx wrangler r2 object put newhl-data/etf_params.csv --file public/data/etf_params.csv
-npx wrangler r2 object put newhl-data/bonds.csv --file public/data/bonds.csv
-npx wrangler r2 object put newhl-data/barsmore.csv --file public/data/barsmore.csv
-npx wrangler r2 object put newhl-data/indices.csv --file public/data/indices.csv
-npx wrangler r2 object put newhl-data/index_bars.csv --file public/data/index_bars.csv
-npx wrangler r2 object put newhl-data/index_tracking_etfs.csv --file public/data/index_tracking_etfs.csv
+npm run r2:upload
 ```
 
-可选文件存在时再上传：
+如需手动逐个上传，务必带 `--remote`（否则会写到本地模拟存储）：
 
 ```bash
-npx wrangler r2 object put newhl-data/etfsmore.csv --file public/data/etfsmore.csv
-npx wrangler r2 object put newhl-data/bondsmore.csv --file public/data/bondsmore.csv
-npx wrangler r2 object put newhl-data/fund_bars.csv --file public/data/fund_bars.csv
+npx wrangler r2 object put newhl-data/etfs.csv --file public/data/etfs.csv --remote
+npx wrangler r2 object put newhl-data/bars.csv --file public/data/bars.csv --remote
+npx wrangler r2 object put newhl-data/etf_params.csv --file public/data/etf_params.csv --remote
+npx wrangler r2 object put newhl-data/bonds.csv --file public/data/bonds.csv --remote
 ```
 
 ## 3. 发布 Worker 数据 API
@@ -74,6 +68,23 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 
 `public/_redirects` 已配置 SPA fallback，详情页刷新不会 404。
 
+### 一键发布（R2 + Worker + Pages）
+
+已提供发布脚本（默认使用 `newhl-data-api.shirleynju80.workers.dev`）：
+
+```bash
+npm run release:worker-pages
+```
+
+可选环境变量：
+
+```bash
+WORKER_URL=https://newhl-data-api.<your-subdomain>.workers.dev \
+PAGES_PROJECT_NAME=newhl-dashboard \
+PAGES_BRANCH=main \
+npm run release:worker-pages
+```
+
 ## 5. GitHub Actions（可选）
 
 仓库已包含：
@@ -97,7 +108,7 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 
 说明：`index-t1-sync` 默认会对恒生同步做最多 3 次重试（网络抖动自愈），并按**工作日**检测 `HSI114` / `HSSCSOY.HI` 是否陈旧（默认阈值 3 个工作日）。
 
-本地一键上传脚本：`npm run r2:upload`（等价于 `scripts/cloudflare/upload_public_data_to_r2.sh`）。
+本地上传脚本：`npm run r2:upload`（默认使用 `npx wrangler@4.95.0` + `--remote`）。
 
 ## 6. 自动更新建议
 

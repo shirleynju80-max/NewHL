@@ -9,6 +9,7 @@ export function inferEastmoneySecid(code: string): string | null {
 export type EastmoneyQuote = {
   ok: boolean;
   price?: number;
+  prevClose?: number;
   tradeDate?: string;
   quoteTime?: string;
   source?: "eastmoney" | "sina" | "tencent";
@@ -21,7 +22,7 @@ export async function fetchEastmoneyQuote(code: string): Promise<EastmoneyQuote>
 
   const url = `https://push2.eastmoney.com/api/qt/stock/get?${new URLSearchParams({
     secid,
-    fields: "f43,f44,f45,f46,f86",
+    fields: "f43,f44,f45,f46,f60,f86",
   })}`;
 
   try {
@@ -33,17 +34,22 @@ export async function fetchEastmoneyQuote(code: string): Promise<EastmoneyQuote>
       },
     });
     if (!r.ok) return { ok: false, detail: `东财 HTTP ${r.status}` };
-    const payload = (await r.json()) as { data?: { f43?: number; f86?: number } };
+    const payload = (await r.json()) as { data?: { f43?: number; f60?: number; f86?: number } };
     const data = payload?.data;
     const raw = data?.f43;
     if (raw == null || raw === 0 || Number.isNaN(Number(raw))) {
       return { ok: false, detail: "东财无有效现价" };
     }
     const price = Number(raw) / 1000;
+    const rawPrevClose = Number(data?.f60);
+    const prevClose =
+      Number.isFinite(rawPrevClose) && rawPrevClose > 0
+        ? rawPrevClose / 1000
+        : undefined;
     const ts = data?.f86 ? Number(data.f86) : Math.floor(Date.now() / 1000);
     const quoteTime = new Date(ts * 1000).toISOString();
     const tradeDate = new Date(ts * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
-    return { ok: true, price, tradeDate, quoteTime, source: "eastmoney" };
+    return { ok: true, price, prevClose, tradeDate, quoteTime, source: "eastmoney" };
   } catch (e) {
     return { ok: false, detail: e instanceof Error ? e.message : String(e) };
   }
@@ -60,6 +66,7 @@ function parseSinaQuote(text: string): EastmoneyQuote {
   const m = text.match(/="([^"]*)"/);
   const cols = m?.[1]?.split(",") ?? [];
   const rawPrice = Number(cols[3]);
+  const rawPrevClose = Number(cols[2]);
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
     return { ok: false, detail: "新浪无有效现价" };
   }
@@ -70,6 +77,10 @@ function parseSinaQuote(text: string): EastmoneyQuote {
   return {
     ok: true,
     price: rawPrice,
+    prevClose:
+      Number.isFinite(rawPrevClose) && rawPrevClose > 0
+        ? rawPrevClose
+        : undefined,
     tradeDate: date || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" }),
     quoteTime,
     source: "sina",
@@ -98,6 +109,7 @@ function parseTencentQuote(text: string): EastmoneyQuote {
   const m = text.match(/="([^"]*)"/);
   const cols = m?.[1]?.split("~") ?? [];
   const rawPrice = Number(cols[3]);
+  const rawPrevClose = Number(cols[4]);
   if (!Number.isFinite(rawPrice) || rawPrice <= 0) {
     return { ok: false, detail: "腾讯无有效现价" };
   }
@@ -112,7 +124,17 @@ function parseTencentQuote(text: string): EastmoneyQuote {
           `${date}T${rawTime.slice(8, 10)}:${rawTime.slice(10, 12)}:${rawTime.slice(12, 14)}+08:00`,
         ).toISOString()
       : new Date().toISOString();
-  return { ok: true, price: rawPrice, tradeDate: date, quoteTime, source: "tencent" };
+  return {
+    ok: true,
+    price: rawPrice,
+    prevClose:
+      Number.isFinite(rawPrevClose) && rawPrevClose > 0
+        ? rawPrevClose
+        : undefined,
+    tradeDate: date,
+    quoteTime,
+    source: "tencent",
+  };
 }
 
 async function fetchTencentQuote(code: string): Promise<EastmoneyQuote> {

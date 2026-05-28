@@ -1,5 +1,9 @@
 import type { LiveQuote } from "../lib/liveQuote";
-import { formatQuoteFetchedAt, formatQuoteSourceLabel } from "../lib/liveQuote";
+import {
+  formatQuoteFetchedAt,
+  formatQuotePriceLabel,
+  formatQuoteSourceLabel,
+} from "../lib/liveQuote";
 
 type IntradayQuoteBarProps = {
   quote: LiveQuote | null;
@@ -17,11 +21,12 @@ export function IntradayQuoteBar({
   compact,
 }: IntradayQuoteBarProps) {
   const display = quote?.price ?? lastClose;
+  const priceLabel = quote ? formatQuotePriceLabel(quote.source) : "昨收参考";
   return (
     <div className={compact ? "space-y-2" : "space-y-3"}>
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <p className="text-xs text-fin-muted">最新价（实时拉取）</p>
+          <p className="text-xs text-fin-muted">{priceLabel}</p>
           <p className="font-mono text-lg font-semibold text-[var(--fin-blue)]">
             {loading && !quote ? "拉取中…" : display.toFixed(4)}
           </p>

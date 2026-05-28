@@ -5,11 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DATA_DIR="${ROOT}/public/data"
 BUCKET="${R2_BUCKET:-newhl-data}"
-
-if ! command -v wrangler >/dev/null 2>&1; then
-  echo "wrangler not found. Run: npm install -g wrangler && wrangler login"
-  exit 1
-fi
+WRANGLER="${WRANGLER_BIN:-npx wrangler@4.95.0}"
+REMOTE_FLAG="${R2_REMOTE_FLAG:---remote}"
 
 if [[ ! -d "${DATA_DIR}" ]]; then
   echo "Missing ${DATA_DIR}"
@@ -25,8 +22,8 @@ fi
 
 for f in "${files[@]}"; do
   base="$(basename "${f}")"
-  echo "→ ${BUCKET}/${base}"
-  wrangler r2 object put "${BUCKET}/${base}" --file "${f}"
+  echo "→ ${BUCKET}/${base} (${REMOTE_FLAG:---local})"
+  ${WRANGLER} r2 object put "${BUCKET}/${base}" --file "${f}" ${REMOTE_FLAG}
 done
 
 echo "Done. ${#files[@]} file(s) uploaded to R2 bucket ${BUCKET}."

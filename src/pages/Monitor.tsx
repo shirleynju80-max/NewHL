@@ -5,7 +5,9 @@ import { useDataSource } from "../context/DataSourceContext";
 import {
   fetchLiveQuote,
   formatQuoteFetchedAt,
+  formatQuotePriceLabel,
   formatQuoteSourceLabel,
+  resolvePreviousClose,
   type LiveQuote,
 } from "../lib/liveQuote";
 import {
@@ -476,6 +478,7 @@ export function MonitorPage() {
     strategyLabel: string;
     snap: number;
     lastClose: number;
+    quoteSource: LiveQuote["source"] | null;
     pct: number | null;
     metricLine: string;
     hint: string;
@@ -507,9 +510,11 @@ export function MonitorPage() {
         etf,
         productByCode.get(code),
       );
-      const lastClose = etf.bars[etf.bars.length - 1]?.close ?? 1;
+      const quote = quotesByCode[code] ?? null;
+      const lastClose = resolvePreviousClose(etf.bars, quote);
       const snap =
-        quotesByCode[code]?.price ?? pref.snapByCode[code] ?? lastClose;
+        quote?.price ?? pref.snapByCode[code] ?? lastClose;
+      const quoteSource = quote?.source ?? null;
       const merged = mergeIntraday1345(etf.bars, snap);
       const block: Row[] = vars.map((v) => {
         const ctx = strategyPercentileContext(
@@ -534,6 +539,7 @@ export function MonitorPage() {
           strategyLabel: variantMonitorCompact(v),
           snap,
           lastClose,
+          quoteSource,
           pct,
           metricLine,
           hint: ctx?.hint ?? "—",
@@ -583,6 +589,12 @@ export function MonitorPage() {
       ? pref.codes.slice(0, 6).join("、") +
         (pref.codes.length > 6 ? ` 等 ${pref.codes.length} 只` : "")
       : "未选择";
+  const quoteSourceSuffix = (source: LiveQuote["source"] | null): string => {
+    if (!source) return "";
+    const sourceLabel = formatQuoteSourceLabel(source);
+    const priceLabel = formatQuotePriceLabel(source);
+    return sourceLabel === priceLabel ? "" : ` · ${sourceLabel}`;
+  };
 
   return (
     <div className="ft-page space-y-4">
@@ -592,8 +604,8 @@ export function MonitorPage() {
         breadcrumbs={[{ label: "配置总览", to: "/" }, { label: "盘中监控" }]}
         description={
           <>
-            用 <strong>ETF 实时价格</strong>
-            更新各策略的买卖标尺，展示各指数主跟踪 ETF 的盘中状态。含义见下方「标尺说明」。
+            用 <strong>ETF 行情价</strong>
+            可用时的行情快照更新各策略的买卖标尺；不可用时回退到最新日 K 或本地收盘。含义见下方「标尺说明」。
           </>
         }
       />
@@ -668,7 +680,7 @@ export function MonitorPage() {
               <thead className="fin-table-head">
                 <tr>
                   <th className="px-2 py-1.5 font-normal">标的</th>
-                  <th className="px-2 py-1.5 font-normal">最新价</th>
+                  <th className="px-2 py-1.5 font-normal">行情价</th>
                   <th className="px-2 py-1.5 font-normal">策略</th>
                   <th className="px-2 py-1.5 font-normal">标尺%</th>
                   <th className="px-2 py-1.5 font-normal">指标</th>
@@ -724,10 +736,9 @@ export function MonitorPage() {
                             {r.snap.toFixed(4)}
                           </p>
                           <p className="text-[9px] text-[var(--fin-dim)]">
-                            昨收 {r.lastClose.toFixed(4)}
-                            {quotesByCode[r.code]
-                              ? ` · ${formatQuoteSourceLabel(quotesByCode[r.code]!.source)}`
-                              : null}
+                            {formatQuotePriceLabel(r.quoteSource)} · 昨收{" "}
+                            {r.lastClose.toFixed(4)}
+                            {quoteSourceSuffix(r.quoteSource)}
                           </p>
                         </td>
                       ) : null}
@@ -793,7 +804,7 @@ export function MonitorPage() {
         </summary>
         <p className="mt-3 leading-relaxed">
           对纳入监控的 ETF，列出<strong>已登记的全部策略</strong>
-          （含 RSI、布林带等多套）在「昨日收盘 + 当前实时价」下的标尺与提醒。标尺 %
+          （含 RSI、布林带等多套）在「昨日收盘 + 当前行情价」下的标尺与提醒。标尺 %
           表示当前指标值在策略买、卖阈值之间的线性位置（0 贴近买侧，100
           贴近卖侧），不是历史经验分位，也<strong>不是</strong>
           指数实时点位。RSI 按超卖到超买区间线性映射；布林按当前价在下轨到上轨之间的位置线性映射。标尺

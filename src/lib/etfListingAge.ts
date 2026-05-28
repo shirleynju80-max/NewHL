@@ -3,7 +3,7 @@ import type { EtfDefinition } from "../types";
 /** 策略研究页：满该年限可执行网格回测 */
 export const ETF_REGISTRY_MIN_BACKTEST_YEARS = 1;
 
-/** ETF 详情页：满该年限才展示策略回测 / 信号台账（指数详情仍按基日展示） */
+/** ETF 详情页：满该年限才展示策略回测 / 盘中信号（指数详情仍按基日展示） */
 export const ETF_MIN_BACKTEST_YEARS = 2;
 
 export type EtfStrategyProductMeta = ListingProductMeta & {
@@ -130,7 +130,6 @@ export function etfBacktestIneligibleReason(
 export type EtfDashboardTabId =
   | "backtest"
   | "intraday"
-  | "ledger"
   | "methodology";
 
 /** 策略回测入口应打开的页签：可展示策略时为回测，否则指数研究入口。 */
@@ -151,7 +150,7 @@ export function etfDashboardHref(
   if (
     etf &&
     !etfProductStrategyEligible(etf, product) &&
-    (tab === "backtest" || tab === "ledger" || tab === "intraday")
+    (tab === "backtest" || tab === "intraday")
   ) {
     effective = "methodology";
   }
