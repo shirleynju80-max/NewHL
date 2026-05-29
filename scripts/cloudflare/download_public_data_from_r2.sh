@@ -12,6 +12,7 @@ OPTIONAL_OBJECTS=(
   etfs.csv
   etf_products.csv
   fund_bars.csv
+  barsmore.csv
   etf_dividends.csv
   etf_adjusted_bars_meta.json
 )

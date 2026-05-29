@@ -77,7 +77,7 @@ python3 scripts/index_data_sync/fetch_redrocket_div_yield_refresh.py
 python3 scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
 ```
 
-`redrocket_div_yield_meta.json` 中 `source_latest_date` 为各指数 API 最近 `tradeDate` 的全局最大值，即页面展示的「数据更新至」日期。
+`redrocket_div_yield_meta.json` 中 `source_latest_date` 为各指数 API 最近 `tradeDate` 的全局最大值，即页面展示的「数据更新至」日期。`unsupported_indices` 列出观察池内红色火箭无 DID 的指数（当前为 `SPCLLHCP.SPI`、`SPAHLVCP.SPI`、`FCFQCD`；API 探测无 items，无法接入）。
 
 来源与字段：
 
@@ -166,8 +166,11 @@ python3 scripts/index_data_sync/sync_h30269_dividend_yield_legulegu.py
 `fqt=1` 前复权历史序列可能整体变化。此时不能只拼接最新一行，需要用分红事件触发全量刷新。
 
 ```bash
-# 检查全部场内 ETF：抓取 F10 分红送配；分红签名变化或历史口径漂移时刷新 barsmore
+# 默认仅主跟踪（etf_products is_primary=true，约 19 只场内 ETF）：F10 分红送配；签名变化时刷新 barsmore
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py
+
+# 宽扫含产品落地参考（约 27 只）
+python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --all-products
 
 # 强制刷新指定 ETF 的全量前复权历史
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880,512890 --force
@@ -175,6 +178,8 @@ python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880,512890
 # 仅验证，不写文件
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880 --dry-run
 ```
+
+**562080 / 560120 / 563990（现金流主跟踪）**：脚本每次运行会检查 `etf_products.listed_date`；**成立满 2 年**且本地 `barsmore` 前复权根数不足（&lt;400 或首根 K 线远晚于成立日）时，自动以东方财富 `fqt=1` 拉全量前复权历史。状态写入 `etf_adjusted_bars_meta.json` 的 `maturity_*` 字段。未到 2 年只打印 `maturity: pending`。
 
 输出文件：
 
@@ -190,6 +195,8 @@ python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880 --dry-
 ```bash
 python3 scripts/index_data_sync/sync_otc_fund_bars_em.py
 ```
+
+工作日 `index-t1-sync` CI 会在指数同步后自动运行上式并提交 `fund_bars.csv`（依赖 `akshare`）。
 
 `007751`（931157 主跟踪）需在 `etfsmore.csv` 有元数据行；`DataSourceContext` 会自动 fetch `fund_bars.csv`。
 

@@ -6,6 +6,8 @@ ETF 分红事件与前复权历史全量刷新。
 - 抓取东方财富基金 F10「分红送配」表，写入 public/data/etf_dividends.csv。
 - 当分红/拆分事件签名变化，或传入 --force 时，用东方财富日 K fqt=1
   全量刷新该 ETF 的前复权历史行情到 public/data/barsmore.csv。
+- 现金流主跟踪 562080 / 560120 / 563990：etf_products 成立满 2 年后，
+  若本地前复权历史仍明显不足，自动触发一次全量前复权拉取（同上 fqt=1）。
 
 为什么独立于 sync_etf_realtime.py：
 - 实时爬虫适合 11:00 / 14:00 写入当日临时价。
@@ -20,15 +22,12 @@ import hashlib
 import html
 import json
 import re
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 import requests
 
@@ -43,14 +42,27 @@ BARS_MORE = DATA_DIR / "barsmore.csv"
 DIVIDENDS = DATA_DIR / "etf_dividends.csv"
 META = DATA_DIR / "etf_adjusted_bars_meta.json"
 
+# 932366/932367/932368 主跟踪；成立满 MATURITY_FULL_HISTORY_YEARS 年后拉全量前复权
+MATURITY_WATCH_CODES = frozenset({"562080", "560120", "563990"})
+MATURITY_FULL_HISTORY_YEARS = 2.0
+MATURITY_MIN_TRADING_BARS = 400
+MATURITY_FIRST_BAR_SLACK_DAYS = 45
+
 HIS_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 F10_DIV_URL = "https://fundf10.eastmoney.com/fhsp_{code}.html"
-HEADERS = [
-    "-H",
-    "User-Agent: Mozilla/5.0",
-    "-H",
-    "Referer: https://fund.eastmoney.com/",
-]
+JSON_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://quote.eastmoney.com/",
+}
+FUND_HTML_HEADERS = {
+    "User-Agent": JSON_HEADERS["User-Agent"],
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Referer": "https://fund.eastmoney.com/",
+}
 
 BAR_FIELDS = ["etf_code", "date", "open", "high", "low", "close"]
 DIV_FIELDS = [
@@ -103,7 +115,21 @@ def infer_secid(code: str) -> str | None:
     return None
 
 
-def load_target_codes(include_tracking: bool = True) -> list[str]:
+def load_primary_tracking_codes() -> list[str]:
+    """etf_products is_primary=true 且可推断 secid 的主跟踪场内 ETF。"""
+    _, rows = read_csv(ETF_PRODUCTS)
+    out: dict[str, None] = {}
+    for row in rows:
+        if (row.get("is_primary") or "").strip().lower() != "true":
+            continue
+        code = (row.get("code") or "").strip()
+        if code and infer_secid(code):
+            out.setdefault(code, None)
+    return sorted(out)
+
+
+def load_all_product_codes(include_tracking: bool = True) -> list[str]:
+    """历史宽扫：etfs / etfsmore / etf_products / tracking 并集（含产品落地参考）。"""
     out: dict[str, None] = {}
     for path in [ETFS, ETF_MORE, ETF_PRODUCTS]:
         _, rows = read_csv(path)
@@ -120,56 +146,137 @@ def load_target_codes(include_tracking: bool = True) -> list[str]:
     return sorted(out)
 
 
-def run_curl(url: str, *, accept_json: bool = False) -> str:
-    request_headers = {"User-Agent": "Mozilla/5.0"}
-    if not accept_json:
-        request_headers["Referer"] = "https://fund.eastmoney.com/"
-    else:
-        request_headers["Referer"] = "https://quote.eastmoney.com/"
+def parse_ymd(raw: str | None) -> date | None:
+    s = (raw or "").strip()
+    if not s or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    return datetime.strptime(s, "%Y-%m-%d").date()
+
+
+def years_between(earlier: date, later: date) -> float:
+    return max(0.0, (later - earlier).days / 365.25)
+
+
+def load_product_listing_dates() -> dict[str, str]:
+    """etf_products：优先 listed_date，否则 first_trade_date。"""
+    _, rows = read_csv(ETF_PRODUCTS)
+    out: dict[str, str] = {}
+    for row in rows:
+        code = (row.get("code") or "").strip()
+        if not code:
+            continue
+        listed = (row.get("listed_date") or row.get("first_trade_date") or "").strip()
+        if listed:
+            out[code] = listed
+    return out
+
+
+def local_bar_summary(code: str, existing: dict[str, dict[str, Bar]]) -> tuple[int, str | None, str | None]:
+    rows = existing.get(code) or {}
+    if not rows:
+        return 0, None, None
+    dates = sorted(rows)
+    return len(dates), dates[0], dates[-1]
+
+
+def maturity_watch_codes(raw: str | None) -> list[str]:
+    if raw:
+        return sorted({c.strip() for c in raw.split(",") if c.strip()} & MATURITY_WATCH_CODES)
+    return sorted(MATURITY_WATCH_CODES)
+
+
+def assess_maturity_full_refresh(
+    code: str,
+    existing: dict[str, dict[str, Bar]],
+    prev_meta: dict[str, Any],
+    listing_dates: dict[str, str],
+    *,
+    as_of: date,
+    min_years: float,
+) -> tuple[bool, str, str | None]:
+    """
+    成立满 min_years 且本地前复权 K 线明显不足 → 需要全量前复权刷新。
+    返回 (should_refresh, status_note, listing_date)。
+    """
+    if code not in MATURITY_WATCH_CODES:
+        return False, "", None
+
+    listing = listing_dates.get(code) or prev_meta.get("maturity_listing_date")
+    listing_d = parse_ymd(listing)
+    if not listing_d:
+        return False, "maturity: no listing_date in etf_products", listing
+
+    age_years = years_between(listing_d, as_of)
+    if age_years + 1e-9 < min_years:
+        return (
+            False,
+            f"maturity: pending ({age_years:.2f}y / {min_years:.0f}y, listed {listing})",
+            listing,
+        )
+
+    bar_count, first_bar, last_bar = local_bar_summary(code, existing)
+    prev_refresh = (prev_meta.get("maturity_full_refresh_at") or "").strip()
+    first_slack_ok = True
+    if first_bar and listing_d:
+        first_d = parse_ymd(first_bar)
+        if first_d and (first_d - listing_d).days > MATURITY_FIRST_BAR_SLACK_DAYS:
+            first_slack_ok = False
+
+    history_ok = (
+        bar_count >= MATURITY_MIN_TRADING_BARS
+        and first_slack_ok
+        and bool(prev_refresh)
+    )
+    if history_ok:
+        return (
+            False,
+            f"maturity: ok ({bar_count} bars {first_bar}..{last_bar}, refreshed {prev_refresh})",
+            listing,
+        )
+
+    reason_parts = []
+    if bar_count < MATURITY_MIN_TRADING_BARS:
+        reason_parts.append(f"bars={bar_count}<{MATURITY_MIN_TRADING_BARS}")
+    if not first_slack_ok:
+        reason_parts.append(f"first_bar={first_bar} late vs listed {listing}")
+    if not prev_refresh:
+        reason_parts.append("no maturity_full_refresh yet")
+    note = f"maturity: FULL fqt=1 ({', '.join(reason_parts)})"
+    return True, note, listing
+
+
+def fetch_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
     last_error: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(5):
         try:
-            resp = SESSION.get(url, headers=request_headers, timeout=30)
+            resp = SESSION.get(url, params=params, headers=JSON_HEADERS, timeout=45)
             resp.raise_for_status()
-            if resp.text:
-                return resp.text
-            raise RuntimeError("empty response")
+            text = resp.text.strip()
+            if not text:
+                raise RuntimeError("empty response")
+            return json.loads(text)
         except Exception as exc:
             last_error = exc
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))
+            if attempt < 4:
+                time.sleep(1.2 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
-    for attempt in range(3):
+
+def fetch_text(url: str, *, headers: dict[str, str]) -> str:
+    last_error: Exception | None = None
+    for attempt in range(5):
         try:
-            req = Request(url, headers=request_headers)
-            with urlopen(req, timeout=20) as resp:
-                text = resp.read().decode("utf-8")
-            if text:
-                return text
-            raise RuntimeError("empty response")
+            resp = SESSION.get(url, headers=headers, timeout=45)
+            resp.raise_for_status()
+            text = resp.text.strip()
+            if not text:
+                raise RuntimeError("empty response")
+            return text
         except Exception as exc:
             last_error = exc
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))
-
-    headers = []
-    for key, value in request_headers.items():
-        headers.extend(["-H", f"{key}: {value}"])
-    for attempt in range(3):
-        try:
-            cp = subprocess.run(
-                ["curl", "-L", "-s", url, *headers, "--max-time", "20"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            if cp.stdout:
-                return cp.stdout
-            raise subprocess.CalledProcessError(cp.returncode, cp.args, output=cp.stdout, stderr="empty response")
-        except subprocess.CalledProcessError as exc:
-            last_error = exc
-            if attempt < 2:
-                time.sleep(1.5 * (attempt + 1))
+            if attempt < 4:
+                time.sleep(1.2 * (attempt + 1))
     assert last_error is not None
     raise last_error
 
@@ -192,8 +299,7 @@ def fetch_adjusted_history(code: str, beg: str = "19900101", end: str | None = N
         "beg": beg.replace("-", ""),
         "end": (end or date.today().isoformat()).replace("-", ""),
     }
-    text = run_curl(f"{HIS_URL}?{urlencode(params, safe=',')}", accept_json=True)
-    payload = json.loads(text)
+    payload = fetch_json(HIS_URL, params)
     klines = (payload.get("data") or {}).get("klines") or []
     out: list[Bar] = []
     for item in klines:
@@ -235,7 +341,7 @@ def parse_table_rows(table_html: str) -> list[list[str]]:
 
 def fetch_dividend_events(code: str) -> list[dict[str, str]]:
     url = F10_DIV_URL.format(code=code)
-    text = run_curl(url)
+    text = fetch_text(url, headers=FUND_HTML_HEADERS)
     m = re.search(r"<table[^>]*class=['\"][^'\"]*cfxq[^'\"]*['\"][^>]*>(.*?)</table>", text, re.I | re.S)
     if not m:
         return []
@@ -341,18 +447,52 @@ def bar_mismatch_count(code: str, full: list[Bar], existing: dict[str, dict[str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="ETF 分红事件 + 前复权历史全量刷新")
-    parser.add_argument("--codes", help="逗号分隔 ETF 代码；默认扫描 etfs/etfsmore/etf_products/tracking")
+    parser.add_argument(
+        "--codes",
+        help="逗号分隔 ETF 代码；默认仅 etf_products 主跟踪 is_primary=true",
+    )
     parser.add_argument("--force", action="store_true", help="不管分红签名是否变化，强制全量刷新行情")
     parser.add_argument("--dry-run", action="store_true", help="只打印，不写 CSV/JSON")
-    parser.add_argument("--no-index-tracking", action="store_true", help="不读取 index_tracking_etfs.csv")
+    parser.add_argument(
+        "--all-products",
+        action="store_true",
+        help="宽扫 etfs/etfsmore/etf_products/tracking（含产品落地参考，约 27 只）",
+    )
+    parser.add_argument(
+        "--no-index-tracking",
+        action="store_true",
+        help="与 --all-products 联用：不并入 index_tracking_etfs.csv",
+    )
     parser.add_argument("--tolerance", type=float, default=0.002, help="历史重合价格差异触发刷新阈值")
     parser.add_argument("--sleep", type=float, default=0.25, help="每个 ETF 间隔秒数")
+    parser.add_argument(
+        "--maturity-years",
+        type=float,
+        default=MATURITY_FULL_HISTORY_YEARS,
+        help="成立满该年限后触发 562080/560120/563990 全量前复权拉取",
+    )
+    parser.add_argument(
+        "--maturity-codes",
+        default=",".join(sorted(MATURITY_WATCH_CODES)),
+        help="成立 maturity-years 后自动全量前复权的产品代码",
+    )
+    parser.add_argument(
+        "--as-of",
+        help="覆盖「今日」用于成立年限判断（YYYY-MM-DD，便于 dry-run）",
+    )
     args = parser.parse_args()
+
+    as_of = parse_ymd(args.as_of) or date.today()
+    listing_dates = load_product_listing_dates()
+    maturity_codes = maturity_watch_codes(args.maturity_codes)
 
     codes = [c.strip() for c in (args.codes or "").split(",") if c.strip()]
     if not codes:
-        codes = load_target_codes(include_tracking=not args.no_index_tracking)
-    codes = [c for c in codes if infer_secid(c)]
+        if args.all_products:
+            codes = load_all_product_codes(include_tracking=not args.no_index_tracking)
+        else:
+            codes = load_primary_tracking_codes()
+    codes = sorted({c for c in codes if infer_secid(c)} | set(maturity_codes))
     if not codes:
         raise SystemExit("无可同步场内 ETF 代码")
 
@@ -371,25 +511,48 @@ def main() -> None:
 
     for i, code in enumerate(codes, 1):
         try:
+            prev_meta = by_code_meta.get(code) or {}
+            maturity_refresh, maturity_note, maturity_listing = assess_maturity_full_refresh(
+                code,
+                existing,
+                prev_meta,
+                listing_dates,
+                as_of=as_of,
+                min_years=args.maturity_years,
+            )
+            listing_d = parse_ymd(maturity_listing or listing_dates.get(code))
+            age_years = years_between(listing_d, as_of) if listing_d else 0.0
+            under_maturity_threshold = (
+                code in MATURITY_WATCH_CODES
+                and age_years + 1e-9 < args.maturity_years
+            )
+
             events = fetch_dividend_events(code)
             sig = dividend_signature(events)
-            old_sig = (by_code_meta.get(code) or {}).get("dividend_signature")
-            needs_refresh = args.force or sig != old_sig
+            old_sig = prev_meta.get("dividend_signature")
+            if under_maturity_threshold:
+                needs_refresh = args.force
+            else:
+                needs_refresh = args.force or sig != old_sig or maturity_refresh
             mismatch_count = 0
             full_rows: list[Bar] = []
             kline_error: str | None = None
-            try:
-                full_rows = fetch_adjusted_history(code)
-                if not needs_refresh:
-                    mismatch_count = bar_mismatch_count(code, full_rows, existing, args.tolerance)
-                    needs_refresh = mismatch_count > 0
-            except Exception as exc:
-                kline_error = str(exc)
-                full_rows = []
+            if under_maturity_threshold and not args.force:
+                kline_error = None
+            else:
+                try:
+                    full_rows = fetch_adjusted_history(code)
+                    if not needs_refresh:
+                        mismatch_count = bar_mismatch_count(
+                            code, full_rows, existing, args.tolerance
+                        )
+                        needs_refresh = mismatch_count > 0
+                except Exception as exc:
+                    kline_error = str(exc)
+                    full_rows = []
 
             div_rows_kept.extend(events)
             latest_ex = events[-1]["ex_dividend_date"] if events else ""
-            prev_meta = by_code_meta.get(code) or {}
             if needs_refresh:
                 if full_rows:
                     barsmore[code] = {b.date: b for b in full_rows}
@@ -402,6 +565,7 @@ def main() -> None:
             else:
                 unchanged.append(code)
 
+            maturity_done = maturity_refresh and needs_refresh and bool(full_rows)
             by_code_meta[code] = {
                 "dividend_signature": sig,
                 "dividend_events": len(events),
@@ -412,11 +576,22 @@ def main() -> None:
                 else prev_meta.get("last_refreshed_at", ""),
                 "bars_rows": len(full_rows),
                 "overlap_mismatches": mismatch_count,
+                "maturity_listing_date": maturity_listing or prev_meta.get("maturity_listing_date", ""),
+                "maturity_status": maturity_note or prev_meta.get("maturity_status", ""),
+                "maturity_full_refresh_at": date.today().isoformat()
+                if maturity_done
+                else prev_meta.get("maturity_full_refresh_at", ""),
             }
             print(
                 f"[{i}/{len(codes)}] {code}: dividends={len(events)} latest_ex={latest_ex or '-'} "
                 f"sig_changed={sig != old_sig} mismatches={mismatch_count} "
-                f"{'REFRESH' if needs_refresh and full_rows else 'kline_skip' if kline_error else 'ok'}"
+                f"maturity={'YES' if maturity_refresh else 'no'}"
+                + (f" ({maturity_note})" if maturity_note else "")
+                + (
+                    " skip_kline_until_2y"
+                    if under_maturity_threshold and not args.force
+                    else f" {'REFRESH' if needs_refresh and full_rows else 'kline_skip' if kline_error else 'ok'}"
+                )
             )
         except Exception as exc:
             errors.append(f"{code}: {exc}")
