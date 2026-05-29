@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
@@ -59,8 +59,15 @@ function parseCsvLine(line) {
   return out;
 }
 
-function parseCsvFile(name) {
-  const text = readFileSync(join(DATA_DIR, name), "utf-8")
+function parseCsvFile(name, { required = true } = {}) {
+  const path = join(DATA_DIR, name);
+  if (!existsSync(path)) {
+    if (required) {
+      throw new Error(`Missing required data file: ${path}`);
+    }
+    return [];
+  }
+  const text = readFileSync(path, "utf-8")
     .replace(/^\uFEFF/, "")
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n");
@@ -216,17 +223,25 @@ async function fetchFundF10(code, productType) {
   };
 }
 
-const etfMetas = [...parseCsvFile("etfs.csv"), ...parseCsvFile("etfsmore.csv")];
+const etfMetas = [
+  ...parseCsvFile("etfs.csv", { required: false }),
+  ...parseCsvFile("etfsmore.csv"),
+];
 const metaByCode = new Map();
 for (const meta of etfMetas) {
   if (meta.code && !metaByCode.has(meta.code)) metaByCode.set(meta.code, meta);
 }
 
-const existingProducts = new Map(parseCsvFile("etf_products.csv").map((row) => [row.code, row]));
+const existingProducts = new Map(
+  parseCsvFile("etf_products.csv", { required: false }).map((row) => [row.code, row]),
+);
 const indicesByCode = new Map(parseCsvFile("indices.csv").map((row) => [row.index_code, row]));
 const trackingRows = parseCsvFile("index_tracking_etfs.csv");
-const bars = [...parseCsvFile("bars.csv"), ...parseCsvFile("barsmore.csv")];
-const fundBars = parseCsvFile("fund_bars.csv");
+const bars = [
+  ...parseCsvFile("bars.csv"),
+  ...parseCsvFile("barsmore.csv", { required: false }),
+];
+const fundBars = parseCsvFile("fund_bars.csv", { required: false });
 const seenIndex = new Set();
 const rows = [];
 

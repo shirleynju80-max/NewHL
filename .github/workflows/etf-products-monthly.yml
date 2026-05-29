@@ -21,7 +21,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+
+      - name: Install wrangler
+        run: npm install -g wrangler@4.95.0
+
+      - name: Pull optional data artifacts from R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_BIN: wrangler
+        run: bash scripts/cloudflare/download_public_data_from_r2.sh
 
       - name: Select index tracking ETF candidates
         run: node scripts/select_index_tracking_etfs.mjs
