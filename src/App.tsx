@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { DataSourceProvider } from "./context/DataSourceContext";
 import { StrategyRegistryProvider } from "./context/StrategyRegistryContext";
 
@@ -47,7 +48,11 @@ function PageFallback() {
 }
 
 function withPageFallback(children: ReactNode) {
-  return <Suspense fallback={<PageFallback />}>{children}</Suspense>;
+  return (
+    <RouteErrorBoundary>
+      <Suspense fallback={<PageFallback />}>{children}</Suspense>
+    </RouteErrorBoundary>
+  );
 }
 
 export default function App() {
