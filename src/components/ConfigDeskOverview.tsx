@@ -18,8 +18,7 @@ type ConfigDeskOverviewProps = {
   shareholderCard: DimensionCardSnapshot;
 };
 
-const SPREAD_FORMULA_HINT =
-  "股债利差 = 中证红利指数股息率 - 10年国债收益率";
+const SPREAD_FORMULA_HINT = "股债利差 = 中证红利指数股息率 - 10年国债收益率";
 
 const CONFIG_PRINCIPLES = [
   {
@@ -54,7 +53,10 @@ function compareBarWidth(a: number, b: number, value: number): number {
   return Math.min(100, (Math.abs(value) / scale) * 100);
 }
 
-function compareValueClass(row: CashBenchmarkMetricRow, side: "fcf" | "hs300"): string {
+function compareValueClass(
+  row: CashBenchmarkMetricRow,
+  side: "fcf" | "hs300",
+): string {
   const value = side === "fcf" ? row.fcfValue : row.hs300Value;
   const better = side === "fcf" ? row.fcfBetter : !row.fcfBetter;
   if (row.kind === "return") {
@@ -70,7 +72,10 @@ function compareValueClass(row: CashBenchmarkMetricRow, side: "fcf" | "hs300"): 
   return "ft-compare-value";
 }
 
-function compareBarClass(row: CashBenchmarkMetricRow, side: "fcf" | "hs300"): string {
+function compareBarClass(
+  row: CashBenchmarkMetricRow,
+  side: "fcf" | "hs300",
+): string {
   const value = side === "fcf" ? row.fcfValue : row.hs300Value;
   const better = side === "fcf" ? row.fcfBetter : !row.fcfBetter;
   if (row.kind === "return") {
@@ -102,7 +107,9 @@ function CompareMetricCell({
         <div className="ft-compare-bar" aria-hidden>
           <div
             className={compareBarClass(row, side)}
-            style={{ width: `${compareBarWidth(row.fcfValue, row.hs300Value, value)}%` }}
+            style={{
+              width: `${compareBarWidth(row.fcfValue, row.hs300Value, value)}%`,
+            }}
           />
         </div>
       ) : null}
@@ -113,8 +120,13 @@ function CompareMetricCell({
 export function ConfigDeskOverview({
   shareholderCard,
 }: ConfigDeskOverviewProps) {
-  const { indices, bondByDate, etfProducts, publicCsvAutoLoading, reloadingPublicCsv } =
-    useDataSource();
+  const {
+    indices,
+    bondByDate,
+    etfProducts,
+    publicCsvAutoLoading,
+    reloadingPublicCsv,
+  } = useDataSource();
   const cashDim = CONFIG_DIMENSIONS.cash_creation;
   const divDim = CONFIG_DIMENSIONS.shareholder_return;
 
@@ -142,7 +154,7 @@ export function ConfigDeskOverview({
         </p>
       </section>
 
-      <section className="rounded-lg border border-fin-border bg-fin-panel-muted/60 px-5 py-4">
+      <section className="rounded-lg border border-fin-border bg-fin-panel px-5 py-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-sm font-semibold text-[var(--ft-text)]">
@@ -156,7 +168,10 @@ export function ConfigDeskOverview({
             <Link to="/featured-tracking" className="ft-btn">
               查看精选跟踪
             </Link>
-            <Link to="/monitor" className="fin-btn-secondary rounded-md px-4 py-2 text-sm">
+            <Link
+              to="/monitor"
+              className="fin-btn-secondary rounded-md px-4 py-2 text-sm"
+            >
               今日盘中信号
             </Link>
           </div>
@@ -240,7 +255,9 @@ export function ConfigDeskOverview({
             <h2 className="ft-card-title">{divDim.title}</h2>
             <p className="ft-card-sub">红利指数 · 股息率与股债利差</p>
             <p className="mt-2">
-              <span className={shareholderStatusBadgeClass(shareholderCard.tone)}>
+              <span
+                className={shareholderStatusBadgeClass(shareholderCard.tone)}
+              >
                 {shareholderCard.statusTitle}
               </span>
             </p>
@@ -277,7 +294,9 @@ export function ConfigDeskOverview({
                       10年期国债
                     </th>
                     <td colSpan={2}>
-                      <span className="ft-compare-value">{bond?.value ?? "—"}</span>
+                      <span className="ft-compare-value">
+                        {bond?.value ?? "—"}
+                      </span>
                     </td>
                   </tr>
                   <tr className="ft-compare-row-dual">
@@ -318,7 +337,9 @@ export function ConfigDeskOverview({
                 </tbody>
               </table>
 
-              <p className="ft-small-note ft-spread-data-note">{spreadDataNote}</p>
+              <p className="ft-small-note ft-spread-data-note">
+                {spreadDataNote}
+              </p>
             </div>
 
             {divProducts.length > 0 ? (
@@ -344,7 +365,10 @@ export function ConfigDeskOverview({
         className="ft-principles-section"
         aria-labelledby="config-principles-title"
       >
-        <h3 id="config-principles-title" className="ft-principles-section-title">
+        <h3
+          id="config-principles-title"
+          className="ft-principles-section-title"
+        >
           核心资产配置三条基本原则
         </h3>
         <div className="ft-principles-grid">
@@ -379,7 +403,11 @@ export function ConfigDeskOverview({
                 <p className="ft-pool-column-title">{col.title}</p>
                 <div className="ft-pool-chips">
                   {col.chips.map((chip) => (
-                    <Link key={chip.code} to={chip.href} className="ft-pool-chip">
+                    <Link
+                      key={chip.code}
+                      to={chip.href}
+                      className="ft-pool-chip"
+                    >
                       {chip.name}({chip.code})
                     </Link>
                   ))}
