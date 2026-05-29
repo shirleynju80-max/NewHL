@@ -125,9 +125,11 @@ jobs:
             out.write(f"hsi_stale={'none' if not stale else stale}\n")
 
           if stale:
-            print("HSI stale detected:", stale)
-            raise SystemExit(1)
-          print("HSI freshness check passed:", latest)
+            # 不再 raise，避免 HSI token 过期连带阻断当天 A 股/红色火箭数据提交。
+            # 真正过期由后续 webhook 告警驱动人工刷新 token。
+            print(f"::error::HSI 数据已过期，需刷新 HSI_ACCESS_TOKEN secret: {stale}")
+          else:
+            print("HSI freshness check passed:", latest)
           PY
 
       - name: Commit index data if changed
@@ -172,13 +174,24 @@ jobs:
           hsi_latest = os.getenv("HSI_LATEST", "")
           run_url = f"{os.getenv('SERVER_URL')}/{os.getenv('REPO')}/actions/runs/{os.getenv('RUN_ID')}"
 
+          hsi_data_stale = bool(hsi_stale) and hsi_stale != "none"
+
           warnings = []
-          if not token_present:
-            warnings.append("HSI_ACCESS_TOKEN missing")
-          if token_present and hsi_outcome == "failure":
-            warnings.append("HSI sync failed, token likely expired")
-          if hsi_stale and hsi_stale != "none":
-            warnings.append(f"HSI stale: {hsi_stale}")
+          # 只有 HSI 数据“真正过期”（超过 HSI_STALE_DAYS）才告警，需要人工换 token。
+          # token 失效但数据仍在容忍期内属正常，不再打扰。
+          if hsi_data_stale:
+            if token_present:
+              warnings.append(
+                f"HSI 数据已过期，token 大概率失效，请更新仓库 secret HSI_ACCESS_TOKEN：{hsi_stale}"
+              )
+            else:
+              warnings.append(f"HSI 数据已过期且未配置 HSI_ACCESS_TOKEN：{hsi_stale}")
+          elif token_present and hsi_outcome == "failure":
+            print(
+              "HSI token 可能过期，但数据仍在容忍期内（未超过 HSI_STALE_DAYS），本次不发告警。"
+            )
+          elif not token_present:
+            print("HSI_ACCESS_TOKEN 未配置，但数据仍在容忍期内，本次不发告警。")
 
           should_notify = status != "success" or bool(warnings)
           if not should_notify:
