@@ -4,7 +4,9 @@
 
 > 常规发布**只走这一条**，不要再手工跑 `pages deploy` / `release:worker-pages` 去推生产，避免「两条链路谁先生效」的混乱与陈旧。
 
-1. **前端**：Cloudflare Pages 直连 GitHub 仓库，`main` 分支为 Production branch。push `main` → 自动 `npm run build` 并发布到生产（无需 Promote）。
+1. **前端**：push `main` → 自动构建并发布到生产。
+   - **Git 直连 Pages**（Settings 里有 Builds / Connect to Git）：Cloudflare 自动 `npm run build`。
+   - **Direct Upload 项目**（Settings 只有 Variables / General，无 Builds）：由 GitHub Actions [cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml) 在 push `main` 时 `npm run build` + `wrangler pages deploy`。
 2. **数据**：`cloudflare-r2-upload` Action 在「Realtime crawler」/「Index T-1 sync」成功后自动把 `public/data/*.csv` 上传到 R2（也可 `workflow_dispatch` 手动触发）。Worker `/api/bundle` 实时从 R2 读取，前端**不打包 CSV**。
 3. **Worker**：属稳定基础设施，仅在 `workers/data-api` 改动时手动 `wrangler deploy` 一次。
 
