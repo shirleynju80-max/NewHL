@@ -249,10 +249,10 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
     );
     const hasMerge = Boolean(
       merge.etfsMore ||
-        merge.barsMore ||
-        merge.bondsMore ||
-        merge.fundBars ||
-        merge.etfProducts,
+      merge.barsMore ||
+      merge.bondsMore ||
+      merge.fundBars ||
+      merge.etfProducts,
     );
     const bundle = buildCsvBundle(
       etfs,
@@ -389,13 +389,13 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       const pub = await tryFetchPublicCsv();
       if (pub.status === "missing") {
         setLoadError(
-          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
+          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
         );
         return;
       }
       if (pub.status === "error") {
         setLoadError(
-          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
+          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
         );
         return;
       }
@@ -451,7 +451,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       if (pub.status === "missing") {
         if (apiError) {
           setLoadError(
-            `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
+            `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
           );
         }
         setPublicCsvAutoLoading(false);
@@ -459,7 +459,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       }
       if (pub.status === "error") {
         setLoadError(
-          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
+          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
         );
         setPublicCsvAutoLoading(false);
         return;

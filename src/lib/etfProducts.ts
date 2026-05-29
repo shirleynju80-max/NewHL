@@ -509,10 +509,7 @@ export function buildProductSearchHaystack(
   return parts.join(" ").toLowerCase();
 }
 
-export function matchesProductSearch(
-  haystack: string,
-  query: string,
-): boolean {
+export function matchesProductSearch(haystack: string, query: string): boolean {
   const tokens = query
     .trim()
     .toLowerCase()
@@ -712,7 +709,10 @@ export function filterProductIndexGroups(
         MAX_ETF_CANDIDATES_PER_INDEX,
         options.representativeByIndex?.[group.indexCode],
       );
-      if (options.dimension !== "all" && group.productGroup !== options.dimension) {
+      if (
+        options.dimension !== "all" &&
+        group.productGroup !== options.dimension
+      ) {
         return { ...group, products: [] };
       }
       if (options.primaryOnly) {

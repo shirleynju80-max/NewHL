@@ -71,7 +71,9 @@ export function etfListingYears(
 }
 
 function listingYearsLabel(years: number): string {
-  return years < 1 ? `${Math.round(years * 12)} 个月` : `${years.toFixed(1)} 年`;
+  return years < 1
+    ? `${Math.round(years * 12)} 个月`
+    : `${years.toFixed(1)} 年`;
 }
 
 /** 满年限且非现金流类：可展示 ETF 层策略回测 / 盘中信号 / 登记参数 */
@@ -127,10 +129,7 @@ export function etfBacktestIneligibleReason(
   return "暂不展示策略回测。";
 }
 
-export type EtfDashboardTabId =
-  | "backtest"
-  | "intraday"
-  | "methodology";
+export type EtfDashboardTabId = "backtest" | "intraday" | "methodology";
 
 /** 策略回测入口应打开的页签：可展示策略时为回测，否则指数研究入口。 */
 export function etfDashboardStrategyTab(

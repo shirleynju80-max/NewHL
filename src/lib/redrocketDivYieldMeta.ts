@@ -9,7 +9,9 @@ export type RedrocketDivYieldMeta = {
 };
 
 /** 指数研究表：股息率列页脚（用户可读） */
-export function indexDivYieldFootnote(meta: RedrocketDivYieldMeta | null): string {
+export function indexDivYieldFootnote(
+  meta: RedrocketDivYieldMeta | null,
+): string {
   const source = meta?.source?.trim() || "红色火箭";
   const date = meta?.source_latest_date?.trim();
   if (!date) {

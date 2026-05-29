@@ -92,7 +92,8 @@ export function parseIndexBarsCsv(text: string): Map<string, IndexBar[]> {
     if (div_yield_nominal_pct !== undefined)
       bar.div_yield_nominal_pct = div_yield_nominal_pct;
     if (div_yield_redrocket_percentile_pct !== undefined)
-      bar.div_yield_redrocket_percentile_pct = div_yield_redrocket_percentile_pct;
+      bar.div_yield_redrocket_percentile_pct =
+        div_yield_redrocket_percentile_pct;
     if (!map.has(index_code)) map.set(index_code, []);
     map.get(index_code)!.push(bar);
   }

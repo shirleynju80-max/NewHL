@@ -1,4 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"] as const;
@@ -23,7 +30,11 @@ function daysInMonth(y: number, m: number): number {
   return new Date(y, m, 0).getDate();
 }
 
-function addMonths(y: number, m: number, delta: number): { y: number; m: number } {
+function addMonths(
+  y: number,
+  m: number,
+  delta: number,
+): { y: number; m: number } {
   const d = new Date(y, m - 1 + delta, 1);
   return { y: d.getFullYear(), m: d.getMonth() + 1 };
 }
@@ -103,28 +114,49 @@ function MonthPanel({
     () => buildMonthGrid(y, m, min, max, allowed),
     [y, m, min, max, allowed],
   );
-  const lo = rangeStart && rangeEnd && rangeStart <= rangeEnd ? rangeStart : rangeStart;
+  const lo =
+    rangeStart && rangeEnd && rangeStart <= rangeEnd ? rangeStart : rangeStart;
   const hi =
     rangeStart && rangeEnd && rangeStart <= rangeEnd
       ? rangeEnd
-      : rangeEnd ?? rangeStart;
+      : (rangeEnd ?? rangeStart);
 
   return (
     <div className="csi-cal-panel">
       <div className="csi-cal-header">
-        <button type="button" className="csi-cal-nav" onClick={() => onNav(-12)} title="上一年">
+        <button
+          type="button"
+          className="csi-cal-nav"
+          onClick={() => onNav(-12)}
+          title="上一年"
+        >
           «
         </button>
-        <button type="button" className="csi-cal-nav" onClick={() => onNav(-1)} title="上一月">
+        <button
+          type="button"
+          className="csi-cal-nav"
+          onClick={() => onNav(-1)}
+          title="上一月"
+        >
           ‹
         </button>
         <span className="csi-cal-title">
           {y}年 {m}月
         </span>
-        <button type="button" className="csi-cal-nav" onClick={() => onNav(1)} title="下一月">
+        <button
+          type="button"
+          className="csi-cal-nav"
+          onClick={() => onNav(1)}
+          title="下一月"
+        >
           ›
         </button>
-        <button type="button" className="csi-cal-nav" onClick={() => onNav(12)} title="下一年">
+        <button
+          type="button"
+          className="csi-cal-nav"
+          onClick={() => onNav(12)}
+          title="下一年"
+        >
           »
         </button>
       </div>
@@ -136,11 +168,7 @@ function MonthPanel({
       <div className="csi-cal-grid">
         {cells.map((cell) => {
           const inRange =
-            lo &&
-            hi &&
-            !cell.disabled &&
-            cell.iso >= lo &&
-            cell.iso <= hi;
+            lo && hi && !cell.disabled && cell.iso >= lo && cell.iso <= hi;
           const isStart = cell.iso === rangeStart;
           const isEnd = cell.iso === rangeEnd;
           const inHover =
@@ -223,7 +251,10 @@ export function CsIndexRangePicker({
     [tradingDates],
   );
 
-  const rightMonth = useMemo(() => addMonths(viewYLeft, viewM, 1), [viewYLeft, viewM]);
+  const rightMonth = useMemo(
+    () => addMonths(viewYLeft, viewM, 1),
+    [viewYLeft, viewM],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -326,85 +357,96 @@ export function CsIndexRangePicker({
       >
         <span className="csi-range-trigger-text">{display}</span>
         <span className="csi-range-trigger-icon" aria-hidden>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <rect x="3" y="4" width="18" height="18" rx="2" />
             <path d="M16 2v4M8 2v4M3 10h18" />
           </svg>
         </span>
       </button>
 
-      {open ?
-        createPortal(
-          <div
-            className="csi-range-dropdown fin-panel"
-            role="dialog"
-            aria-labelledby={id}
-            style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left }}
-          >
-            <div className="csi-range-toolbar">
-              <label className="csi-range-toolbar-label">
-                年份
-                <select
-                  className="fin-select csi-range-year-select"
-                  value={viewYLeft}
-                  onChange={(e) => {
-                    const y = Number(e.target.value);
-                    jumpYearMonth(y, viewM);
+      {open
+        ? createPortal(
+            <div
+              className="csi-range-dropdown fin-panel"
+              role="dialog"
+              aria-labelledby={id}
+              style={{
+                position: "fixed",
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+              }}
+            >
+              <div className="csi-range-toolbar">
+                <label className="csi-range-toolbar-label">
+                  年份
+                  <select
+                    className="fin-select csi-range-year-select"
+                    value={viewYLeft}
+                    onChange={(e) => {
+                      const y = Number(e.target.value);
+                      jumpYearMonth(y, viewM);
+                    }}
+                  >
+                    {years.map((y) => (
+                      <option key={y} value={y}>
+                        {y}年
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="csi-cal-nav csi-range-today"
+                  onClick={() => {
+                    const p = parseYmd(max)!;
+                    jumpYearMonth(p.y, p.m);
                   }}
                 >
-                  {years.map((y) => (
-                    <option key={y} value={y}>
-                      {y}年
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="csi-cal-nav csi-range-today"
-                onClick={() => {
-                  const p = parseYmd(max)!;
-                  jumpYearMonth(p.y, p.m);
-                }}
-              >
-                转至最新
-              </button>
-            </div>
-            <div className="csi-range-calendars">
-              <MonthPanel
-                y={viewYLeft}
-                m={viewM}
-                min={min}
-                max={max}
-                allowed={allowed}
-                rangeStart={pendingStart ?? draftStart}
-                rangeEnd={pendingStart ? null : draftEnd}
-                hoverIso={hoverIso}
-                onPick={pickDay}
-                onHover={setHoverIso}
-                onNav={(d) => applyNav(d, "left")}
-              />
-              <MonthPanel
-                y={rightMonth.y}
-                m={rightMonth.m}
-                min={min}
-                max={max}
-                allowed={allowed}
-                rangeStart={pendingStart ?? draftStart}
-                rangeEnd={pendingStart ? null : draftEnd}
-                hoverIso={hoverIso}
-                onPick={pickDay}
-                onHover={setHoverIso}
-                onNav={(d) => applyNav(d, "right")}
-              />
-            </div>
-            <p className="csi-range-hint">
-              点击两次选择起止日期；仅可选有行情的交易日。
-            </p>
-          </div>,
-          document.body,
-        )
-      : null}
+                  转至最新
+                </button>
+              </div>
+              <div className="csi-range-calendars">
+                <MonthPanel
+                  y={viewYLeft}
+                  m={viewM}
+                  min={min}
+                  max={max}
+                  allowed={allowed}
+                  rangeStart={pendingStart ?? draftStart}
+                  rangeEnd={pendingStart ? null : draftEnd}
+                  hoverIso={hoverIso}
+                  onPick={pickDay}
+                  onHover={setHoverIso}
+                  onNav={(d) => applyNav(d, "left")}
+                />
+                <MonthPanel
+                  y={rightMonth.y}
+                  m={rightMonth.m}
+                  min={min}
+                  max={max}
+                  allowed={allowed}
+                  rangeStart={pendingStart ?? draftStart}
+                  rangeEnd={pendingStart ? null : draftEnd}
+                  hoverIso={hoverIso}
+                  onPick={pickDay}
+                  onHover={setHoverIso}
+                  onNav={(d) => applyNav(d, "right")}
+                />
+              </div>
+              <p className="csi-range-hint">
+                点击两次选择起止日期；仅可选有行情的交易日。
+              </p>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -508,77 +550,86 @@ export function CsIndexDatePicker({
         onClick={() => setOpen((v) => !v)}
       >
         <span className="csi-range-trigger-text">
-          {label ?
-            <span className="csi-date-tag">{label}</span>
-          : null}
+          {label ? <span className="csi-date-tag">{label}</span> : null}
           {display}
         </span>
         <span className="csi-range-trigger-icon" aria-hidden>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <rect x="3" y="4" width="18" height="18" rx="2" />
             <path d="M16 2v4M8 2v4M3 10h18" />
           </svg>
         </span>
       </button>
 
-      {open ?
-        createPortal(
-          <div
-            className="csi-date-dropdown csi-range-dropdown fin-panel"
-            role="dialog"
-            aria-labelledby={id}
-            style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left }}
-          >
-            <div className="csi-range-toolbar">
-              <label className="csi-range-toolbar-label">
-                年份
-                <select
-                  className="fin-select csi-range-year-select"
-                  value={viewY}
-                  onChange={(e) => {
-                    const y = Number(e.target.value);
-                    setViewY(y);
+      {open
+        ? createPortal(
+            <div
+              className="csi-date-dropdown csi-range-dropdown fin-panel"
+              role="dialog"
+              aria-labelledby={id}
+              style={{
+                position: "fixed",
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+              }}
+            >
+              <div className="csi-range-toolbar">
+                <label className="csi-range-toolbar-label">
+                  年份
+                  <select
+                    className="fin-select csi-range-year-select"
+                    value={viewY}
+                    onChange={(e) => {
+                      const y = Number(e.target.value);
+                      setViewY(y);
+                    }}
+                  >
+                    {years.map((y) => (
+                      <option key={y} value={y}>
+                        {y}年
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="csi-cal-nav csi-range-today"
+                  onClick={() => {
+                    const p = parseYmd(max)!;
+                    setViewY(p.y);
+                    setViewM(p.m);
                   }}
                 >
-                  {years.map((y) => (
-                    <option key={y} value={y}>
-                      {y}年
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="csi-cal-nav csi-range-today"
-                onClick={() => {
-                  const p = parseYmd(max)!;
-                  setViewY(p.y);
-                  setViewM(p.m);
-                }}
-              >
-                转至最新
-              </button>
-            </div>
-            <MonthPanel
-              y={viewY}
-              m={viewM}
-              min={min}
-              max={max}
-              allowed={allowed}
-              rangeStart={safeValue}
-              rangeEnd={safeValue}
-              hoverIso={null}
-              onPick={pickDay}
-              onHover={() => {}}
-              onNav={shiftView}
-            />
-            <p className="csi-range-hint">
-              {label ? `${label}；` : ""}仅可选有行情的交易日。
-            </p>
-          </div>,
-          document.body,
-        )
-      : null}
+                  转至最新
+                </button>
+              </div>
+              <MonthPanel
+                y={viewY}
+                m={viewM}
+                min={min}
+                max={max}
+                allowed={allowed}
+                rangeStart={safeValue}
+                rangeEnd={safeValue}
+                hoverIso={null}
+                onPick={pickDay}
+                onHover={() => {}}
+                onNav={shiftView}
+              />
+              <p className="csi-range-hint">
+                {label ? `${label}；` : ""}仅可选有行情的交易日。
+              </p>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

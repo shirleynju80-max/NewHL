@@ -258,11 +258,7 @@ export function calcMetricBlock(series: DateValuePoint[]): MetricBlock {
 
 export function shouldShowAnnualizedReturn(id: MetricWindowId): boolean {
   return (
-    id === "y1" ||
-    id === "y3" ||
-    id === "y5" ||
-    id === "y10" ||
-    id === "all"
+    id === "y1" || id === "y3" || id === "y5" || id === "y10" || id === "all"
   );
 }
 
@@ -343,14 +339,7 @@ export const CHART_CUSTOM_FULL_MAX_POINTS = 1300;
 export type ChartDateSamplingMode = "full" | "layered";
 
 const LAYERED_QUICK_RANGES = new Set(["all", "10y"]);
-const FULL_QUICK_RANGES = new Set([
-  "1m",
-  "3m",
-  "ytd",
-  "1y",
-  "3y",
-  "5y",
-]);
+const FULL_QUICK_RANGES = new Set(["1m", "3m", "ytd", "1y", "3y", "5y"]);
 
 function sortedUniqueDates(dates: string[]): string[] {
   return [...new Set(dates)].sort((a, b) => a.localeCompare(b));

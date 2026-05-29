@@ -138,8 +138,8 @@ export function RegistryCustomBaseline({
   if (!productSelected) {
     return (
       <p className={`text-xs fin-muted-text${embedded ? " mt-3" : " mt-4"}`}>
-        选择落地产品后，可先选策略类型并填写参数，点击「添加」生成对比 Baseline（最多{" "}
-        {MAX_CUSTOM_BASELINES} 组）。
+        选择落地产品后，可先选策略类型并填写参数，点击「添加」生成对比
+        Baseline（最多 {MAX_CUSTOM_BASELINES} 组）。
       </p>
     );
   }
@@ -174,30 +174,30 @@ export function RegistryCustomBaseline({
             ))}
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
-          <label className="text-xs fin-muted-text">
-            RSI 周期
-            <ParamNumberInput
-              value={form.rsiPeriod}
-              onValueChange={(rsiPeriod) => patch({ rsiPeriod })}
-              className={inputClass}
-            />
-          </label>
-          <label className="text-xs fin-muted-text">
-            超卖
-            <ParamNumberInput
-              value={form.rsiOversold}
-              onValueChange={(rsiOversold) => patch({ rsiOversold })}
-              className={inputClass}
-            />
-          </label>
-          <label className="text-xs fin-muted-text">
-            超买
-            <ParamNumberInput
-              value={form.rsiOverbought}
-              onValueChange={(rsiOverbought) => patch({ rsiOverbought })}
-              className={inputClass}
-            />
-          </label>
+            <label className="text-xs fin-muted-text">
+              RSI 周期
+              <ParamNumberInput
+                value={form.rsiPeriod}
+                onValueChange={(rsiPeriod) => patch({ rsiPeriod })}
+                className={inputClass}
+              />
+            </label>
+            <label className="text-xs fin-muted-text">
+              超卖
+              <ParamNumberInput
+                value={form.rsiOversold}
+                onValueChange={(rsiOversold) => patch({ rsiOversold })}
+                className={inputClass}
+              />
+            </label>
+            <label className="text-xs fin-muted-text">
+              超买
+              <ParamNumberInput
+                value={form.rsiOverbought}
+                onValueChange={(rsiOverbought) => patch({ rsiOverbought })}
+                className={inputClass}
+              />
+            </label>
           </div>
         </div>
       );
@@ -221,23 +221,23 @@ export function RegistryCustomBaseline({
             ))}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-xs fin-muted-text">
-            布林周期
-            <ParamNumberInput
-              value={form.bollPeriod}
-              onValueChange={(bollPeriod) => patch({ bollPeriod })}
-              className={inputClass}
-            />
-          </label>
-          <label className="text-xs fin-muted-text">
-            标准差倍数
-            <ParamNumberInput
-              value={form.bollStd}
-              onValueChange={(bollStd) => patch({ bollStd })}
-              decimal
-              className={inputClass}
-            />
-          </label>
+            <label className="text-xs fin-muted-text">
+              布林周期
+              <ParamNumberInput
+                value={form.bollPeriod}
+                onValueChange={(bollPeriod) => patch({ bollPeriod })}
+                className={inputClass}
+              />
+            </label>
+            <label className="text-xs fin-muted-text">
+              标准差倍数
+              <ParamNumberInput
+                value={form.bollStd}
+                onValueChange={(bollStd) => patch({ bollStd })}
+                decimal
+                className={inputClass}
+              />
+            </label>
           </div>
         </div>
       );

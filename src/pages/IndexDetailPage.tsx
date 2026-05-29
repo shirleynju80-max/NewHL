@@ -213,7 +213,9 @@ function defaultVisibleLineKeys(
   bars: Parameters<typeof indexChartValueModes>[0] | undefined,
 ): Set<string> {
   const modes = indexChartValueModes(bars ?? []);
-  const keys: string[] = modes.map((mode) => (mode === "price" ? "price" : "tri"));
+  const keys: string[] = modes.map((mode) =>
+    mode === "price" ? "price" : "tri",
+  );
   keys.push("hs300");
   return new Set(keys);
 }
@@ -487,9 +489,7 @@ export function IndexDetailPage() {
   const perfWindow = useMemo(() => {
     const rangeStart = chartRange.start ?? perfStartDate;
     const rangeEnd = chartRange.end ?? perfEndDate;
-    const start = rangeStart
-      ? nearestDateIndex(brushPreview, rangeStart)
-      : 0;
+    const start = rangeStart ? nearestDateIndex(brushPreview, rangeStart) : 0;
     const end = rangeEnd
       ? nearestDateIndex(brushPreview, rangeEnd)
       : Math.max(0, brushPreview.length - 1);
@@ -614,19 +614,11 @@ export function IndexDetailPage() {
   );
   const latestSpreadPoint = spreadRows.at(-1);
   const pctAxisMax = useMemo(() => {
-    const values = tripleData.flatMap((r) => [
-      r.股息率,
-      r.国债收益率,
-      r.利差,
-    ]);
+    const values = tripleData.flatMap((r) => [r.股息率, r.国债收益率, r.利差]);
     return Math.max(5.5, Math.ceil(finiteMax(values, 0) + 0.5));
   }, [tripleData]);
   const pctAxisMin = useMemo(() => {
-    const values = tripleData.flatMap((r) => [
-      r.股息率,
-      r.国债收益率,
-      r.利差,
-    ]);
+    const values = tripleData.flatMap((r) => [r.股息率, r.国债收益率, r.利差]);
     return Math.min(0, Math.floor(finiteMin(values, 0) - 0.5));
   }, [tripleData]);
   const allocationAdvice = dividendAllocationObservation(
@@ -720,7 +712,9 @@ export function IndexDetailPage() {
     setCompareCodes([]);
     setCompareCandidate("");
     setVisibleLineKeys(
-      spFallbackWithEtf ? new Set(["price", "tri", "hs300"]) : defaultVisibleLineKeys(def?.bars),
+      spFallbackWithEtf
+        ? new Set(["price", "tri", "hs300"])
+        : defaultVisibleLineKeys(def?.bars),
     );
   }
 
@@ -905,7 +899,7 @@ export function IndexDetailPage() {
                   </button>
                 ))}
               </div>
-              {firstPerfDate && lastPerfDate ?
+              {firstPerfDate && lastPerfDate ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <CsIndexDatePicker
                     label="开始"
@@ -927,7 +921,7 @@ export function IndexDetailPage() {
                     onChange={applyPerfEndDate}
                   />
                 </div>
-              : null}
+              ) : null}
               <p className="shrink-0 text-sm text-[var(--fin-dim)]">
                 更新日期: {latestDate}
               </p>
@@ -1206,7 +1200,8 @@ export function IndexDetailPage() {
             <p className="mt-1 text-xs fin-muted-text leading-relaxed">
               <strong>{def.meta.market === "A" ? "A 股" : "港股"}</strong>
               指数：股息率与 <strong>{bondLabel}</strong>{" "}
-              对齐至同一交易日；时间段与上方市场表现图联动，数据为指数与国债收益率序列，不含 ETF。
+              对齐至同一交易日；时间段与上方市场表现图联动，数据为指数与国债收益率序列，不含
+              ETF。
               <span className="mt-1 block text-xs fin-muted-text">
                 仅作配置观察参考，非投资建议，非交易信号。
               </span>

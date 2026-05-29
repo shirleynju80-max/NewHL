@@ -49,10 +49,7 @@ export function quoteFromLocalBars(bars: OhlcBar[]): LiveQuote | null {
     quoteTime: now,
     fetchedAt: now,
     source: "local",
-    detail:
-      last.date >= shanghaiTodayYmd()
-        ? "本地增量行情"
-        : "本地最新收盘",
+    detail: last.date >= shanghaiTodayYmd() ? "本地增量行情" : "本地最新收盘",
   };
 }
 
@@ -90,9 +87,9 @@ async function fetchQuoteFromApiUrl(url: string): Promise<LiveQuote | null> {
             ? "sina"
             : j.source === "tencent"
               ? "tencent"
-          : j.source === "api"
-            ? "api"
-            : "web",
+              : j.source === "api"
+                ? "api"
+                : "web",
       detail: j.detail,
     };
   } catch {

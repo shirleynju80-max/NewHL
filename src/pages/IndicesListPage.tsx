@@ -148,7 +148,8 @@ function listMetricSeriesForIndex(
   primaryEtf: EtfDefinition | undefined,
 ): DateValuePoint[] {
   const tri = indexSeriesForMode(def.bars, "tri");
-  if (tri.length || !SP_INDEX_ETF_PROXY_CODES.has(def.meta.index_code)) return tri;
+  if (tri.length || !SP_INDEX_ETF_PROXY_CODES.has(def.meta.index_code))
+    return tri;
   return etfCloseSeries(primaryEtf);
 }
 
@@ -277,9 +278,8 @@ export function IndicesListPage() {
   const [inceptionFilter, setInceptionFilter] =
     useState<InceptionFilter>("all");
 
-  const [divYieldMeta, setDivYieldMeta] = useState<RedrocketDivYieldMeta | null>(
-    null,
-  );
+  const [divYieldMeta, setDivYieldMeta] =
+    useState<RedrocketDivYieldMeta | null>(null);
 
   useEffect(() => {
     if (publicCsvAutoLoading) return;
@@ -322,10 +322,7 @@ export function IndicesListPage() {
         return meetsInceptionMin(ix.meta.inception_date, opt.minYears);
       })
       .filter((ix) => {
-        const primary = primaryProductForIndex(
-          etfProducts,
-          ix.meta.index_code,
-        );
+        const primary = primaryProductForIndex(etfProducts, ix.meta.index_code);
         return indexMatchesSearch(
           ix.meta.index_code,
           ix.meta.name,
@@ -379,8 +376,7 @@ export function IndicesListPage() {
           "zh-Hans-CN",
         );
         diff = sort.dir === "asc" ? cmp : -cmp;
-      }
-      else if (sort.key === "baseDate")
+      } else if (sort.key === "baseDate")
         diff = compare(
           dateToSortValue(a.baseDate),
           dateToSortValue(b.baseDate),
@@ -504,7 +500,7 @@ export function IndicesListPage() {
               spellCheck={false}
             />
           </label>
-          {hasActiveFilters ?
+          {hasActiveFilters ? (
             <button
               type="button"
               className="fin-chip-filter px-3 py-2 text-sm"
@@ -517,7 +513,7 @@ export function IndicesListPage() {
             >
               重置筛选
             </button>
-          : null}
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
@@ -535,7 +531,9 @@ export function IndicesListPage() {
                 onClick={() => setDimension(id)}
                 className={`fin-chip-filter ${dimension === id ? "fin-chip-filter-active" : ""}`}
               >
-                {id === "all" ? "全部" : CONFIG_DIMENSION_OPTIONS.find((o) => o.id === id)?.title}
+                {id === "all"
+                  ? "全部"
+                  : CONFIG_DIMENSION_OPTIONS.find((o) => o.id === id)?.title}
                 <FilterChipCount
                   count={countFilteredIndices(
                     indices,
@@ -618,9 +616,9 @@ export function IndicesListPage() {
           </button>
         </div>
 
-        {hasActiveFilters ?
+        {hasActiveFilters ? (
           <p className="text-xs fin-muted-text">当前 {rows.length} 个指数</p>
-        : null}
+        ) : null}
       </section>
 
       {publicCsvAutoLoading ? (
@@ -643,11 +641,11 @@ export function IndicesListPage() {
                 {!compactTable ? (
                   <th className="px-3 py-2 font-normal">风格</th>
                 ) : null}
-                {!compactTable ?
-                  sortableTh("baseDate", "基日", {
-                    title: "指数基日（编制方案）",
-                  })
-                : null}
+                {!compactTable
+                  ? sortableTh("baseDate", "基日", {
+                      title: "指数基日（编制方案）",
+                    })
+                  : null}
                 {sortableTh("inceptionDate", "成立日", {
                   title: "指数正式发布/成立日（indices.csv inception_date）",
                 })}
@@ -656,19 +654,27 @@ export function IndicesListPage() {
                 {!compactTable ? sortableTh("annualVolPct", "波动") : null}
                 {sortableTh("sharpeLike", "收益/波动", {
                   title: "年化收益 ÷ 年化波动，类夏普，非无风险夏普",
-                  className: compactTable ? "px-2 py-2 font-normal text-right w-[4.5rem]" : undefined,
+                  className: compactTable
+                    ? "px-2 py-2 font-normal text-right w-[4.5rem]"
+                    : undefined,
                 })}
                 {sortableTh("calmarLike", "卡玛")}
-                <th className={`font-normal ${compactTable ? "px-2 py-2 w-[4.5rem]" : "px-3 py-2"}`}>
+                <th
+                  className={`font-normal ${compactTable ? "px-2 py-2 w-[4.5rem]" : "px-3 py-2"}`}
+                >
                   股息率
                 </th>
-                <th className={`font-normal ${compactTable ? "px-2 py-2 w-[5.5rem]" : "px-3 py-2"}`}>
+                <th
+                  className={`font-normal ${compactTable ? "px-2 py-2 w-[5.5rem]" : "px-3 py-2"}`}
+                >
                   主跟踪
                 </th>
                 {!compactTable ? (
                   <th className="px-3 py-2 font-normal">状态</th>
                 ) : null}
-                <th className={`font-normal ${compactTable ? "px-2 py-2 w-[5.5rem]" : "px-3 py-2"}`}>
+                <th
+                  className={`font-normal ${compactTable ? "px-2 py-2 w-[5.5rem]" : "px-3 py-2"}`}
+                >
                   操作
                 </th>
               </tr>
@@ -697,9 +703,9 @@ export function IndicesListPage() {
                     <tr
                       key={def.meta.index_code}
                       className={
-                        shortInception ?
-                          "fin-row-hover fin-row-inception-short"
-                        : "fin-row-hover"
+                        shortInception
+                          ? "fin-row-hover fin-row-inception-short"
+                          : "fin-row-hover"
                       }
                     >
                       <td className="px-3 py-2">
@@ -724,19 +730,19 @@ export function IndicesListPage() {
                           {tags.slice(0, 2).join("、") || "—"}
                         </td>
                       ) : null}
-                      {!compactTable ?
+                      {!compactTable ? (
                         <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
                           {fmtMetaDate(baseDate)}
                         </td>
-                      : null}
+                      ) : null}
                       <td
                         className={`px-3 py-2 font-mono text-xs whitespace-nowrap ${
                           shortInception ? "fin-inception-date-short" : ""
                         }`}
                         title={
-                          shortInception && inceptionYears != null ?
-                            `成立约 ${inceptionYears.toFixed(1)} 年（不足 ${SHORT_INCEPTION_YEARS} 年）`
-                          : undefined
+                          shortInception && inceptionYears != null
+                            ? `成立约 ${inceptionYears.toFixed(1)} 年（不足 ${SHORT_INCEPTION_YEARS} 年）`
+                            : undefined
                         }
                       >
                         {fmtMetaDate(inceptionDate)}
@@ -758,10 +764,14 @@ export function IndicesListPage() {
                       <td className="px-3 py-2 font-mono text-xs">
                         {fmtRatio(mb.calmar)}
                       </td>
-                      <td className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}>
+                      <td
+                        className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}
+                      >
                         {divYield != null ? fmtPctCell(divYield) : "—"}
                       </td>
-                      <td className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}>
+                      <td
+                        className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}
+                      >
                         {primary ? (
                           <EtfProductCodeLink
                             product={primary}
@@ -827,7 +837,8 @@ export function IndicesListPage() {
             <span className="block">{INDEX_META_DATE_FOOTNOTE}</span>
             <span className="block">{divYieldFootnote}</span>
             <span className="block">
-              标普港股通红利低波指数、标普中国A股大盘红利低波50指数暂未获取数据，用跟踪的 ETF 行情数据替代。
+              标普港股通红利低波指数、标普中国A股大盘红利低波50指数暂未获取数据，用跟踪的
+              ETF 行情数据替代。
             </span>
             <span className="block">
               <span className="font-semibold text-[var(--fin-muted)]">

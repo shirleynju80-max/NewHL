@@ -1,11 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { Link } from "react-router-dom";
 import { useDataSource } from "../context/DataSourceContext";
 import type { EtfDefinition } from "../types";
-import { groupEtfProductsByIndex, type EtfProductRecord } from "../lib/etfProducts";
+import {
+  groupEtfProductsByIndex,
+  type EtfProductRecord,
+} from "../lib/etfProducts";
 import { compareDefinitions, type SeriesMetricBlock } from "../lib/compareEtfs";
 import { formatPct, formatPctValue } from "../lib/formatDisplay";
-import { sliceBarsForWindow, type MetricWindowId } from "../lib/indexPanelMetrics";
+import {
+  sliceBarsForWindow,
+  type MetricWindowId,
+} from "../lib/indexPanelMetrics";
 
 function fmtPctCell(v: number | null | undefined): string {
   return formatPct(v);
@@ -226,7 +238,9 @@ function CompactPoolRow({
               <span className="font-mono font-medium text-[var(--fin-text)]">
                 {code}
               </span>
-              <span className="truncate">{shortEtfLabel(item.product.name, code)}</span>
+              <span className="truncate">
+                {shortEtfLabel(item.product.name, code)}
+              </span>
             </label>
           );
         })}
@@ -536,11 +550,7 @@ export function EtfCompareWorkbench() {
         {summaryCards.length > 0 && (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {summaryCards.map((card) => (
-              <a
-                key={card.title}
-                href={card.href}
-                className="fin-summary-card"
-              >
+              <a key={card.title} href={card.href} className="fin-summary-card">
                 {card.tone === "good" ? (
                   <span className="fin-summary-tone-badge fin-summary-tone-badge--good">
                     分散尚可
@@ -579,7 +589,7 @@ export function EtfCompareWorkbench() {
           </h2>
           <p className="text-[11px] fin-muted-text">
             主跟踪 · {poolComparableCount} 只可对比
-            {compareCodes.length > 0 ?
+            {compareCodes.length > 0 ? (
               <>
                 {" "}
                 · 已选 {compareCodes.length}
@@ -591,11 +601,13 @@ export function EtfCompareWorkbench() {
                   清空
                 </button>
               </>
-            : null}
+            ) : null}
           </p>
         </div>
         {etfProducts.length === 0 ? (
-          <p className="mt-3 text-sm fin-muted-text">暂无观察池产品，请确认数据已加载。</p>
+          <p className="mt-3 text-sm fin-muted-text">
+            暂无观察池产品，请确认数据已加载。
+          </p>
         ) : (
           <div className="compare-pool-shell mt-2 px-2">
             <CompactPoolRow

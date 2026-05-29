@@ -39,10 +39,7 @@ export function EtfProductDetailLink({
     );
   }
   return (
-    <Link
-      to={`/etf/${encodeURIComponent(product.code)}`}
-      className={className}
-    >
+    <Link to={`/etf/${encodeURIComponent(product.code)}`} className={className}>
       产品详情
     </Link>
   );

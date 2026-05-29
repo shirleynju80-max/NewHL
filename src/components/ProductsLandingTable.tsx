@@ -23,7 +23,9 @@ function statusClass(tone: ReturnType<typeof productSelectionDataStatusTone>) {
 }
 
 function dimensionChipLabel(group: EtfProductsByIndexGroup): string {
-  return ETF_PRODUCT_GROUP_LABELS[group.productGroup]?.title ?? group.productGroup;
+  return (
+    ETF_PRODUCT_GROUP_LABELS[group.productGroup]?.title ?? group.productGroup
+  );
 }
 
 export function EtfSelectionGuide() {
@@ -34,22 +36,28 @@ export function EtfSelectionGuide() {
       </h2>
       <ul className="grid gap-2 text-xs leading-relaxed sm:grid-cols-2 lg:grid-cols-3">
         <li>
-          <strong className="text-[var(--fin-text)]">规模</strong> — 过小需关注清盘与流动性。
+          <strong className="text-[var(--fin-text)]">规模</strong> —
+          过小需关注清盘与流动性。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">费率</strong> — 同指数下比综合费率。
+          <strong className="text-[var(--fin-text)]">费率</strong> —
+          同指数下比综合费率。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">成立时间</strong> — 首交易日越早，历史样本通常越长。
+          <strong className="text-[var(--fin-text)]">成立时间</strong> —
+          首交易日越早，历史样本通常越长。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">流动性</strong> — 暂未接入。
+          <strong className="text-[var(--fin-text)]">流动性</strong> —
+          暂未接入。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">折溢价</strong> — 暂未接入。
+          <strong className="text-[var(--fin-text)]">折溢价</strong> —
+          暂未接入。
         </li>
         <li>
-          <strong className="text-[var(--fin-text)]">跟踪误差</strong> — 暂未接入。
+          <strong className="text-[var(--fin-text)]">跟踪误差</strong> —
+          暂未接入。
         </li>
       </ul>
     </section>
@@ -67,7 +75,10 @@ function CandidateReasonTags({
   if (p.isPrimary && !tags.includes("主产品")) {
     tags.unshift("主产品");
   }
-  if (isQuantRepresentative(dividendPool, p.code) && !tags.includes("量化代表")) {
+  if (
+    isQuantRepresentative(dividendPool, p.code) &&
+    !tags.includes("量化代表")
+  ) {
     tags.push("量化代表");
   }
   if (tags.length === 0) {
@@ -175,11 +186,15 @@ function IndexCandidateCompareTable({
         {products.map((p) => {
           const etf = getEtf(p.code);
           const tone = productSelectionDataStatusTone(p.dataStatus);
-          const firstTrade = etf ? etfListingStartDate(etf, p) : p.firstTradeDate;
+          const firstTrade = etf
+            ? etfListingStartDate(etf, p)
+            : p.firstTradeDate;
           return (
             <tr key={p.code} className="fin-row-hover">
               <td className="px-3 py-2 align-top">
-                <span className="font-mono text-sm font-semibold">{p.code}</span>
+                <span className="font-mono text-sm font-semibold">
+                  {p.code}
+                </span>
                 <p className="mt-0.5 line-clamp-1 fin-muted-text">{p.name}</p>
               </td>
               <td className="px-3 py-2 align-top">
@@ -191,7 +206,9 @@ function IndexCandidateCompareTable({
               <td className="px-3 py-2 text-right align-top">
                 <ProductFeeCell p={p} />
               </td>
-              <td className="px-3 py-2 font-mono align-top">{firstTrade ?? "—"}</td>
+              <td className="px-3 py-2 font-mono align-top">
+                {firstTrade ?? "—"}
+              </td>
               <td className="px-3 py-2 align-top">
                 <span className={statusClass(tone)}>
                   {productSelectionDataStatusHint(p.dataStatus)}
@@ -221,15 +238,17 @@ function IndexCandidatePanel({ group }: { group: EtfProductsByIndexGroup }) {
             </h3>
             <span className="products-tag">{dimensionChipLabel(group)}</span>
           </div>
-          <p className="mt-1 font-mono text-xs fin-muted-text">{group.indexCode}</p>
+          <p className="mt-1 font-mono text-xs fin-muted-text">
+            {group.indexCode}
+          </p>
           <p className="mt-1.5 text-xs fin-muted-text">
             {group.products.length} 只候选 ETF
-            {primary ?
+            {primary ? (
               <span className="text-[var(--fin-blue)]">
                 {" "}
                 · 主跟踪 {primary.code}
               </span>
-            : null}
+            ) : null}
           </p>
         </div>
         <Link
@@ -284,7 +303,8 @@ export function EtfProductsDataFootnote({
 }) {
   return (
     <p className="text-xs leading-relaxed fin-muted-text">
-      规模、综合费率更新至 {dataUpdatedAt ?? "—"}。候选理由来自产品备注；首交易日以产品登记为准，缺失时用本地行情首日。
+      规模、综合费率更新至 {dataUpdatedAt ?? "—"}
+      。候选理由来自产品备注；首交易日以产品登记为准，缺失时用本地行情首日。
     </p>
   );
 }

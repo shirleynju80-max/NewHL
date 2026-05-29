@@ -23,8 +23,15 @@ import {
   type LiveQuote,
 } from "../lib/liveQuote";
 import { getProductParamVariants } from "../lib/paramVariants";
-import { computeSignals, mergeIntraday1345, usesBollStrategy } from "../lib/strategy";
-import { strategyKindLabel, variantMonitorCompact } from "../lib/strategyLabels";
+import {
+  computeSignals,
+  mergeIntraday1345,
+  usesBollStrategy,
+} from "../lib/strategy";
+import {
+  strategyKindLabel,
+  variantMonitorCompact,
+} from "../lib/strategyLabels";
 import {
   metricOhlcForIndexRow,
   SP_INDEX_ETF_PROXY_FOOTNOTE,
@@ -134,7 +141,13 @@ function dimensionLabel(dimension: FocusItem["dimension"]): string {
 
 function metricForWindow(bars: OhlcBar[], years: number): WindowMetric {
   if (bars.length < 2) {
-    return { annualReturnPct: null, maxDrawdownPct: null, annualVolPct: null, start: "—", end: "—" };
+    return {
+      annualReturnPct: null,
+      maxDrawdownPct: null,
+      annualVolPct: null,
+      start: "—",
+      end: "—",
+    };
   }
   const end = bars[bars.length - 1]!.date;
   const cut = new Date(end);
@@ -142,13 +155,21 @@ function metricForWindow(bars: OhlcBar[], years: number): WindowMetric {
   const cutStr = cut.toISOString().slice(0, 10);
   const slice = bars.filter((b) => b.date >= cutStr);
   if (slice.length < 40) {
-    return { annualReturnPct: null, maxDrawdownPct: null, annualVolPct: null, start: "—", end };
+    return {
+      annualReturnPct: null,
+      maxDrawdownPct: null,
+      annualVolPct: null,
+      start: "—",
+      end,
+    };
   }
   const first = slice[0]!;
   const last = slice[slice.length - 1]!;
   const nYears = (slice.length - 1) / 252;
   const annualReturnPct =
-    nYears > 0 ? (Math.pow(last.close / first.close, 1 / nYears) - 1) * 100 : null;
+    nYears > 0
+      ? (Math.pow(last.close / first.close, 1 / nYears) - 1) * 100
+      : null;
   let peak = first.close;
   let maxDd = 0;
   for (const b of slice) {
@@ -190,7 +211,8 @@ function zoneClass(label: string): string {
 
 function strategyStyle(summary: BacktestSummary): string {
   if (summary.roundCount < 2 || summary.excessReturnPct <= 3) return "长期持有";
-  if (summary.excessReturnPct >= 20 && summary.roundCount >= 3) return "择时高超额";
+  if (summary.excessReturnPct >= 20 && summary.roundCount >= 3)
+    return "择时高超额";
   if (summary.avgHoldDays > 0 && summary.avgHoldDays <= 30) return "短波段";
   return "长波段";
 }
@@ -208,7 +230,11 @@ function strategyRowsForEtf(
   const merged = snap ? mergeIntraday1345(etf.bars, snap) : etf.bars;
   return getProductParamVariants(etf, product, entries)
     .map((variant) => {
-      const signals = computeSignals(etf.bars, variant.params, variant.strategyId);
+      const signals = computeSignals(
+        etf.bars,
+        variant.params,
+        variant.strategyId,
+      );
       const trades = buildTrades(
         etf.bars,
         signals,
@@ -221,7 +247,8 @@ function strategyRowsForEtf(
       const nYears = (etf.bars.length - 1) / 252;
       const strategyAnnualPct =
         nYears > 0
-          ? (Math.pow(1 + summary.strategyReturnPct / 100, 1 / nYears) - 1) * 100
+          ? (Math.pow(1 + summary.strategyReturnPct / 100, 1 / nYears) - 1) *
+            100
           : null;
       const intradayCtx = strategyPercentileContext(
         etf.bars,
@@ -334,10 +361,12 @@ function buildIndexMatrixRows(focusRows: FocusRow[]): IndexMatrixRow[] {
 }
 
 function FeaturedIndexMatrix({ focusRows }: { focusRows: FocusRow[] }) {
-  const [sort, setSort] = useState<{ key: MatrixSortKey; dir: "asc" | "desc" }>({
-    key: "y5_ret",
-    dir: "desc",
-  });
+  const [sort, setSort] = useState<{ key: MatrixSortKey; dir: "asc" | "desc" }>(
+    {
+      key: "y5_ret",
+      dir: "desc",
+    },
+  );
 
   const matrixRows = useMemo(
     () => buildIndexMatrixRows(focusRows),
@@ -383,7 +412,10 @@ function FeaturedIndexMatrix({ focusRows }: { focusRows: FocusRow[] }) {
       if (prev.key === key)
         return { key, dir: prev.dir === "asc" ? "desc" : "asc" };
       const defaultDir =
-        key === "indexCode" || key === "dimension" || key.endsWith("_dd") || key.endsWith("_vol")
+        key === "indexCode" ||
+        key === "dimension" ||
+        key.endsWith("_dd") ||
+        key.endsWith("_vol")
           ? "asc"
           : "desc";
       return { key, dir: defaultDir };
@@ -421,15 +453,24 @@ function FeaturedIndexMatrix({ focusRows }: { focusRows: FocusRow[] }) {
           指数表现矩阵
         </h2>
         <p className="mt-1 text-xs fin-muted-text">
-          优先使用指数全收益序列；标普指数无本地序列时以主跟踪 ETF 收盘价代理。空值代表该指数历史长度不足以计算对应窗口。点击表头排序。
+          优先使用指数全收益序列；标普指数无本地序列时以主跟踪 ETF
+          收盘价代理。空值代表该指数历史长度不足以计算对应窗口。点击表头排序。
         </p>
       </header>
       <div className="overflow-x-auto">
         <table className="min-w-[1080px] w-full text-xs">
           <thead>
             <tr className="fin-table-head">
-              {sortableTh("indexCode", "指数 / 主 ETF", "px-4 py-2 text-left font-normal")}
-              {sortableTh("dimension", "维度", "px-3 py-2 text-left font-normal")}
+              {sortableTh(
+                "indexCode",
+                "指数 / 主 ETF",
+                "px-4 py-2 text-left font-normal",
+              )}
+              {sortableTh(
+                "dimension",
+                "维度",
+                "px-3 py-2 text-left font-normal",
+              )}
               {WINDOWS.map((w) => (
                 <th
                   key={w.id}
@@ -449,8 +490,16 @@ function FeaturedIndexMatrix({ focusRows }: { focusRows: FocusRow[] }) {
                   "年化",
                   "border-l border-fin-border px-3 py-2 text-right font-normal",
                 ),
-                sortableTh(`${w.id}_dd`, "回撤", "px-3 py-2 text-right font-normal"),
-                sortableTh(`${w.id}_vol`, "波动", "px-3 py-2 text-right font-normal"),
+                sortableTh(
+                  `${w.id}_dd`,
+                  "回撤",
+                  "px-3 py-2 text-right font-normal",
+                ),
+                sortableTh(
+                  `${w.id}_vol`,
+                  "波动",
+                  "px-3 py-2 text-right font-normal",
+                ),
               ])}
             </tr>
           </thead>
@@ -549,11 +598,15 @@ export function FeaturedTrackingPage() {
       focusRows.map(async (row) => {
         if (!row.product || !row.etf?.bars.length) return null;
         const quote = await fetchLiveQuote(row.product.code, row.etf.bars);
-        return quote ? [row.product.code, quote] as const : null;
+        return quote ? ([row.product.code, quote] as const) : null;
       }),
     ).then((items) => {
       if (cancelled) return;
-      setQuotes(Object.fromEntries(items.filter((x): x is [string, LiveQuote] => Boolean(x))));
+      setQuotes(
+        Object.fromEntries(
+          items.filter((x): x is [string, LiveQuote] => Boolean(x)),
+        ),
+      );
     });
     return () => {
       cancelled = true;
@@ -576,9 +629,7 @@ export function FeaturedTrackingPage() {
 
       <FeaturedActionSummary groups={strategyGroups} />
 
-      <EtfStrategySection
-        groups={strategyGroups}
-      />
+      <EtfStrategySection groups={strategyGroups} />
 
       <FeaturedIndexMatrix focusRows={focusRows} />
 
@@ -601,7 +652,12 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
           })),
       );
       const codes = Array.from(new Set(matched.map((m) => m.code)));
-      return { label, strategyCount: matched.length, etfCount: codes.length, codes };
+      return {
+        label,
+        strategyCount: matched.length,
+        etfCount: codes.length,
+        codes,
+      };
     });
   }, [groups]);
 
@@ -616,7 +672,10 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
             按已登记 ETF 策略的盘中标尺归类；先看区间，再看下方明细。
           </p>
         </div>
-        <Link to="/monitor" className="fin-btn-secondary rounded-full px-3 py-1.5 text-xs">
+        <Link
+          to="/monitor"
+          className="fin-btn-secondary rounded-full px-3 py-1.5 text-xs"
+        >
           打开盘中监控
         </Link>
       </div>
@@ -644,11 +703,7 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
   );
 }
 
-function EtfStrategySection({
-  groups,
-}: {
-  groups: EtfStrategyGroup[];
-}) {
+function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
   const quoteSourceSuffix = (source: LiveQuote["source"] | null): string => {
     if (!source) return "";
     const sourceLabel = formatQuoteSourceLabel(source);
@@ -664,8 +719,8 @@ function EtfStrategySection({
         </h2>
         <p className="mt-1 text-xs fin-muted-text">
           按 ETF 分组展示已登记参数；组内按超额收益降序。回测口径与 ETF
-          详情页一致；盘中信号优先使用实时价，缺失时回退最新日 K 或本地收盘。现金流类产品满
-          2 年并登记策略后会自动纳入。
+          详情页一致；盘中信号优先使用实时价，缺失时回退最新日 K
+          或本地收盘。现金流类产品满 2 年并登记策略后会自动纳入。
         </p>
       </header>
       <div className="overflow-x-auto">
@@ -779,7 +834,10 @@ function EtfStrategySection({
             })}
             {!groups.length ? (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center fin-muted-text">
+                <td
+                  colSpan={9}
+                  className="px-4 py-6 text-center fin-muted-text"
+                >
                   暂无可评估策略（需满 2 年上市且已登记参数）。
                 </td>
               </tr>

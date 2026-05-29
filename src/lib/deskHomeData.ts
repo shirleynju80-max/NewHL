@@ -99,8 +99,7 @@ export function buildCashBenchmarkComparison(
   const ddEdge =
     Math.abs(hs.maxDrawdownPct ?? 0) - Math.abs(fcf.maxDrawdownPct ?? 0);
 
-  const fcfColumnLabel =
-    fcfDef?.meta.name?.trim() || "国证自由现金流指数";
+  const fcfColumnLabel = fcfDef?.meta.name?.trim() || "国证自由现金流指数";
 
   return {
     periodLabel,

@@ -457,10 +457,10 @@ function mergeEtfMetaPair(base: EtfMeta, more: EtfMeta): EtfMeta {
         ? more.div_yield_nominal_pct
         : base.div_yield_nominal_pct,
     div_yield_source: more.div_yield_source ?? base.div_yield_source,
-    investor_channel:
-      mergeOptionalString(more.investor_channel, base.investor_channel) as
-        | EtfMeta["investor_channel"]
-        | undefined,
+    investor_channel: mergeOptionalString(
+      more.investor_channel,
+      base.investor_channel,
+    ) as EtfMeta["investor_channel"] | undefined,
     div_yield_after_tax_est_pct:
       more.div_yield_after_tax_est_pct ?? base.div_yield_after_tax_est_pct,
     tax_assumption_note: mergeOptionalString(
@@ -505,18 +505,12 @@ export function enrichEtfMetasFromProducts(
   } catch {
     return metas;
   }
-  const names = new Map(
-    products.map((p) => [p.code, p.name.trim()] as const),
-  );
+  const names = new Map(products.map((p) => [p.code, p.name.trim()] as const));
   return metas.map((m) => {
     const productName = names.get(m.code);
     if (!productName || productName === m.code) return m;
     const cur = m.name.trim();
-    if (
-      PLACEHOLDER_ETF_NAME_RE.test(cur) ||
-      !cur ||
-      cur === m.code
-    ) {
+    if (PLACEHOLDER_ETF_NAME_RE.test(cur) || !cur || cur === m.code) {
       return { ...m, name: productName };
     }
     return m;
@@ -1112,10 +1106,10 @@ export async function readFilesAsBundle(files: FileList | File[]): Promise<{
   }
   const hasMerge = Boolean(
     merge.etfsMore ||
-      merge.barsMore ||
-      merge.bondsMore ||
-      merge.fundBars ||
-      merge.etfProducts,
+    merge.barsMore ||
+    merge.bondsMore ||
+    merge.fundBars ||
+    merge.etfProducts,
   );
   const base = buildCsvBundle(
     etfs,

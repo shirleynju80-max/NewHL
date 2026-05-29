@@ -66,9 +66,7 @@ export function EtfRegisteredParamsList({
           </Link>
         )}
       </div>
-      <ul
-        className={`mt-1.5 flex flex-wrap gap-1.5 ${compact ? "" : "mt-2"}`}
-      >
+      <ul className={`mt-1.5 flex flex-wrap gap-1.5 ${compact ? "" : "mt-2"}`}>
         {variants.map((v) => {
           const reg = isUserRegisteredVariantKey(v.key);
           const label = variantMonitorCompact(v);

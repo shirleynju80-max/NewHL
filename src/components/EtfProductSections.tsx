@@ -110,8 +110,7 @@ export function ProductLandingGroup({
                 >
                   {paramVariantsSummaryLine(
                     getProductParamVariants(etf, p, entries),
-                  ) ||
-                    "—"}
+                  ) || "—"}
                 </p>
               ) : null}
             </li>

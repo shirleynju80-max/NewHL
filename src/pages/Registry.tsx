@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PageHeader } from "../components/PageHeader";
 import {
@@ -310,11 +304,7 @@ export function RegistryPage() {
       if (product?.exchange === "OTC" || product?.productGroup === "otc_fund") {
         return false;
       }
-      return etfBacktestEligible(
-        def,
-        product,
-        ETF_REGISTRY_MIN_BACKTEST_YEARS,
-      );
+      return etfBacktestEligible(def, product, ETF_REGISTRY_MIN_BACKTEST_YEARS);
     });
   }, [dataMode, selectableCodes, getEtf, etfProducts]);
 
@@ -355,8 +345,7 @@ export function RegistryPage() {
 
   const selectedBacktestEligible = useMemo(
     () =>
-      selectedDef
-        && !selectedIsOtcFund
+      selectedDef && !selectedIsOtcFund
         ? etfBacktestEligible(
             selectedDef,
             selectedProduct,
@@ -552,9 +541,7 @@ export function RegistryPage() {
       return;
     }
     if (baselineSlots.length >= MAX_CUSTOM_BASELINES) {
-      setBaselineAddError(
-        `最多添加 ${MAX_CUSTOM_BASELINES} 组自定义参数。`,
-      );
+      setBaselineAddError(`最多添加 ${MAX_CUSTOM_BASELINES} 组自定义参数。`);
       return;
     }
     if (baselineKind === "ma" && baselineForm.maFast >= baselineForm.maSlow) {
@@ -600,7 +587,13 @@ export function RegistryPage() {
       ...prev,
       [baselineKind]: [...(prev[baselineKind] ?? []), { id, committed }],
     }));
-  }, [barsForRun, baselineKind, baselineForm, trainRatioPct, baselineSlots.length]);
+  }, [
+    barsForRun,
+    baselineKind,
+    baselineForm,
+    trainRatioPct,
+    baselineSlots.length,
+  ]);
 
   const removeCustomBaseline = useCallback((id: string) => {
     setBaselineSlotsByKind((prev) => {
@@ -649,7 +642,12 @@ export function RegistryPage() {
       }
       return next;
     });
-  }, [dataMode, selectableCodes.join("|"), eligibleSelectableCodes.join("|"), searchParams]);
+  }, [
+    dataMode,
+    selectableCodes.join("|"),
+    eligibleSelectableCodes.join("|"),
+    searchParams,
+  ]);
 
   const runBacktest = useCallback(() => {
     setGridErr(null);
@@ -803,9 +801,7 @@ export function RegistryPage() {
 
       <section className="fin-panel p-5">
         {bundleLoading ? (
-          <p className="text-sm fin-muted-text">
-            正在加载站点产品与行情数据…
-          </p>
+          <p className="text-sm fin-muted-text">正在加载站点产品与行情数据…</p>
         ) : selectableCodes.length > 0 ? (
           <div className="space-y-3">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem] lg:items-end">
@@ -969,10 +965,7 @@ export function RegistryPage() {
           )}
       </section>
 
-      <details
-        id="registry-config"
-        className="fin-panel p-5"
-      >
+      <details id="registry-config" className="fin-panel p-5">
         <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
           <span className="mr-2 text-[var(--fin-dim)]">▸</span>
           <span className="fin-section-title">
@@ -1301,7 +1294,8 @@ export function RegistryPage() {
         </summary>
         <p className="mt-2 text-xs fin-muted-text">
           独立于「① 回测配置」：最多添加 <strong>{MAX_CUSTOM_BASELINES}</strong>{" "}
-          组策略参数作为对照线；添加后会在「③ 详细回测结果」对应策略表中展示为紫色对照行。
+          组策略参数作为对照线；添加后会在「③
+          详细回测结果」对应策略表中展示为紫色对照行。
           切换策略类型不会清空已添加的对照参数。
         </p>
         <RegistryCustomBaseline
@@ -1354,8 +1348,8 @@ export function RegistryPage() {
               与单标的页摘要同源：按成交重建权益曲线后统计收益、回撤、买卖笔数与持仓节奏。
               每类 Top {topN}：按<strong>全样本超额</strong>取{" "}
               {topN - Math.floor(topN / 2)} 个、按<strong>验证集超额</strong>取{" "}
-              {Math.floor(topN / 2)} 个（去重；奇数时全样本多 1 个）。例：布林带 Top
-              2 常为「全样本最优布林」（如 60/2.5）+「验证集最优布林」（如
+              {Math.floor(topN / 2)} 个（去重；奇数时全样本多 1 个）。例：布林带
+              Top 2 常为「全样本最优布林」（如 60/2.5）+「验证集最优布林」（如
               40/2）。页顶「全样本最优」徽标为 RSI/布林/MA <strong>全体</strong>
               跨类最优，勿与类内 Top 表混读。
             </p>
@@ -1432,8 +1426,9 @@ export function RegistryPage() {
             {customBaselineRows.length > 0 ? (
               <p className="fin-alert-info--compact mt-4 text-xs">
                 已添加 {customBaselineRows.length} 组自定义 Baseline（
-                {customBaselineRows.map((r) => r.label).join("、")}）。增删请前往「②
-                自定义参数对比」；网格范围请前往「① 回测配置」。
+                {customBaselineRows.map((r) => r.label).join("、")}
+                ）。增删请前往「② 自定义参数对比」；网格范围请前往「①
+                回测配置」。
               </p>
             ) : null}
 
@@ -1560,10 +1555,7 @@ export function RegistryPage() {
         )}
       </details>
 
-      <details
-        id="registry-observations"
-        className="fin-panel p-5"
-      >
+      <details id="registry-observations" className="fin-panel p-5">
         <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
           <span className="fin-section-title">
             <span className="mr-1.5 text-[var(--fin-dim)]">▸</span>④ 当前观测{" "}

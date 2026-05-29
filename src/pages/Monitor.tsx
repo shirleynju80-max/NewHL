@@ -14,7 +14,10 @@ import {
   getDeskMonitorParamVariants,
   paramVariantsSummaryLine,
 } from "../lib/paramVariants";
-import { strategyKindLabel, variantMonitorCompact } from "../lib/strategyLabels";
+import {
+  strategyKindLabel,
+  variantMonitorCompact,
+} from "../lib/strategyLabels";
 import { tryWebThenApiBars } from "../lib/marketDataSync";
 import { formatPct, formatSignedPct } from "../lib/formatDisplay";
 import { strategyPercentileContext } from "../lib/indicatorPercentile";
@@ -127,7 +130,8 @@ function DividendRegisteredParamsPanel({
           </span>
           已登记策略评估
           <span className="ml-2 font-mono text-xs font-normal fin-muted-text">
-            强超额 {pool.strongDualExcess.length} · 波段 {pool.swingCandidates.length}
+            强超额 {pool.strongDualExcess.length} · 波段{" "}
+            {pool.swingCandidates.length}
           </span>
         </span>
         <span className="text-xs fin-muted-text">
@@ -160,9 +164,7 @@ function DividendRegisteredParamsPanel({
           </ul>
         </div>
         <div>
-          <p className="text-xs font-medium text-[var(--fin-text)]">
-            波段观察
-          </p>
+          <p className="text-xs font-medium text-[var(--fin-text)]">波段观察</p>
           <p className="mt-1 text-[11px] fin-muted-text">
             条件：平均每年买卖 2 轮以上、胜率大于 60%、全样本超额为正。
           </p>
@@ -209,7 +211,7 @@ function msUntilNextShanghaiTime(hm: string): number {
     Number(shParts.find((p) => p.type === type)?.value ?? 0);
   const current =
     ((part("hour") * 60 + part("minute")) * 60 + part("second")) * 1000;
-  const target = ((hh * 60 + mm) * 60) * 1000;
+  const target = (hh * 60 + mm) * 60 * 1000;
   const day = 24 * 60 * 60 * 1000;
   const delta = target - current;
   return delta > 0 ? delta : delta + day;
@@ -237,7 +239,10 @@ function MonitorPoolSection({
 }: {
   title: string;
   items: EtfDefinition[];
-  productByCode: Map<string, { productGroup?: string; firstTradeDate?: string; listedDate?: string }>;
+  productByCode: Map<
+    string,
+    { productGroup?: string; firstTradeDate?: string; listedDate?: string }
+  >;
   selectedCodes: string[];
   onToggle: (code: string) => void;
   onSelectAll: (codes: string[]) => void;
@@ -281,9 +286,7 @@ function MonitorPoolSection({
               <li key={e.meta.code}>
                 <label
                   title={
-                    paramHint
-                      ? `${e.meta.name} · ${paramHint}`
-                      : e.meta.name
+                    paramHint ? `${e.meta.name} · ${paramHint}` : e.meta.name
                   }
                   className={`fin-monitor-pick ${checked ? "fin-monitor-pick--active" : ""}`}
                 >
@@ -321,10 +324,7 @@ export function MonitorPage() {
         .filter((c) => defCodes.includes(c)),
     [etfProducts, defCodes],
   );
-  const primaryCodeSet = useMemo(
-    () => new Set(primaryCodes),
-    [primaryCodes],
-  );
+  const primaryCodeSet = useMemo(() => new Set(primaryCodes), [primaryCodes]);
   /** 监控池勾选列表：仅主跟踪 ETF，不含同指数候选 */
   const monitorPoolDefs = useMemo(
     () => definitions.filter((d) => primaryCodeSet.has(d.meta.code)),
@@ -506,14 +506,10 @@ export function MonitorPage() {
     for (const code of pref.codes) {
       const etf = getEtf(code);
       if (!etf) continue;
-      const vars = getDeskMonitorParamVariants(
-        etf,
-        productByCode.get(code),
-      );
+      const vars = getDeskMonitorParamVariants(etf, productByCode.get(code));
       const quote = quotesByCode[code] ?? null;
       const lastClose = resolvePreviousClose(etf.bars, quote);
-      const snap =
-        quote?.price ?? pref.snapByCode[code] ?? lastClose;
+      const snap = quote?.price ?? pref.snapByCode[code] ?? lastClose;
       const quoteSource = quote?.source ?? null;
       const merged = mergeIntraday1345(etf.bars, snap);
       const block: Row[] = vars.map((v) => {
@@ -549,7 +545,14 @@ export function MonitorPage() {
       if (block.length) groups.push({ code, rows: block });
     }
     return groups;
-  }, [pref, getEtf, productByCode, quotesByCode, strongExcessSet, swingCandidateSet]);
+  }, [
+    pref,
+    getEtf,
+    productByCode,
+    quotesByCode,
+    strongExcessSet,
+    swingCandidateSet,
+  ]);
 
   const runRefresh = () => {
     setLastRun(new Date().toLocaleString("zh-CN", { hour12: false }));
@@ -605,7 +608,8 @@ export function MonitorPage() {
         description={
           <>
             用 <strong>ETF 行情价</strong>
-            可用时的行情快照更新各策略的买卖标尺；不可用时回退到最新日 K 或本地收盘。含义见下方「标尺说明」。
+            可用时的行情快照更新各策略的买卖标尺；不可用时回退到最新日 K
+            或本地收盘。含义见下方「标尺说明」。
           </>
         }
       />
@@ -790,8 +794,8 @@ export function MonitorPage() {
         )}
         {quotesFetchedAt && pref.codes.length > 0 ? (
           <p className="mt-3 border-t border-fin-border pt-3 text-center text-[10px] text-fin-muted">
-            行情数据更新：{formatQuoteFetchedAt(quotesFetchedAt)} · 每日
-            14:00 自动刷新一次 ·
+            行情数据更新：{formatQuoteFetchedAt(quotesFetchedAt)} · 每日 14:00
+            自动刷新一次 ·
             实时源优先级：东方财富、新浪、腾讯；均不可用时使用最新日 K 收盘价
           </p>
         ) : null}
@@ -804,10 +808,12 @@ export function MonitorPage() {
         </summary>
         <p className="mt-3 leading-relaxed">
           对纳入监控的 ETF，列出<strong>已登记的全部策略</strong>
-          （含 RSI、布林带等多套）在「昨日收盘 + 当前行情价」下的标尺与提醒。标尺 %
+          （含 RSI、布林带等多套）在「昨日收盘 +
+          当前行情价」下的标尺与提醒。标尺 %
           表示当前指标值在策略买、卖阈值之间的线性位置（0 贴近买侧，100
           贴近卖侧），不是历史经验分位，也<strong>不是</strong>
-          指数实时点位。RSI 按超卖到超买区间线性映射；布林按当前价在下轨到上轨之间的位置线性映射。标尺
+          指数实时点位。RSI
+          按超卖到超买区间线性映射；布林按当前价在下轨到上轨之间的位置线性映射。标尺
           ≤20% 为临近买，20%–80% 为中性，≥80% 为临近卖。
         </p>
         <div className="mt-4 flex flex-wrap items-end gap-4">

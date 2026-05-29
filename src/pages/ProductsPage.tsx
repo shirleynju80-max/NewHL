@@ -138,7 +138,7 @@ export function ProductsPage() {
               spellCheck={false}
             />
           </label>
-          {hasActiveFilters ?
+          {hasActiveFilters ? (
             <button
               type="button"
               className="fin-chip-filter px-3 py-2 text-sm"
@@ -151,7 +151,7 @@ export function ProductsPage() {
             >
               重置筛选
             </button>
-          : null}
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -188,12 +188,12 @@ export function ProductsPage() {
           </label>
         </div>
 
-        {hasActiveFilters ?
+        {hasActiveFilters ? (
           <p className="text-xs fin-muted-text">
             当前 {filterResultCount.indices} 个指数 · {filterResultCount.etfs}{" "}
             只候选 ETF
           </p>
-        : null}
+        ) : null}
       </section>
 
       <ProductsByIndexSections
