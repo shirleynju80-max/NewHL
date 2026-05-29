@@ -2,6 +2,8 @@
 
 **价值底仓配置台** — Vite + React，数据来自 `public/data/*.csv`（可选 Worker `/api/bundle`）。
 
+面向 AI 助手的项目说明（[agents.md](https://agents.md) 惯例）。细节口径以 `docs/` 为准，本文件只写高频约束与踩坑。
+
 ## 必读
 
 - [docs/project-status.md](docs/project-status.md) — 状态、口径、命令
@@ -10,11 +12,40 @@
 - [scripts/index_data_sync/README.md](scripts/index_data_sync/README.md) — 指数数据同步
 - [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md) — 部署
 
+## 常用命令
+
+```bash
+npm run dev
+npm run build                    # 改完至少跑一遍
+npm run release:worker-pages     # R2 + Worker + Pages 一键发布（需已配置 wrangler）
+```
+
+静态主路径部署见 `docs/cloudflare-deploy.md`。数据同步脚本见 `docs/project-status.md`。
+
+## Agent 行为准则（Karpathy 四条 + 开源惯例）
+
+来源：[Karpathy 关于 LLM 写代码的观察](https://x.com/karpathy/status/2015883857489522876)；社区整理 [forrestchang/andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills)。LLM Wiki 模式里用 schema 文件（如本 `AGENTS.md`）约束 agent，见 [LLM Wiki gist](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)。
+
+1. **先想清楚再写** — 显式写出假设；有多种理解时列出来，不要默默选一种；有更简单做法要说；不清楚就停下来问，不要带着困惑硬做。
+2. **简单优先** — 只实现当前需求；不为单次使用造抽象；不写未要求的“可配置/可扩展”；200 行能 50 行解决就重写。
+3. **手术式修改** — 只动与任务直接相关的行；不顺手“优化”邻近代码、注释、格式；不删用户没让删的旧死代码（可提示）；自己改动产生的无用 import 要清掉。
+4. **目标可验证** — 把“修好/加上”变成可检查的结果（如 `npm run build` 通过、某页某列可见、某 API 返回 200）；多步任务先列简短计划与每步验收方式。
+
+**渐进披露**：字段定义、部署细节、同步脚本不要堆进本文件；需要时读 `docs/` 对应文档。
+
+## 产品设计
+
+- **站在用户视角，而非开发者视角**：文案、表头、空态、错误提示回答“我能做出什么判断”，而不是“数据从哪来、用了哪个文件/接口”。
+- 页面上避免 `public/data`、`CSV`、内部字段名；代理数据、回测/监控、非投资建议等**必须对用户可见**。
+- 首屏与移动端：宁可短加载文案，也不要让用户以为“没数据”；表格首列要认得清标的名称。
+- 同一概念（如分位数、触发状态）在不同页面口径与用词要一致，降低跨页理解成本。
+
 ## 约定
 
 - 指数层：研究、全收益绩效、股息率/利差；ETF 层：产品落地与盘中执行
 - 缺数据留空，禁止对 `div_yield_nominal_pct` 前向填充
 - 勿向本仓库添加与看板无关的 openskills / 通用 agent 技能包
+- **未经用户明确要求，不要 `git commit` / `git push`**
 
 ## 接手流程
 
@@ -23,6 +54,18 @@
 3. 修改前先用 `rg` 找到唯一来源；同一文案/逻辑可能同时存在于页面、组件、数据 helper。
 4. 每次只收敛当前明确需求；UI 大改、数据爬虫、部署不要混在一个小修里。
 5. 改完至少跑 `npm run build`；涉及浏览器可见 UI 时，用本地页面复查目标元素是否消失/生效。
+
+## 本仓库踩坑（开发经验）
+
+| 现象 | 处理 |
+|------|------|
+| Safari / 微信内浏览器刷新后白屏 | `index.html` 与 `public/_headers` 的 no-cache；部署后清缓存或强刷验证 |
+| 线上“没数据”但本地有 | 确认发布链路：手工 `pages deploy` 是否带全量 `dist/data`；Git 自动构建可能缺 gitignore 的 CSV |
+| 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 首屏会先失败再回退；发布前确认 Worker 与 R2 **remote** 上传 |
+| `wrangler r2` 上传后生产仍旧数据 | 必须 `--remote`；本地 `.wrangler/` 勿提交（已 gitignore） |
+| 布林带/触发与分位数矛盾 | “当前状态”以**当前 K 线信号**为准，不要用历史最后一次非 HOLD |
+| ETF 当指数展示 | 仅允许代理场景，且页面**显式注释** |
+| 策略层文案 | 标明回测/监控，不构成投资建议 |
 
 ## 分层边界
 
