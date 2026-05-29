@@ -35,7 +35,13 @@ import {
 } from "../lib/backtestSummary";
 import { strategyPercentileContext } from "../lib/indicatorPercentile";
 import { EtfRegisteredParamsList } from "../components/EtfRegisteredParamsList";
-import { getProductParamVariants } from "../lib/paramVariants";
+import { EtfMonitorStrategyPanel } from "../components/EtfMonitorStrategyPanel";
+import { EtfPageErrorBoundary } from "../components/EtfPageErrorBoundary";
+import {
+  getDeskMonitorParamVariants,
+  getProductParamVariants,
+} from "../lib/paramVariants";
+import { getHiddenMonitorKeys } from "../lib/etfMonitorStrategyPref";
 import { formatAumCny, formatPct, formatSignedPct } from "../lib/formatDisplay";
 import {
   ETF_MIN_BACKTEST_YEARS,
@@ -64,17 +70,14 @@ import type { EtfParams, OhlcBar, TradePoint } from "../types";
 type TabId = "backtest" | "intraday" | "methodology";
 
 function tabFromSearchParam(raw: string | null): TabId | null {
-  if (
-    raw === "backtest" ||
-    raw === "intraday" ||
-    raw === "methodology"
-  )
+  if (raw === "backtest" || raw === "intraday" || raw === "methodology")
     return raw;
   if (raw === "ledger") return "backtest";
   return null;
 }
 
 const MIN_WINDOW_BARS = 25;
+const EMPTY_BARS: OhlcBar[] = [];
 
 type AdjustedBarsMetaRow = {
   code?: string;
@@ -147,11 +150,7 @@ function StrategyHoverTooltip({
   if (!date) return null;
   const ctx =
     params && strategyId && bars.length >= 3
-      ? strategyPercentileContext(
-          barsUpToDate(bars, date),
-          params,
-          strategyId,
-        )
+      ? strategyPercentileContext(barsUpToDate(bars, date), params, strategyId)
       : null;
   const position = ctx
     ? `${zoneLabelFromPercentile(ctx.percentile)} · ${formatPct(ctx.percentile)}`
@@ -248,8 +247,23 @@ function clampWindowIndices(
 
 export function EtfDashboardPage() {
   const { code } = useParams<{ code: string }>();
+  return (
+    <EtfPageErrorBoundary etfCode={code}>
+      <EtfDashboardPageInner />
+    </EtfPageErrorBoundary>
+  );
+}
+
+function EtfDashboardPageInner() {
+  const { code } = useParams<{ code: string }>();
   const { getEtf, getIndex, indexTracking, etfProducts } = useDataSource();
-  const { entries: registeredStrategies } = useStrategyRegistry();
+  const [chartsReady, setChartsReady] = useState(false);
+  useEffect(() => {
+    setChartsReady(false);
+    const id = requestAnimationFrame(() => setChartsReady(true));
+    return () => cancelAnimationFrame(id);
+  }, [code]);
+  const { entries: registeredStrategies, removeEntry } = useStrategyRegistry();
   const etf = code ? getEtf(code) : undefined;
 
   const productRecord = useMemo((): EtfProductRecord | undefined => {
@@ -257,9 +271,9 @@ export function EtfDashboardPage() {
     return etfProducts.find((p) => p.code === etf.meta.code);
   }, [etf, etfProducts]);
 
-  const [latestExDividendDate, setLatestExDividendDate] = useState<string | null>(
-    null,
-  );
+  const [latestExDividendDate, setLatestExDividendDate] = useState<
+    string | null
+  >(null);
   useEffect(() => {
     let cancelled = false;
     async function loadLatestDividendDate() {
@@ -281,9 +295,7 @@ export function EtfDashboardPage() {
         const j = (await r.json()) as AdjustedBarsMetaFile;
         const row = j.funds?.find((x) => x.code === etf.meta.code);
         if (!cancelled) {
-          setLatestExDividendDate(
-            row?.latest_ex_dividend_date?.trim() || null,
-          );
+          setLatestExDividendDate(row?.latest_ex_dividend_date?.trim() || null);
         }
       } catch {
         if (!cancelled) setLatestExDividendDate(null);
@@ -343,17 +355,40 @@ export function EtfDashboardPage() {
     setTab("backtest");
   }, [etf?.meta.code, strategyEligible, searchParams]);
 
-  const variants = useMemo(
+  const [monitorPrefTick, setMonitorPrefTick] = useState(0);
+
+  const allParamVariants = useMemo(
     () =>
-      etf ? getProductParamVariants(etf, productRecord, registeredStrategies) : [],
+      etf
+        ? getProductParamVariants(etf, productRecord, registeredStrategies)
+        : [],
     [etf, productRecord, registeredStrategies],
   );
+
+  const builtinMonitorVariants = useMemo(
+    () => (etf ? getDeskMonitorParamVariants(etf, productRecord) : []),
+    [etf, productRecord],
+  );
+
+  const variants = useMemo(() => {
+    if (!etf) return [];
+    const hidden = getHiddenMonitorKeys(etf.meta.code);
+    return allParamVariants.filter((v) => !hidden.has(v.key));
+  }, [etf?.meta.code, allParamVariants, monitorPrefTick]);
+
+  const visibleVariantKeySig = useMemo(
+    () => variants.map((v) => v.key).join("\u0001"),
+    [variants],
+  );
+
   const [variantKey, setVariantKey] = useState("");
   useEffect(() => {
     if (!etf) return;
-    const v = getProductParamVariants(etf, productRecord, registeredStrategies);
-    setVariantKey(v[0]?.key ?? "");
-  }, [etf, productRecord, registeredStrategies]);
+    setVariantKey((prev) => {
+      if (prev && variants.some((v) => v.key === prev)) return prev;
+      return variants[0]?.key ?? "";
+    });
+  }, [etf?.meta.code, visibleVariantKeySig]);
 
   const activeVariant = useMemo(() => {
     if (!variants.length) return undefined;
@@ -590,7 +625,7 @@ export function EtfDashboardPage() {
   const intradayActive = tab === "intraday";
   const liveQuote = useLiveQuote(
     etf?.meta.code,
-    etf?.bars ?? [],
+    etf?.bars ?? EMPTY_BARS,
     intradayActive,
   );
   const lastClose = etf?.bars.length
@@ -608,24 +643,35 @@ export function EtfDashboardPage() {
     return variants.map((v) => {
       const sigs = computeSignals(mergedForIntra, v.params, v.strategyId);
       const sig = latestSignal(sigs);
-      const pctCtx = strategyPercentileContext(
-        etf.bars,
-        v.params,
-        v.strategyId,
-        mergedForIntra,
-      );
-      return { v, sig, pctCtx, zoneLabel: zoneLabelFromPercentile(pctCtx?.percentile) };
+      let pctCtx = null;
+      try {
+        pctCtx = strategyPercentileContext(
+          etf.bars,
+          v.params,
+          v.strategyId,
+          mergedForIntra,
+        );
+      } catch {
+        pctCtx = null;
+      }
+      return {
+        v,
+        sig,
+        pctCtx,
+        zoneLabel: zoneLabelFromPercentile(pctCtx?.percentile),
+      };
     });
   }, [etf, variants, mergedForIntra]);
 
   const variantZoneRows = useMemo(() => {
     if (!etf?.bars.length) return [];
     return variants.map((v) => {
-      const pctCtx = strategyPercentileContext(
-        etf.bars,
-        v.params,
-        v.strategyId,
-      );
+      let pctCtx = null;
+      try {
+        pctCtx = strategyPercentileContext(etf.bars, v.params, v.strategyId);
+      } catch {
+        pctCtx = null;
+      }
       return {
         v,
         pctCtx,
@@ -753,14 +799,14 @@ export function EtfDashboardPage() {
               <div className="border-b border-fin-border pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                   <p className="text-xs text-[var(--fin-dim)]">
-                    已登记策略 · 买卖区间趋势
+                    监控策略 · 买卖区间趋势
                   </p>
                   <Link to="/monitor" className="text-[10px] fin-link">
                     盘中监控 →
                   </Link>
                 </div>
                 {variantZoneRows.length === 0 ? (
-                  <p className="mt-2 text-xs fin-muted-text">暂无已登记策略</p>
+                  <p className="mt-2 text-xs fin-muted-text">暂无监控策略</p>
                 ) : (
                   <ul className="mt-2 max-h-52 space-y-2 overflow-y-auto">
                     {variantZoneRows.map(({ v, pctCtx, zoneLabel }) => (
@@ -876,10 +922,21 @@ export function EtfDashboardPage() {
               </Link>
             </div>
           ) : null}
+          <EtfMonitorStrategyPanel
+            etfCode={etf.meta.code}
+            allVariants={allParamVariants}
+            builtinVariants={builtinMonitorVariants}
+            visibleVariants={variants}
+            activeKey={activeVariant?.key}
+            onPrefChange={() => setMonitorPrefTick((t) => t + 1)}
+            onRemoveRegistered={removeEntry}
+            onActiveKeyChange={setVariantKey}
+          />
+
           {variants.length > 0 && (
             <div className="fin-panel p-5">
               <p className="mb-3 text-xs fin-muted-text">
-                以下为已登记策略方案；切换后回测与图表将按所选方案更新。
+                切换当前回测策略；列表以「当前监控策略」为准。
               </p>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-medium uppercase tracking-wide text-[var(--fin-dim)]">
@@ -987,13 +1044,19 @@ export function EtfDashboardPage() {
             <h3 className="text-sm font-semibold text-[var(--fin-text)]">
               价格与买卖点 · 策略指标
             </h3>
-            {variants.length > 1 && activeVariant ? (
+            {!chartsReady ? (
+              <p className="text-xs fin-muted-text py-8 text-center">
+                图表加载中…
+              </p>
+            ) : null}
+            {chartsReady && variants.length > 1 && activeVariant ? (
               <div className="rounded-lg border border-fin-border bg-fin-panel-muted/90 px-3 py-2">
                 <p className="text-xs font-medium text-[var(--fin-text)]">
                   对比策略（可选，最多 3 个）
                 </p>
                 <p className="mt-0.5 text-[10px] leading-snug fin-muted-text">
-                  仅在<strong>上方价格图</strong>叠加买卖点（与下方所选时间段一致）；多选时标记会略错开，避免叠在一起。
+                  仅在<strong>上方价格图</strong>
+                  叠加买卖点（与下方所选时间段一致）；多选时标记会略错开，避免叠在一起。
                 </p>
                 <div className="mt-2 flex max-h-28 flex-wrap gap-x-3 gap-y-1.5 overflow-y-auto">
                   {variants
@@ -1029,356 +1092,362 @@ export function EtfDashboardPage() {
                 </div>
               </div>
             ) : null}
-            <div className="flex flex-col gap-2">
-              <div className="min-h-0 rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
-                <ResponsiveContainer width="100%" height={260}>
-                  <ComposedChart
-                    syncId="etfbt"
-                    data={priceChartRows}
-                    margin={chartLayout.marginPrice}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke={CHART.gridDash}
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 10, fill: CHART.axisTick }}
-                      minTickGap={28}
-                    />
-                    <YAxis
-                      yAxisId="left"
-                      domain={["auto", "auto"]}
-                      tick={{ fontSize: 11, fill: CHART.axisTick }}
-                      width={chartLayout.axisL}
-                    />
-                    <Tooltip
-                      content={(tooltipProps) => (
-                        <StrategyHoverTooltip
-                          {...tooltipProps}
-                          strategyLabel={
-                            activeVariant
-                              ? variantMonitorCompact(activeVariant)
-                              : "—"
-                          }
-                          bars={etf.bars}
-                          params={activeVariant?.params}
-                          strategyId={activeVariant?.strategyId}
-                        />
-                      )}
-                    />
-                    <Legend
-                      wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
-                      iconSize={8}
-                    />
-                    <Line
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="price"
-                      stroke="#4f46e5"
-                      dot={false}
-                      strokeWidth={2}
-                      name="收盘"
-                      isAnimationActive={false}
-                    />
-                    <Scatter
-                      yAxisId="left"
-                      name={
-                        compareProfiles.length > 0
-                          ? `买｜${legendElide(primaryLegendShort)}`
-                          : "买"
-                      }
-                      dataKey="buyMarkY"
-                      fill="#059669"
-                      shape={(p: { cx?: number; cy?: number }) => (
-                        <BuyMarker cx={p.cx} cy={p.cy} />
-                      )}
-                    />
-                    <Scatter
-                      yAxisId="left"
-                      name={
-                        compareProfiles.length > 0
-                          ? `卖｜${legendElide(primaryLegendShort)}`
-                          : "卖"
-                      }
-                      dataKey="sellMarkY"
-                      fill="#b91c1c"
-                      shape={(p: { cx?: number; cy?: number }) => (
-                        <SellMarker cx={p.cx} cy={p.cy} />
-                      )}
-                    />
-                    {compareProfiles.map((cp, i) => {
-                      const col =
-                        COMPARE_MARKER_COLORS[i] ?? COMPARE_MARKER_COLORS[0]!;
-                      return (
-                        <Scatter
-                          key={`cmp-buy-${cp.key}`}
-                          yAxisId="left"
-                          name={`买｜${legendElide(cp.label)}`}
-                          dataKey={`buyCmp${i}Y`}
-                          fill={col.buy}
-                          shape={(p: { cx?: number; cy?: number }) => (
-                            <CompareBuyMarker
-                              cx={p.cx}
-                              cy={p.cy}
-                              fill={col.buy}
-                            />
-                          )}
-                        />
-                      );
-                    })}
-                    {compareProfiles.map((cp, i) => {
-                      const col =
-                        COMPARE_MARKER_COLORS[i] ?? COMPARE_MARKER_COLORS[0]!;
-                      return (
-                        <Scatter
-                          key={`cmp-sell-${cp.key}`}
-                          yAxisId="left"
-                          name={`卖｜${legendElide(cp.label)}`}
-                          dataKey={`sellCmp${i}Y`}
-                          fill={col.sell}
-                          shape={(p: { cx?: number; cy?: number }) => (
-                            <CompareSellMarker
-                              cx={p.cx}
-                              cy={p.cy}
-                              fill={col.sell}
-                            />
-                          )}
-                        />
-                      );
-                    })}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="min-h-0 rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
-                <ResponsiveContainer width="100%" height={260}>
-                  <ComposedChart
-                    syncId="etfbt"
-                    data={chartMerged}
-                    margin={chartLayout.marginStrategy}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke={CHART.gridDash}
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 10, fill: CHART.axisTick }}
-                      minTickGap={28}
-                    />
-                    <YAxis
-                      domain={rsiMode ? [0, 100] : ["auto", "auto"]}
-                      tick={{ fontSize: 11, fill: CHART.axisTick }}
-                      width={chartLayout.axisL}
-                    />
-                    <Tooltip
-                      content={(tooltipProps) => (
-                        <StrategyHoverTooltip
-                          {...tooltipProps}
-                          strategyLabel={
-                            activeVariant
-                              ? variantMonitorCompact(activeVariant)
-                              : "—"
-                          }
-                          bars={etf.bars}
-                          params={activeVariant?.params}
-                          strategyId={activeVariant?.strategyId}
-                        />
-                      )}
-                    />
-                    <Legend />
-                    {rsiMode && rsiOb != null && rsiOs != null && (
-                      <>
-                        <ReferenceLine
-                          y={rsiOb}
-                          stroke="#fca5a5"
-                          strokeDasharray="5 5"
-                          label={{
-                            value: `超买 ${rsiOb}`,
-                            fill: "#b91c1c",
-                            fontSize: 10,
-                          }}
-                        />
-                        <ReferenceLine
-                          y={rsiOs}
-                          stroke="#86efac"
-                          strokeDasharray="5 5"
-                          label={{
-                            value: `超卖 ${rsiOs}`,
-                            fill: "#047857",
-                            fontSize: 10,
-                          }}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="rsi"
-                          stroke="#7c3aed"
-                          dot={false}
-                          strokeWidth={2}
-                          name="RSI"
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                      </>
-                    )}
-                    {bollMode && (
-                      <>
-                        <Line
-                          type="monotone"
-                          dataKey="price"
-                          stroke="#18181b"
-                          dot={false}
-                          strokeWidth={1.5}
-                          name="收盘"
-                          isAnimationActive={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="bbUpper"
-                          stroke="#94a3b8"
-                          dot={false}
-                          strokeWidth={1}
-                          name="布林上"
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="bbMid"
-                          stroke="#cbd5e1"
-                          strokeDasharray="4 4"
-                          dot={false}
-                          strokeWidth={1}
-                          name="布林中"
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                        <Line
-                          type="monotone"
-                          dataKey="bbLower"
-                          stroke="#94a3b8"
-                          dot={false}
-                          strokeWidth={1}
-                          name="布林下"
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                        <Scatter
-                          name="买"
-                          dataKey="buyMark"
-                          fill="#059669"
-                          shape={(p: { cx?: number; cy?: number }) => (
-                            <BuyMarker cx={p.cx} cy={p.cy} />
-                          )}
-                        />
-                        <Scatter
-                          name="卖"
-                          dataKey="sellMark"
-                          fill="#b91c1c"
-                          shape={(p: { cx?: number; cy?: number }) => (
-                            <SellMarker cx={p.cx} cy={p.cy} />
-                          )}
-                        />
-                      </>
-                    )}
-                    {!rsiMode && !bollMode && (
-                      <>
-                        {maCustomMode && (
-                          <Line
-                            type="monotone"
-                            dataKey="price"
-                            stroke="#a1a1aa"
-                            dot={false}
-                            strokeWidth={1}
-                            name="收盘"
-                            isAnimationActive={false}
+            {chartsReady ? (
+              <div className="flex flex-col gap-2">
+                <div className="min-h-0 rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart
+                      syncId="etfbt"
+                      data={priceChartRows}
+                      margin={chartLayout.marginPrice}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={CHART.gridDash}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: CHART.axisTick }}
+                        minTickGap={28}
+                      />
+                      <YAxis
+                        yAxisId="left"
+                        domain={["auto", "auto"]}
+                        tick={{ fontSize: 11, fill: CHART.axisTick }}
+                        width={chartLayout.axisL}
+                      />
+                      <Tooltip
+                        content={(tooltipProps) => (
+                          <StrategyHoverTooltip
+                            {...tooltipProps}
+                            strategyLabel={
+                              activeVariant
+                                ? variantMonitorCompact(activeVariant)
+                                : "—"
+                            }
+                            bars={etf.bars}
+                            params={activeVariant?.params}
+                            strategyId={activeVariant?.strategyId}
                           />
                         )}
-                        <Line
-                          type="monotone"
-                          dataKey="maFast"
-                          stroke="#f59e0b"
-                          dot={false}
-                          strokeWidth={1.5}
-                          name={maCustomMode ? "MA（自定义）" : "MA 快"}
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                        {!maCustomMode && (
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: 10, paddingTop: 4 }}
+                        iconSize={8}
+                      />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="price"
+                        stroke="#4f46e5"
+                        dot={false}
+                        strokeWidth={2}
+                        name="收盘"
+                        isAnimationActive={false}
+                      />
+                      <Scatter
+                        yAxisId="left"
+                        name={
+                          compareProfiles.length > 0
+                            ? `买｜${legendElide(primaryLegendShort)}`
+                            : "买"
+                        }
+                        dataKey="buyMarkY"
+                        fill="#059669"
+                        shape={(p: { cx?: number; cy?: number }) => (
+                          <BuyMarker cx={p.cx} cy={p.cy} />
+                        )}
+                      />
+                      <Scatter
+                        yAxisId="left"
+                        name={
+                          compareProfiles.length > 0
+                            ? `卖｜${legendElide(primaryLegendShort)}`
+                            : "卖"
+                        }
+                        dataKey="sellMarkY"
+                        fill="#b91c1c"
+                        shape={(p: { cx?: number; cy?: number }) => (
+                          <SellMarker cx={p.cx} cy={p.cy} />
+                        )}
+                      />
+                      {compareProfiles.map((cp, i) => {
+                        const col =
+                          COMPARE_MARKER_COLORS[i] ?? COMPARE_MARKER_COLORS[0]!;
+                        return (
+                          <Scatter
+                            key={`cmp-buy-${cp.key}`}
+                            yAxisId="left"
+                            name={`买｜${legendElide(cp.label)}`}
+                            dataKey={`buyCmp${i}Y`}
+                            fill={col.buy}
+                            shape={(p: { cx?: number; cy?: number }) => (
+                              <CompareBuyMarker
+                                cx={p.cx}
+                                cy={p.cy}
+                                fill={col.buy}
+                              />
+                            )}
+                          />
+                        );
+                      })}
+                      {compareProfiles.map((cp, i) => {
+                        const col =
+                          COMPARE_MARKER_COLORS[i] ?? COMPARE_MARKER_COLORS[0]!;
+                        return (
+                          <Scatter
+                            key={`cmp-sell-${cp.key}`}
+                            yAxisId="left"
+                            name={`卖｜${legendElide(cp.label)}`}
+                            dataKey={`sellCmp${i}Y`}
+                            fill={col.sell}
+                            shape={(p: { cx?: number; cy?: number }) => (
+                              <CompareSellMarker
+                                cx={p.cx}
+                                cy={p.cy}
+                                fill={col.sell}
+                              />
+                            )}
+                          />
+                        );
+                      })}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="min-h-0 rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
+                  <ResponsiveContainer width="100%" height={260}>
+                    <ComposedChart
+                      syncId="etfbt"
+                      data={chartMerged}
+                      margin={chartLayout.marginStrategy}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke={CHART.gridDash}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: CHART.axisTick }}
+                        minTickGap={28}
+                      />
+                      <YAxis
+                        domain={rsiMode ? [0, 100] : ["auto", "auto"]}
+                        tick={{ fontSize: 11, fill: CHART.axisTick }}
+                        width={chartLayout.axisL}
+                      />
+                      <Tooltip
+                        content={(tooltipProps) => (
+                          <StrategyHoverTooltip
+                            {...tooltipProps}
+                            strategyLabel={
+                              activeVariant
+                                ? variantMonitorCompact(activeVariant)
+                                : "—"
+                            }
+                            bars={etf.bars}
+                            params={activeVariant?.params}
+                            strategyId={activeVariant?.strategyId}
+                          />
+                        )}
+                      />
+                      <Legend />
+                      {rsiMode && rsiOb != null && rsiOs != null && (
+                        <>
+                          <ReferenceLine
+                            y={rsiOb}
+                            stroke="#fca5a5"
+                            strokeDasharray="5 5"
+                            label={{
+                              value: `超买 ${rsiOb}`,
+                              fill: "#b91c1c",
+                              fontSize: 10,
+                            }}
+                          />
+                          <ReferenceLine
+                            y={rsiOs}
+                            stroke="#86efac"
+                            strokeDasharray="5 5"
+                            label={{
+                              value: `超卖 ${rsiOs}`,
+                              fill: "#047857",
+                              fontSize: 10,
+                            }}
+                          />
                           <Line
                             type="monotone"
-                            dataKey="maSlow"
-                            stroke="#64748b"
+                            dataKey="rsi"
+                            stroke="#7c3aed"
                             dot={false}
-                            strokeWidth={1.5}
-                            name="MA 慢"
+                            strokeWidth={2}
+                            name="RSI"
                             connectNulls
                             isAnimationActive={false}
                           />
-                        )}
-                      </>
-                    )}
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            {barCount > MIN_WINDOW_BARS && brushData.length > 0 && (
-              <div className="rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
-                <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-[var(--fin-dim)]">
-                  选择时间段 · 拖动两端或平移滑块
-                </p>
-                {windowLabel ? (
-                  <p className="mb-2 px-1 text-[11px] font-mono fin-muted-text">
-                    当前：{windowLabel}
+                        </>
+                      )}
+                      {bollMode && (
+                        <>
+                          <Line
+                            type="monotone"
+                            dataKey="price"
+                            stroke="#18181b"
+                            dot={false}
+                            strokeWidth={1.5}
+                            name="收盘"
+                            isAnimationActive={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="bbUpper"
+                            stroke="#94a3b8"
+                            dot={false}
+                            strokeWidth={1}
+                            name="布林上"
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="bbMid"
+                            stroke="#cbd5e1"
+                            strokeDasharray="4 4"
+                            dot={false}
+                            strokeWidth={1}
+                            name="布林中"
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="bbLower"
+                            stroke="#94a3b8"
+                            dot={false}
+                            strokeWidth={1}
+                            name="布林下"
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                          <Scatter
+                            name="买"
+                            dataKey="buyMark"
+                            fill="#059669"
+                            shape={(p: { cx?: number; cy?: number }) => (
+                              <BuyMarker cx={p.cx} cy={p.cy} />
+                            )}
+                          />
+                          <Scatter
+                            name="卖"
+                            dataKey="sellMark"
+                            fill="#b91c1c"
+                            shape={(p: { cx?: number; cy?: number }) => (
+                              <SellMarker cx={p.cx} cy={p.cy} />
+                            )}
+                          />
+                        </>
+                      )}
+                      {!rsiMode && !bollMode && (
+                        <>
+                          {maCustomMode && (
+                            <Line
+                              type="monotone"
+                              dataKey="price"
+                              stroke="#a1a1aa"
+                              dot={false}
+                              strokeWidth={1}
+                              name="收盘"
+                              isAnimationActive={false}
+                            />
+                          )}
+                          <Line
+                            type="monotone"
+                            dataKey="maFast"
+                            stroke="#f59e0b"
+                            dot={false}
+                            strokeWidth={1.5}
+                            name={maCustomMode ? "MA（自定义）" : "MA 快"}
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                          {!maCustomMode && (
+                            <Line
+                              type="monotone"
+                              dataKey="maSlow"
+                              stroke="#64748b"
+                              dot={false}
+                              strokeWidth={1.5}
+                              name="MA 慢"
+                              connectNulls
+                              isAnimationActive={false}
+                            />
+                          )}
+                        </>
+                      )}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+                {barCount > MIN_WINDOW_BARS && brushData.length > 0 && (
+                  <div className="rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
+                    <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-[var(--fin-dim)]">
+                      选择时间段 · 拖动两端或平移滑块
+                    </p>
+                    {windowLabel ? (
+                      <p className="mb-2 px-1 text-[11px] font-mono fin-muted-text">
+                        当前：{windowLabel}
+                      </p>
+                    ) : null}
+                    <ResponsiveContainer width="100%" height={56}>
+                      <ComposedChart
+                        syncId="etfbt"
+                        data={brushData}
+                        margin={chartLayout.marginBrush}
+                      >
+                        <XAxis dataKey="date" hide />
+                        <YAxis hide domain={["auto", "auto"]} />
+                        <Line
+                          type="monotone"
+                          dataKey="preview"
+                          stroke="#a1a1aa"
+                          strokeWidth={1}
+                          dot={false}
+                          isAnimationActive={false}
+                        />
+                        <Brush
+                          dataKey="date"
+                          height={22}
+                          stroke="#6366f1"
+                          fill="rgb(238 242 255)"
+                          travellerWidth={9}
+                          startIndex={i0}
+                          endIndex={i1}
+                          onChange={(e: {
+                            startIndex?: number;
+                            endIndex?: number;
+                          }) => {
+                            const s = e.startIndex ?? 0;
+                            const en = e.endIndex ?? barCount - 1;
+                            const c = clampWindowIndices(barCount, s, en);
+                            setWinStartIdx((prev) =>
+                              prev === c.i0 ? prev : c.i0,
+                            );
+                            setWinEndIdx((prev) =>
+                              prev === c.i1 ? prev : c.i1,
+                            );
+                          }}
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                {barCount > 0 && barCount <= MIN_WINDOW_BARS && (
+                  <p className="text-xs fin-muted-text">
+                    历史数据过短，暂无法选择时间段（至少需要 {MIN_WINDOW_BARS}{" "}
+                    个交易日）。
                   </p>
-                ) : null}
-                <ResponsiveContainer width="100%" height={56}>
-                  <ComposedChart
-                    syncId="etfbt"
-                    data={brushData}
-                    margin={chartLayout.marginBrush}
-                  >
-                    <XAxis dataKey="date" hide />
-                    <YAxis hide domain={["auto", "auto"]} />
-                    <Line
-                      type="monotone"
-                      dataKey="preview"
-                      stroke="#a1a1aa"
-                      strokeWidth={1}
-                      dot={false}
-                      isAnimationActive={false}
-                    />
-                    <Brush
-                      dataKey="date"
-                      height={22}
-                      stroke="#6366f1"
-                      fill="rgb(238 242 255)"
-                      travellerWidth={9}
-                      startIndex={i0}
-                      endIndex={i1}
-                      onChange={(e: {
-                        startIndex?: number;
-                        endIndex?: number;
-                      }) => {
-                        const s = e.startIndex ?? 0;
-                        const en = e.endIndex ?? barCount - 1;
-                        const c = clampWindowIndices(barCount, s, en);
-                        setWinStartIdx(c.i0);
-                        setWinEndIdx(c.i1);
-                      }}
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                )}
               </div>
-            )}
-            {barCount > 0 && barCount <= MIN_WINDOW_BARS && (
-              <p className="text-xs fin-muted-text">
-                历史数据过短，暂无法选择时间段（至少需要 {MIN_WINDOW_BARS}{" "}
-                个交易日）。
-              </p>
-            )}
+            ) : null}
           </div>
           <div className="fin-panel overflow-hidden">
             <div className="border-b border-fin-border px-6 py-3">
@@ -1505,8 +1574,8 @@ export function EtfDashboardPage() {
                 盘中信号
               </h3>
               <p className="mt-1 text-xs text-fin-muted leading-relaxed">
-                以行情快照覆盖当日最后一根 K
-                的收盘；实时源不可用时回退到最新日 K 或本地收盘，对下表各策略重算信号与标尺 %（非历史分位）。
+                以行情快照覆盖当日最后一根 K 的收盘；实时源不可用时回退到最新日
+                K 或本地收盘，对下表各策略重算信号与标尺 %（非历史分位）。
               </p>
             </div>
             <IntradayQuoteBar
