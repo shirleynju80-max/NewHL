@@ -7,6 +7,7 @@ export type EtfAdjustedBarsMetaRow = {
   last_refreshed_at?: string;
   bars_rows?: number;
   overlap_mismatches?: number;
+  product_type?: string;
 };
 
 /** 历史误读 schema：部分页面曾用 funds[]；脚本实际写 etfs{code} */

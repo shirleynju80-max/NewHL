@@ -40,6 +40,8 @@ jobs:
         run: pip install requests
 
       - name: Refresh ETF adjusted bars
+        # 脚本内先抓 F10 分红、比对签名，再决定是否拉 K 线；无需单独前置任务。
+        # 默认 20 只主跟踪（19 场内 + 007751 场外分红）；R2 已 bootstrap meta 避免冷启动误判。
         run: python scripts/realtime_crawler/sync_etf_adjusted_bars.py --sleep 1.5
 
       - name: Commit adjusted data if changed

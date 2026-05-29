@@ -166,14 +166,15 @@ python3 scripts/index_data_sync/sync_h30269_dividend_yield_legulegu.py
 `fqt=1` 前复权历史序列可能整体变化。此时不能只拼接最新一行，需要用分红事件触发全量刷新。
 
 ```bash
-# 默认仅主跟踪（etf_products is_primary=true，约 19 只场内 ETF）：F10 分红送配；签名变化时刷新 barsmore
+# 默认 20 只主跟踪：19 场内 ETF 分红+前复权 K 线；007751 场外仅分红 meta（净值见 sync_otc_fund_bars_em.py）
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py
 
-# 宽扫含产品落地参考（约 27 只）
+# 宽扫含产品落地参考（约 27 只场内）
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --all-products
 
-# 强制刷新指定 ETF 的全量前复权历史
+# 强制刷新指定 ETF 的全量前复权历史；也可传场外代码仅刷分红
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880,512890 --force
+python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 007751 --dry-run
 
 # 仅验证，不写文件
 python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880 --dry-run
@@ -185,9 +186,11 @@ python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880 --dry-
 
 | 文件 | 说明 |
 |------|------|
-| `public/data/etf_dividends.csv` | ETF 分红事件：权益登记日、除息日、每份现金分红、发放日 |
+| `public/data/etf_dividends.csv` | 主跟踪场内 ETF + 场外 007751 分红事件：权益登记日、除息日、每份现金分红、发放日 |
 | `public/data/barsmore.csv` | 被刷新 ETF 的全量前复权 OHLC；加载时覆盖 `bars.csv` 同日旧值 |
-| `public/data/etf_adjusted_bars_meta.json` | 每只 ETF 分红事件签名、最近检查/刷新日期、重合历史差异数 |
+| `public/data/etf_adjusted_bars_meta.json` | 每只产品分红签名、最近检查/刷新日期；007751 标记 `product_type=otc_fund` |
+
+**无需单独前置任务**：脚本对每个代码先抓 F10 分红、比对 `dividend_signature`，仅签名变化（或 `pending_kline` / `--force`）时才拉 K 线。CI 跑前会从 R2 拉已有 `etf_adjusted_bars_meta.json`，避免冷启动全员误判为「新分红」。
 
 建议调度：每周或每月运行一次；红利 ETF 集中除息期（通常 1 月附近）可临时提高频率。
 如果该脚本刷新了历史，再运行 `sync_etf_realtime.py` 补当日实时快照。

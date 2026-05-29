@@ -4,6 +4,8 @@ ETF 分红事件与前复权历史全量刷新。
 
 用途：
 - 抓取东方财富基金 F10「分红送配」表，写入 public/data/etf_dividends.csv。
+- 默认覆盖 etf_products 全部 20 只主跟踪：19 只场内 ETF + 1 只场外（007751）。
+  场外仅同步分红 meta，净值仍由 sync_otc_fund_bars_em.py → fund_bars.csv。
 - 当分红/拆分事件签名变化，或传入 --force 时，用东方财富日 K fqt=1
   全量刷新该 ETF 的前复权历史行情到 public/data/barsmore.csv。
 - 现金流主跟踪 562080 / 560120 / 563990：etf_products 成立满 2 年后，
@@ -120,8 +122,8 @@ def infer_secid(code: str) -> str | None:
     return None
 
 
-def load_primary_tracking_codes() -> list[str]:
-    """etf_products is_primary=true 且可推断 secid 的主跟踪场内 ETF。"""
+def load_primary_on_exchange_codes() -> list[str]:
+    """etf_products is_primary=true 且可推断 secid 的主跟踪场内 ETF（19 只）。"""
     _, rows = read_csv(ETF_PRODUCTS)
     out: dict[str, None] = {}
     for row in rows:
@@ -131,6 +133,24 @@ def load_primary_tracking_codes() -> list[str]:
         if code and infer_secid(code):
             out.setdefault(code, None)
     return sorted(out)
+
+
+def load_primary_otc_codes() -> list[str]:
+    """etf_products is_primary=true 且无 secid 的主跟踪场外基金（如 007751）。"""
+    _, rows = read_csv(ETF_PRODUCTS)
+    out: dict[str, None] = {}
+    for row in rows:
+        if (row.get("is_primary") or "").strip().lower() != "true":
+            continue
+        code = (row.get("code") or "").strip()
+        if code and not infer_secid(code):
+            out.setdefault(code, None)
+    return sorted(out)
+
+
+def load_primary_tracking_codes() -> list[str]:
+    """兼容旧名：仅场内主跟踪。"""
+    return load_primary_on_exchange_codes()
 
 
 def load_all_product_codes(include_tracking: bool = True) -> list[str]:
@@ -551,7 +571,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="ETF 分红事件 + 前复权历史全量刷新")
     parser.add_argument(
         "--codes",
-        help="逗号分隔 ETF 代码；默认仅 etf_products 主跟踪 is_primary=true",
+        help="逗号分隔代码（场内 ETF 或场外如 007751）；默认 20 只主跟踪 is_primary=true",
     )
     parser.add_argument("--force", action="store_true", help="不管分红签名是否变化，强制全量刷新行情")
     parser.add_argument("--dry-run", action="store_true", help="只打印，不写 CSV/JSON")
@@ -593,15 +613,20 @@ def main() -> None:
     listing_dates = load_product_listing_dates()
     maturity_codes = maturity_watch_codes(args.maturity_codes)
 
-    codes = [c.strip() for c in (args.codes or "").split(",") if c.strip()]
-    if not codes:
-        if args.all_products:
-            codes = load_all_product_codes(include_tracking=not args.no_index_tracking)
-        else:
-            codes = load_primary_tracking_codes()
-    codes = sorted({c for c in codes if infer_secid(c)} | set(maturity_codes))
-    if not codes:
-        raise SystemExit("无可同步场内 ETF 代码")
+    raw_codes = [c.strip() for c in (args.codes or "").split(",") if c.strip()]
+    otc_codes: list[str] = []
+    if raw_codes:
+        codes = sorted({c for c in raw_codes if infer_secid(c)})
+        otc_codes = sorted({c for c in raw_codes if c and not infer_secid(c)})
+    elif args.all_products:
+        codes = load_all_product_codes(include_tracking=not args.no_index_tracking)
+    else:
+        codes = load_primary_on_exchange_codes()
+        otc_codes = load_primary_otc_codes()
+        codes = sorted(set(codes) | set(maturity_codes))
+    codes = sorted(set(codes))
+    if not codes and not otc_codes:
+        raise SystemExit("无可同步主跟踪代码")
 
     meta = load_meta()
     by_code_meta = meta.get("etfs") or {}
@@ -610,8 +635,11 @@ def main() -> None:
     for code, rows in barsmore.items():
         existing.setdefault(code, {}).update(rows)
 
+    all_dividend_codes = set(codes) | set(otc_codes)
     _, old_div_rows = read_csv(DIVIDENDS)
-    div_rows_kept = [r for r in old_div_rows if (r.get("etf_code") or "").strip() not in set(codes)]
+    div_rows_kept = [
+        r for r in old_div_rows if (r.get("etf_code") or "").strip() not in all_dividend_codes
+    ]
     refreshed: list[str] = []
     unchanged: list[str] = []
     errors: list[str] = []
@@ -723,6 +751,30 @@ def main() -> None:
         except Exception as exc:
             errors.append(f"{code}: {exc}")
             print(f"[{i}/{len(codes)}] {code}: ERROR {exc}")
+        time.sleep(args.sleep)
+
+    for j, code in enumerate(otc_codes, 1):
+        try:
+            prev_meta = by_code_meta.get(code) or {}
+            events = fetch_dividend_events(code)
+            sig = dividend_signature(events)
+            old_sig = prev_meta.get("dividend_signature")
+            latest_ex = events[-1]["ex_dividend_date"] if events else ""
+            div_rows_kept.extend(events)
+            by_code_meta[code] = {
+                "dividend_signature": sig,
+                "dividend_events": len(events),
+                "latest_ex_dividend_date": latest_ex,
+                "last_checked_at": date.today().isoformat(),
+                "product_type": "otc_fund",
+            }
+            print(
+                f"[otc {j}/{len(otc_codes)}] {code}: dividends={len(events)} "
+                f"latest_ex={latest_ex or '-'} sig_changed={sig != old_sig} skip_kline_otc"
+            )
+        except Exception as exc:
+            errors.append(f"{code}: {exc}")
+            print(f"[otc {j}/{len(otc_codes)}] {code}: ERROR {exc}")
         time.sleep(args.sleep)
 
     div_rows_kept.sort(key=lambda r: ((r.get("etf_code") or ""), (r.get("ex_dividend_date") or "")))

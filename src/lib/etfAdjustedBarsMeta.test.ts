@@ -24,4 +24,18 @@ describe("etfAdjustedBarsMeta", () => {
     );
     expect(latestExDividendDateForCode(meta, "513630")).toBe("2026-05-21");
   });
+
+  it("reads OTC fund ex date from etfs map", () => {
+    const meta = parseEtfAdjustedBarsMeta(
+      JSON.stringify({
+        etfs: {
+          "007751": {
+            latest_ex_dividend_date: "2026-04-18",
+            product_type: "otc_fund",
+          },
+        },
+      }),
+    );
+    expect(latestExDividendDateForCode(meta, "007751")).toBe("2026-04-18");
+  });
 });
