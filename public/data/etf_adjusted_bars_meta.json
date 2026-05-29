@@ -1,0 +1,248 @@
+{
+  "etfs": {
+    "159143": {
+      "bars_rows": 90,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "2026-05-29",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "159166": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "159201": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "159221": {
+      "bars_rows": 0,
+      "dividend_events": 3,
+      "dividend_signature": "5a9c1b3791d01e48872f57912e05eb2bb0c3803ea5cf69c933714bfd2a13fb6b",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-04-15",
+      "overlap_mismatches": 0
+    },
+    "159222": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "159232": {
+      "bars_rows": 0,
+      "dividend_events": 4,
+      "dividend_signature": "1e7a15ef997234f9ea25c62af1b0f0b87b82273938123ed3dee48d3e8176af2d",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-04-15",
+      "overlap_mismatches": 0
+    },
+    "159399": {
+      "bars_rows": 304,
+      "dividend_events": 15,
+      "dividend_signature": "021bebb741170722d5ebba9baa4f208756e61f41a1ee7bd28d6e7507b48dc8cf",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "2026-05-29",
+      "latest_ex_dividend_date": "2026-05-14",
+      "overlap_mismatches": 0
+    },
+    "159569": {
+      "bars_rows": 0,
+      "dividend_events": 2,
+      "dividend_signature": "69d6aefeca2974b63e1912a60b1448a4e0d621a70a0d2bdd674dcd169d043693",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2025-12-23",
+      "overlap_mismatches": 0
+    },
+    "159758": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "510880": {
+      "bars_rows": 0,
+      "dividend_events": 19,
+      "dividend_signature": "4f3fa9c04de8694954e64e127d0b94bedb8e8805c715faa613f87254dac26167",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-01-21",
+      "overlap_mismatches": 0
+    },
+    "512890": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "513530": {
+      "bars_rows": 0,
+      "dividend_events": 12,
+      "dividend_signature": "690998a0896b72e49dc972551548ecf668c72841f29aa78778b1cfaad7918168",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-05-18",
+      "overlap_mismatches": 0
+    },
+    "513630": {
+      "bars_rows": 0,
+      "dividend_events": 6,
+      "dividend_signature": "b408801d79d3cf7a387af5533aa969ac116d758cf48313f30a55971fedee6ce7",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-05-21",
+      "overlap_mismatches": 0
+    },
+    "513910": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "513920": {
+      "bars_rows": 0,
+      "dividend_events": 5,
+      "dividend_signature": "6ea1afd00b99c029e6f76e04f8d97b7147090bce23757b461032fd9cfc7b9377",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-01-16",
+      "overlap_mismatches": 0
+    },
+    "513950": {
+      "bars_rows": 0,
+      "dividend_events": 14,
+      "dividend_signature": "a7d42617d2ce832fd6e84f51cc399bb41591ae1c32f8d76b102e7a8954f891f7",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-02-13",
+      "overlap_mismatches": 0
+    },
+    "515080": {
+      "bars_rows": 0,
+      "dividend_events": 16,
+      "dividend_signature": "897143d7a2564a75013188f321c33616e69c84f8ef7210d408c1ac0be1bc3fe4",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-03-18",
+      "overlap_mismatches": 0
+    },
+    "515100": {
+      "bars_rows": 0,
+      "dividend_events": 2,
+      "dividend_signature": "5747fa29fb5721783ccc139474d5f467ad2ee2ec3643a766c2d5ecb8490eca3a",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2025-12-23",
+      "overlap_mismatches": 0
+    },
+    "515450": {
+      "bars_rows": 0,
+      "dividend_events": 7,
+      "dividend_signature": "1064655d954cb167f25b5853a8a728195ab82c1f8b4623635608db3b1cb70010",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2025-12-15",
+      "overlap_mismatches": 0
+    },
+    "520550": {
+      "bars_rows": 0,
+      "dividend_events": 13,
+      "dividend_signature": "0f6868a722843d51cce488560a2e9fb7fd824e6eb56babb6df2f9248141f1399",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-05-20",
+      "overlap_mismatches": 0
+    },
+    "520610": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "560120": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "561580": {
+      "bars_rows": 0,
+      "dividend_events": 13,
+      "dividend_signature": "ab666f371b87e9d0f5f40d7911a0e7ae4941225e24af5fc72b8d264d921ba639",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-05-18",
+      "overlap_mismatches": 0
+    },
+    "562080": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "563580": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    },
+    "563900": {
+      "bars_rows": 0,
+      "dividend_events": 3,
+      "dividend_signature": "846818a0687e38af45945b7466a364bf52a3189ff981b551933f7c2af71c9088",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "2026-01-13",
+      "overlap_mismatches": 0
+    },
+    "563990": {
+      "bars_rows": 0,
+      "dividend_events": 0,
+      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "last_checked_at": "2026-05-29",
+      "last_refreshed_at": "",
+      "latest_ex_dividend_date": "",
+      "overlap_mismatches": 0
+    }
+  },
+  "updated_at": "2026-05-29"
+}
