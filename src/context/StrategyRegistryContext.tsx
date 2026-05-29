@@ -11,12 +11,34 @@ import type { UserRegisteredStrategy } from "../types";
 
 const LS_KEY = "desk.userRegisteredStrategies.v1";
 
+function sanitizeRegisteredEntries(raw: unknown): UserRegisteredStrategy[] {
+  if (!Array.isArray(raw)) return [];
+  const out: UserRegisteredStrategy[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const e = item as UserRegisteredStrategy;
+    if (
+      typeof e.id !== "string" ||
+      !e.id ||
+      typeof e.etfCode !== "string" ||
+      typeof e.strategyId !== "string" ||
+      typeof e.paramVersion !== "string" ||
+      typeof e.label !== "string" ||
+      !e.params ||
+      typeof e.params !== "object"
+    ) {
+      continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
+
 function loadFromStorage(): UserRegisteredStrategy[] {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return [];
-    const j = JSON.parse(raw) as UserRegisteredStrategy[];
-    return Array.isArray(j) ? j : [];
+    return sanitizeRegisteredEntries(JSON.parse(raw));
   } catch {
     return [];
   }

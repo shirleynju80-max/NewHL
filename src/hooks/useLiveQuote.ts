@@ -21,7 +21,7 @@ function msUntilNextShanghaiTime(hm: string): number {
     Number(parts.find((p) => p.type === type)?.value ?? 0);
   const current =
     ((part("hour") * 60 + part("minute")) * 60 + part("second")) * 1000;
-  const target = ((hh * 60 + mm) * 60) * 1000;
+  const target = (hh * 60 + mm) * 60 * 1000;
   const day = 24 * 60 * 60 * 1000;
   const delta = target - current;
   return delta > 0 ? delta : delta + day;
@@ -36,8 +36,11 @@ export function useLiveQuote(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const barCount = bars.length;
+  const lastBarDate = barCount ? bars[barCount - 1]!.date : "";
+
   const refresh = useCallback(async () => {
-    if (!code || !bars.length) {
+    if (!code || !barCount) {
       setQuote(null);
       setError(null);
       return;
@@ -53,7 +56,7 @@ export function useLiveQuote(
     } finally {
       setLoading(false);
     }
-  }, [code, bars]);
+  }, [code, barCount, lastBarDate, bars]);
 
   useEffect(() => {
     if (!enabled || !code) return;
@@ -61,10 +64,7 @@ export function useLiveQuote(
     let interval: number | null = null;
     const timeout = window.setTimeout(() => {
       void refresh();
-      interval = window.setInterval(
-        () => void refresh(),
-        24 * 60 * 60 * 1000,
-      );
+      interval = window.setInterval(() => void refresh(), 24 * 60 * 60 * 1000);
     }, msUntilNextShanghaiTime("14:00"));
     return () => {
       window.clearTimeout(timeout);
