@@ -1,5 +1,19 @@
 # Cloudflare 部署方案
 
+## 唯一发布链路：push 即部署
+
+> 常规发布**只走这一条**，不要再手工跑 `pages deploy` / `release:worker-pages` 去推生产，避免「两条链路谁先生效」的混乱与陈旧。
+
+1. **前端**：Cloudflare Pages 直连 GitHub 仓库，`main` 分支为 Production branch。push `main` → 自动 `npm run build` 并发布到生产（无需 Promote）。
+2. **数据**：`cloudflare-r2-upload` Action 在「Realtime crawler」/「Index T-1 sync」成功后自动把 `public/data/*.csv` 上传到 R2（也可 `workflow_dispatch` 手动触发）。Worker `/api/bundle` 实时从 R2 读取，前端**不打包 CSV**。
+3. **Worker**：属稳定基础设施，仅在 `workers/data-api` 改动时手动 `wrangler deploy` 一次。
+
+前置一次性配置：Pages 项目里设好构建命令 `npm run build`、输出目录 `dist`、环境变量 `VITE_DATA_API_BASE_URL`（指向 Worker）。
+
+`npm run release:worker-pages` 与 `Cloudflare Pages deploy (manual)` workflow **仅作本地/应急回退**，不是常规发布手段。
+
+---
+
 目标：
 
 - 前端公开访问：Cloudflare Pages 托管 `dist/`
@@ -68,7 +82,9 @@ VITE_DATA_API_BASE_URL=https://newhl-data-api.<your-subdomain>.workers.dev
 
 `public/_redirects` 已配置 SPA fallback，详情页刷新不会 404。
 
-### 一键发布（R2 + Worker + Pages）
+### 一键发布（R2 + Worker + Pages）——本地/应急回退
+
+> 仅在 push 即部署链路不可用（如 Pages Git 集成临时失效）时使用；正常情况下不要用它推生产。
 
 已提供发布脚本（默认使用 `newhl-data-api.shirleynju80.workers.dev`）：
 
