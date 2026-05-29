@@ -31,3 +31,6 @@ scripts/output/
 
 # Worker 子包 lock（按需本地安装）
 workers/data-api/package-lock.json
+
+# Wrangler 本地状态（miniflare / R2 模拟等）
+.wrangler/
