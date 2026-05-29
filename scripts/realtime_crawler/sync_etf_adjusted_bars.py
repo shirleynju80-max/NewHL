@@ -377,22 +377,28 @@ def main() -> None:
             needs_refresh = args.force or sig != old_sig
             mismatch_count = 0
             full_rows: list[Bar] = []
-            if needs_refresh:
+            kline_error: str | None = None
+            try:
                 full_rows = fetch_adjusted_history(code)
-            else:
-                # 事件没变时仍抽全量序列做轻量一致性判断，避免历史口径漂移没被事件捕捉。
-                full_rows = fetch_adjusted_history(code)
-                mismatch_count = bar_mismatch_count(code, full_rows, existing, args.tolerance)
-                needs_refresh = mismatch_count > 0
+                if not needs_refresh:
+                    mismatch_count = bar_mismatch_count(code, full_rows, existing, args.tolerance)
+                    needs_refresh = mismatch_count > 0
+            except Exception as exc:
+                kline_error = str(exc)
+                full_rows = []
 
             div_rows_kept.extend(events)
             latest_ex = events[-1]["ex_dividend_date"] if events else ""
+            prev_meta = by_code_meta.get(code) or {}
             if needs_refresh:
                 if full_rows:
                     barsmore[code] = {b.date: b for b in full_rows}
                     refreshed.append(code)
                 else:
-                    errors.append(f"{code}: no adjusted kline rows")
+                    errors.append(
+                        f"{code}: kline refresh failed"
+                        + (f" ({kline_error})" if kline_error else "")
+                    )
             else:
                 unchanged.append(code)
 
@@ -401,14 +407,16 @@ def main() -> None:
                 "dividend_events": len(events),
                 "latest_ex_dividend_date": latest_ex,
                 "last_checked_at": date.today().isoformat(),
-                "last_refreshed_at": date.today().isoformat() if needs_refresh else (by_code_meta.get(code) or {}).get("last_refreshed_at", ""),
+                "last_refreshed_at": date.today().isoformat()
+                if needs_refresh and full_rows
+                else prev_meta.get("last_refreshed_at", ""),
                 "bars_rows": len(full_rows),
                 "overlap_mismatches": mismatch_count,
             }
             print(
                 f"[{i}/{len(codes)}] {code}: dividends={len(events)} latest_ex={latest_ex or '-'} "
                 f"sig_changed={sig != old_sig} mismatches={mismatch_count} "
-                f"{'REFRESH' if needs_refresh else 'ok'}"
+                f"{'REFRESH' if needs_refresh and full_rows else 'kline_skip' if kline_error else 'ok'}"
             )
         except Exception as exc:
             errors.append(f"{code}: {exc}")
@@ -438,7 +446,12 @@ def main() -> None:
     print(f"written {BARS_MORE}")
     print(f"written {META}")
     if errors:
-        sys.exit(1)
+        fatal = [e for e in errors if "kline refresh failed" not in e]
+        if fatal:
+            sys.exit(1)
+        print("warnings (kline refresh skipped, dividend meta kept):")
+        for item in errors:
+            print("  " + item)
 
 
 if __name__ == "__main__":

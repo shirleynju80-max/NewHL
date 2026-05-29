@@ -7,7 +7,7 @@
 1. **前端**：push `main` → 自动构建并发布到生产。
    - **Git 直连 Pages**（Settings 里有 Builds / Connect to Git）：Cloudflare 自动 `npm run build`。
    - **Direct Upload 项目**（Settings 只有 Variables / General，无 Builds）：由 GitHub Actions [cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml) 在 push `main` 时 `npm run build` + `wrangler pages deploy`。
-2. **数据**：`cloudflare-r2-upload` Action 在「Realtime crawler」/「Index T-1 sync」成功后自动把 `public/data/*.csv` 上传到 R2（也可 `workflow_dispatch` 手动触发）。Worker `/api/bundle` 实时从 R2 读取，前端**不打包 CSV**。
+2. **数据**：`cloudflare-r2-upload` Action 在「Realtime crawler」/「Index T-1 sync」/「ETF adjusted bars refresh」成功后自动把 `public/data/*.csv` 与 `etf_adjusted_bars_meta.json` 上传到 R2（也可 `workflow_dispatch` 手动触发）。Worker `/api/bundle` 实时从 R2 读取，前端**不打包 CSV**。
 3. **Worker**：属稳定基础设施，仅在 `workers/data-api` 改动时手动 `wrangler deploy` 一次。
 
 前置一次性配置：Pages 项目里设好构建命令 `npm run build`、输出目录 `dist`、环境变量 `VITE_DATA_API_BASE_URL`（指向 Worker）。

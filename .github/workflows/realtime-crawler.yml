@@ -30,14 +30,17 @@ jobs:
       - name: Run ETF realtime crawler
         run: python scripts/realtime_crawler/sync_etf_realtime.py --skip-history
 
+      - name: Check ETF dividends and refresh adjusted bars if needed
+        run: python scripts/realtime_crawler/sync_etf_adjusted_bars.py
+
       - name: Commit realtime data if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/barsmore.csv
+          git add -f public/data/barsmore.csv public/data/etf_dividends.csv public/data/etf_adjusted_bars_meta.json
           if git diff --staged --quiet; then
-            echo "No changes to barsmore.csv"
+            echo "No changes to ETF realtime / dividend data"
           else
-            git commit -m "chore(data): run realtime crawler"
+            git commit -m "chore(data): run realtime crawler and dividend check"
             git push
           fi

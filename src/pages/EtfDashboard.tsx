@@ -79,15 +79,6 @@ function tabFromSearchParam(raw: string | null): TabId | null {
 const MIN_WINDOW_BARS = 25;
 const EMPTY_BARS: OhlcBar[] = [];
 
-type AdjustedBarsMetaRow = {
-  code?: string;
-  latest_ex_dividend_date?: string;
-};
-
-type AdjustedBarsMetaFile = {
-  funds?: AdjustedBarsMetaRow[];
-};
-
 function zoneLabelFromPercentile(p: number | null | undefined): string {
   if (p == null || Number.isNaN(p)) return "—";
   if (p <= 20) return "临近买";
@@ -256,7 +247,8 @@ export function EtfDashboardPage() {
 
 function EtfDashboardPageInner() {
   const { code } = useParams<{ code: string }>();
-  const { getEtf, getIndex, indexTracking, etfProducts } = useDataSource();
+  const { getEtf, getIndex, indexTracking, etfProducts, getLatestExDividendDate } =
+    useDataSource();
   const [chartsReady, setChartsReady] = useState(false);
   useEffect(() => {
     setChartsReady(false);
@@ -271,41 +263,10 @@ function EtfDashboardPageInner() {
     return etfProducts.find((p) => p.code === etf.meta.code);
   }, [etf, etfProducts]);
 
-  const [latestExDividendDate, setLatestExDividendDate] = useState<
-    string | null
-  >(null);
-  useEffect(() => {
-    let cancelled = false;
-    async function loadLatestDividendDate() {
-      if (!etf?.meta.code) {
-        setLatestExDividendDate(null);
-        return;
-      }
-      try {
-        const base = import.meta.env.BASE_URL || "/";
-        const prefix = base.endsWith("/") ? base : `${base}/`;
-        const r = await fetch(
-          `${prefix}data/etf_adjusted_bars_meta.json?_t=${Date.now()}`,
-          { cache: "no-store" },
-        );
-        if (!r.ok) {
-          if (!cancelled) setLatestExDividendDate(null);
-          return;
-        }
-        const j = (await r.json()) as AdjustedBarsMetaFile;
-        const row = j.funds?.find((x) => x.code === etf.meta.code);
-        if (!cancelled) {
-          setLatestExDividendDate(row?.latest_ex_dividend_date?.trim() || null);
-        }
-      } catch {
-        if (!cancelled) setLatestExDividendDate(null);
-      }
-    }
-    void loadLatestDividendDate();
-    return () => {
-      cancelled = true;
-    };
-  }, [etf?.meta.code]);
+  const latestExDividendDate = useMemo(
+    () => (etf?.meta.code ? getLatestExDividendDate(etf.meta.code) : null),
+    [etf?.meta.code, getLatestExDividendDate],
+  );
 
   const trackingIndexCode = useMemo(() => {
     if (!etf?.meta.code) return null;

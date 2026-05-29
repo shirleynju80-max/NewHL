@@ -18,6 +18,8 @@ const FILES = {
   indices: "indices.csv",
   indexBars: "index_bars.csv",
   indexTrackingEtfs: "index_tracking_etfs.csv",
+  etfDividends: "etf_dividends.csv",
+  etfAdjustedBarsMeta: "etf_adjusted_bars_meta.json",
 } as const;
 
 type FileKey = keyof typeof FILES;

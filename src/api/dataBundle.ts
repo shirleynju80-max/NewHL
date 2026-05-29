@@ -11,6 +11,8 @@ export type ApiCsvFiles = {
   indices?: string;
   indexBars?: string;
   indexTrackingEtfs?: string;
+  etfDividends?: string;
+  etfAdjustedBarsMeta?: string;
 };
 
 export type ApiCsvBundleResponse = {

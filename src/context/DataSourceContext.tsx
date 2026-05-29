@@ -41,6 +41,11 @@ import {
   parseDividendRepresentativePool,
   type DividendRepresentativePool,
 } from "../lib/dividendRepresentativePool";
+import {
+  latestExDividendDateForCode,
+  parseEtfAdjustedBarsMeta,
+  type EtfAdjustedBarsMeta,
+} from "../lib/etfAdjustedBarsMeta";
 
 type SourceKind = "mock" | "csv" | "csv_public" | "api";
 
@@ -51,6 +56,7 @@ type Ctx = {
   indexTracking: IndexTrackingRow[];
   etfProducts: EtfProductRecord[];
   dividendRepresentativePool: DividendRepresentativePool | null;
+  etfAdjustedBarsMeta: EtfAdjustedBarsMeta | null;
   indexCsvError: string | null;
   sourceKind: SourceKind;
   sourceLabel: string;
@@ -62,6 +68,7 @@ type Ctx = {
   reloadPublicCsv: () => Promise<void>;
   getEtf: (code: string) => EtfDefinition | undefined;
   getIndex: (code: string) => IndexDefinition | undefined;
+  getLatestExDividendDate: (code: string) => string | null;
 };
 
 const DataSourceContext = createContext<Ctx | null>(null);
@@ -87,6 +94,7 @@ type PublicCsvLoadResult =
       indexCsvError: string | null;
       etfProductsCsv: string | null;
       dividendRepresentativePool: DividendRepresentativePool | null;
+      etfAdjustedBarsMeta: EtfAdjustedBarsMeta | null;
     }
   | { status: "missing" }
   | { status: "error"; message: string };
@@ -98,6 +106,7 @@ type ApiDataLoadResult =
       indexCsvError: string | null;
       etfProductsCsv: string | null;
       dividendRepresentativePool: DividendRepresentativePool | null;
+      etfAdjustedBarsMeta: EtfAdjustedBarsMeta | null;
       label: string;
     }
   | { status: "missing" }
@@ -204,6 +213,9 @@ async function tryFetchApiData(): Promise<ApiDataLoadResult> {
       indexCsvError,
       etfProductsCsv: payload.files.etfProducts ?? null,
       dividendRepresentativePool: await fetchDividendRepresentativePool(),
+      etfAdjustedBarsMeta: payload.files.etfAdjustedBarsMeta?.trim()
+        ? parseEtfAdjustedBarsMeta(payload.files.etfAdjustedBarsMeta)
+        : null,
       label: payload.generatedAt
         ? `数据 API · ${payload.generatedAt.slice(0, 10)}`
         : "数据 API",
@@ -247,6 +259,9 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
     const dividendPoolText = await fetchTextIfOk(
       `${prefix}data/dividend_representative_pool.json?${bust}`,
     );
+    const adjustedMetaText = await fetchTextIfOk(
+      `${prefix}data/etf_adjusted_bars_meta.json?${bust}`,
+    );
     const hasMerge = Boolean(
       merge.etfsMore ||
       merge.barsMore ||
@@ -284,6 +299,9 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
       dividendRepresentativePool: dividendPoolText
         ? parseDividendRepresentativePool(dividendPoolText)
         : null,
+      etfAdjustedBarsMeta: adjustedMetaText
+        ? parseEtfAdjustedBarsMeta(adjustedMetaText)
+        : null,
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -301,6 +319,8 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
   const [etfProductsCsv, setEtfProductsCsv] = useState<string | null>(null);
   const [dividendRepresentativePool, setDividendRepresentativePool] =
     useState<DividendRepresentativePool | null>(null);
+  const [etfAdjustedBarsMeta, setEtfAdjustedBarsMeta] =
+    useState<EtfAdjustedBarsMeta | null>(null);
   const [indexCsvError, setIndexCsvError] = useState<string | null>(null);
   const [sourceKind, setSourceKind] = useState<SourceKind>("mock");
   const [sourceLabel, setSourceLabel] = useState<string>("示例数据");
@@ -317,6 +337,11 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
   const getIndex = useCallback(
     (code: string) => indices.find((d) => d.meta.index_code === code),
     [indices],
+  );
+
+  const getLatestExDividendDate = useCallback(
+    (code: string) => latestExDividendDateForCode(etfAdjustedBarsMeta, code),
+    [etfAdjustedBarsMeta],
   );
 
   const etfProducts = useMemo(
@@ -340,6 +365,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setIndices(bundle.indices);
       setIndexTracking(bundle.indexTracking);
       setEtfProductsCsv(null);
+      setEtfAdjustedBarsMeta(null);
       setIndexCsvError(idxErr);
       setSourceKind("csv");
       setSourceLabel("本机上传数据");
@@ -357,6 +383,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setIndices([]);
     setIndexTracking([]);
     setEtfProductsCsv(null);
+    setEtfAdjustedBarsMeta(null);
     setIndexCsvError(null);
     setSourceKind("mock");
     setSourceLabel("示例数据");
@@ -378,6 +405,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setIndexTracking(api.bundle.indexTracking);
         setEtfProductsCsv(api.etfProductsCsv);
         setDividendRepresentativePool(api.dividendRepresentativePool);
+        setEtfAdjustedBarsMeta(api.etfAdjustedBarsMeta);
         setIndexCsvError(api.indexCsvError);
         setSourceKind("api");
         setSourceLabel(api.label);
@@ -406,6 +434,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setIndexTracking(pub.bundle.indexTracking);
       setEtfProductsCsv(pub.etfProductsCsv);
       setDividendRepresentativePool(pub.dividendRepresentativePool);
+      setEtfAdjustedBarsMeta(pub.etfAdjustedBarsMeta);
       setIndexCsvError(pub.indexCsvError);
       setSourceKind("csv_public");
       setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
@@ -434,6 +463,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
         setIndexTracking(api.bundle.indexTracking);
         setEtfProductsCsv(api.etfProductsCsv);
         setDividendRepresentativePool(api.dividendRepresentativePool);
+        setEtfAdjustedBarsMeta(api.etfAdjustedBarsMeta);
         setSourceKind("api");
         setSourceLabel(api.label);
         setPublicCsvAutoLoading(false);
@@ -472,6 +502,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setIndexTracking(pub.bundle.indexTracking);
       setEtfProductsCsv(pub.etfProductsCsv);
       setDividendRepresentativePool(pub.dividendRepresentativePool);
+      setEtfAdjustedBarsMeta(pub.etfAdjustedBarsMeta);
       setSourceKind("csv_public");
       setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
       setPublicCsvAutoLoading(false);
@@ -489,6 +520,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       indexTracking,
       etfProducts,
       dividendRepresentativePool,
+      etfAdjustedBarsMeta,
       indexCsvError,
       sourceKind,
       sourceLabel,
@@ -500,6 +532,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       reloadPublicCsv,
       getEtf,
       getIndex,
+      getLatestExDividendDate,
     }),
     [
       definitions,
@@ -508,6 +541,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       indexTracking,
       etfProducts,
       dividendRepresentativePool,
+      etfAdjustedBarsMeta,
       indexCsvError,
       sourceKind,
       sourceLabel,
@@ -519,6 +553,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       reloadPublicCsv,
       getEtf,
       getIndex,
+      getLatestExDividendDate,
     ],
   );
 
