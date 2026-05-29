@@ -22,12 +22,14 @@ import hashlib
 import html
 import json
 import re
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
 
@@ -50,6 +52,9 @@ MATURITY_FIRST_BAR_SLACK_DAYS = 45
 
 HIS_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 F10_DIV_URL = "https://fundf10.eastmoney.com/fhsp_{code}.html"
+EM_UT = "fa5fd1943c7b386f172d689130dbedb1"
+KLINE_LMT = 120000
+KLINE_CHUNK_YEARS = 2
 JSON_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -246,7 +251,36 @@ def assess_maturity_full_refresh(
 
 
 def fetch_json(url: str, params: dict[str, Any]) -> dict[str, Any]:
+    """curl 优先（与 sync_etf_realtime 一致），requests 退避重试。"""
     last_error: Exception | None = None
+    full_url = f"{url}?{urlencode(params, safe=',')}"
+    try:
+        cp = subprocess.run(
+            [
+                "curl",
+                "-sS",
+                "-L",
+                full_url,
+                "-H",
+                f"User-Agent: {JSON_HEADERS['User-Agent']}",
+                "-H",
+                f"Referer: {JSON_HEADERS['Referer']}",
+                "-H",
+                "Accept: application/json, text/plain, */*",
+                "--max-time",
+                "45",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        text = cp.stdout.strip()
+        if not text:
+            raise RuntimeError("empty response")
+        return json.loads(text)
+    except Exception as exc:
+        last_error = exc
+
     for attempt in range(5):
         try:
             resp = SESSION.get(url, params=params, headers=JSON_HEADERS, timeout=45)
@@ -286,21 +320,21 @@ def fmt_price(raw: Any) -> str:
     return f"{v:.6f}".rstrip("0").rstrip(".")
 
 
-def fetch_adjusted_history(code: str, beg: str = "19900101", end: str | None = None) -> list[Bar]:
-    secid = infer_secid(code)
-    if not secid:
-        return []
-    params = {
+def kline_params(secid: str, beg: str, end: str) -> dict[str, str]:
+    return {
         "secid": secid,
+        "ut": EM_UT,
         "fields1": "f1,f2,f3,f4,f5,f6",
         "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
         "klt": "101",
         "fqt": "1",
         "beg": beg.replace("-", ""),
-        "end": (end or date.today().isoformat()).replace("-", ""),
+        "end": end.replace("-", ""),
+        "lmt": str(KLINE_LMT),
     }
-    payload = fetch_json(HIS_URL, params)
-    klines = (payload.get("data") or {}).get("klines") or []
+
+
+def parse_klines(klines: list[Any]) -> list[Bar]:
     out: list[Bar] = []
     for item in klines:
         parts = str(item).split(",")
@@ -317,6 +351,74 @@ def fetch_adjusted_history(code: str, beg: str = "19900101", end: str | None = N
             )
         )
     return out
+
+
+def history_beg_for_code(
+    code: str,
+    listing_dates: dict[str, str],
+    existing: dict[str, dict[str, Bar]],
+) -> str:
+    listing = listing_dates.get(code)
+    if listing:
+        return listing.replace("-", "")
+    _, first_bar, _ = local_bar_summary(code, existing)
+    if first_bar:
+        return first_bar.replace("-", "")
+    return "20000101"
+
+
+def fetch_kline_range(secid: str, beg: str, end: str) -> list[Bar]:
+    payload = fetch_json(HIS_URL, kline_params(secid, beg, end))
+    klines = (payload.get("data") or {}).get("klines") or []
+    return parse_klines(klines)
+
+
+def fetch_adjusted_history(
+    code: str,
+    *,
+    listing_dates: dict[str, str],
+    existing: dict[str, dict[str, Bar]],
+    end: str | None = None,
+) -> list[Bar]:
+    secid = infer_secid(code)
+    if not secid:
+        return []
+    beg = history_beg_for_code(code, listing_dates, existing)
+    end_s = (end or date.today().isoformat()).replace("-", "")
+
+    try:
+        rows = fetch_kline_range(secid, beg, end_s)
+        if rows:
+            return rows
+    except Exception:
+        pass
+
+    by_date: dict[str, Bar] = {}
+    start_year = int(beg[:4])
+    end_year = int(end_s[:4])
+    chunk_errors = 0
+    for y in range(start_year, end_year + 1, KLINE_CHUNK_YEARS):
+        chunk_beg = f"{y:04d}0101"
+        if chunk_beg < beg:
+            chunk_beg = beg
+        chunk_end_year = min(y + KLINE_CHUNK_YEARS - 1, end_year)
+        chunk_end = f"{chunk_end_year:04d}1231"
+        if chunk_end > end_s:
+            chunk_end = end_s
+        if chunk_beg > chunk_end:
+            continue
+        try:
+            for bar in fetch_kline_range(secid, chunk_beg, chunk_end):
+                by_date[bar.date] = bar
+        except Exception:
+            chunk_errors += 1
+        time.sleep(0.35)
+
+    if not by_date:
+        if chunk_errors:
+            raise RuntimeError(f"kline chunks failed ({chunk_errors} errors)")
+        return []
+    return [by_date[d] for d in sorted(by_date)]
 
 
 def parse_cash_per_unit(text: str) -> str:
@@ -466,6 +568,11 @@ def main() -> None:
     parser.add_argument("--tolerance", type=float, default=0.002, help="历史重合价格差异触发刷新阈值")
     parser.add_argument("--sleep", type=float, default=0.25, help="每个 ETF 间隔秒数")
     parser.add_argument(
+        "--check-overlap",
+        action="store_true",
+        help="分红签名未变时也拉全量 K 线做重合价校验（默认跳过，减轻限流）",
+    )
+    parser.add_argument(
         "--maturity-years",
         type=float,
         default=MATURITY_FULL_HISTORY_YEARS,
@@ -530,19 +637,35 @@ def main() -> None:
             events = fetch_dividend_events(code)
             sig = dividend_signature(events)
             old_sig = prev_meta.get("dividend_signature")
+            latest_ex = events[-1]["ex_dividend_date"] if events else ""
+            prev_latest_ex = (prev_meta.get("latest_ex_dividend_date") or "").strip()
+            prev_refreshed = (prev_meta.get("last_refreshed_at") or "").strip()
+            pending_kline = bool(events) and not prev_refreshed
             if under_maturity_threshold:
                 needs_refresh = args.force
             else:
-                needs_refresh = args.force or sig != old_sig or maturity_refresh
+                needs_refresh = (
+                    args.force
+                    or sig != old_sig
+                    or maturity_refresh
+                    or pending_kline
+                    or (bool(latest_ex) and latest_ex != prev_latest_ex)
+                )
             mismatch_count = 0
             full_rows: list[Bar] = []
             kline_error: str | None = None
-            if under_maturity_threshold and not args.force:
-                kline_error = None
-            else:
+            needs_kline = (
+                not (under_maturity_threshold and not args.force)
+                and (needs_refresh or args.check_overlap)
+            )
+            if needs_kline:
                 try:
-                    full_rows = fetch_adjusted_history(code)
-                    if not needs_refresh:
+                    full_rows = fetch_adjusted_history(
+                        code,
+                        listing_dates=listing_dates,
+                        existing=existing,
+                    )
+                    if not needs_refresh and args.check_overlap:
                         mismatch_count = bar_mismatch_count(
                             code, full_rows, existing, args.tolerance
                         )
@@ -552,7 +675,6 @@ def main() -> None:
                     full_rows = []
 
             div_rows_kept.extend(events)
-            latest_ex = events[-1]["ex_dividend_date"] if events else ""
             if needs_refresh:
                 if full_rows:
                     barsmore[code] = {b.date: b for b in full_rows}
@@ -566,8 +688,9 @@ def main() -> None:
                 unchanged.append(code)
 
             maturity_done = maturity_refresh and needs_refresh and bool(full_rows)
+            stored_sig = sig if (not needs_refresh or full_rows) else (old_sig or sig)
             by_code_meta[code] = {
-                "dividend_signature": sig,
+                "dividend_signature": stored_sig,
                 "dividend_events": len(events),
                 "latest_ex_dividend_date": latest_ex,
                 "last_checked_at": date.today().isoformat(),
@@ -590,7 +713,11 @@ def main() -> None:
                 + (
                     " skip_kline_until_2y"
                     if under_maturity_threshold and not args.force
-                    else f" {'REFRESH' if needs_refresh and full_rows else 'kline_skip' if kline_error else 'ok'}"
+                    else (
+                        " skip_kline_unchanged"
+                        if not needs_kline and not needs_refresh
+                        else f" {'REFRESH' if needs_refresh and full_rows else 'kline_skip' if kline_error else 'ok'}"
+                    )
                 )
             )
         except Exception as exc:

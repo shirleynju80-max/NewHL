@@ -40,7 +40,7 @@ jobs:
         run: pip install requests
 
       - name: Refresh ETF adjusted bars
-        run: python scripts/realtime_crawler/sync_etf_adjusted_bars.py --sleep 1.2
+        run: python scripts/realtime_crawler/sync_etf_adjusted_bars.py --sleep 1.5
 
       - name: Commit adjusted data if changed
         run: |
