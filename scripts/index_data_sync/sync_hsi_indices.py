@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INDEX_BARS = ROOT / "public" / "data" / "index_bars.csv"
 
 API_URL = "https://www.hsi.com.hk/api/wsit-hsil-hiip-ea-productdata-proxy/v1/productData/e/indexes/v1"
+LOGIN_URL = "https://www.hsi.com.hk/api/wsit-hsil-hiip-ea-public-proxy/v1/customers/e/login/v1"
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,49 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def login_access_token(username: str, password: str, lang: str = "chi") -> str:
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://www.hsi.com.hk/index360/chi/login",
+    }
+    resp = requests.post(
+        LOGIN_URL,
+        headers=headers,
+        json={"lang": lang, "username": username, "password": password},
+        timeout=45,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if payload.get("code") != 200:
+        raise RuntimeError(f"HSI login failed: {payload!r}")
+    login_data = (payload.get("data") or {}).get("loginData") or {}
+    token = str(login_data.get("accessToken") or "").strip()
+    if not token:
+        raise RuntimeError(f"HSI login returned no accessToken: {payload!r}")
+    return token
+
+
+def resolve_access_token() -> str:
+    static = os.environ.get("HSI_ACCESS_TOKEN", "").strip()
+    if static:
+        return static
+
+    username = os.environ.get("HSI_LOGIN_USERNAME", "").strip()
+    password = os.environ.get("HSI_LOGIN_PASSWORD", "").strip()
+    if not username or not password:
+        raise SystemExit(
+            "HSI credentials required: set HSI_LOGIN_USERNAME + HSI_LOGIN_PASSWORD "
+            "(preferred), or legacy HSI_ACCESS_TOKEN."
+        )
+
+    lang = os.environ.get("HSI_LOGIN_LANG", "chi").strip() or "chi"
+    token = login_access_token(username, password, lang)
+    print("HSI login succeeded; access token acquired (not logged).")
+    return token
 
 
 def fetch_daily_close(index_code: str, start_date: str, token: str) -> dict[str, float]:
@@ -82,9 +126,7 @@ def fetch_daily_close(index_code: str, start_date: str, token: str) -> dict[str,
 
 
 def main() -> None:
-    token = os.environ.get("HSI_ACCESS_TOKEN", "").strip()
-    if not token:
-        raise SystemExit("HSI_ACCESS_TOKEN is required; read it from logged-in Index360 localStorage.token")
+    token = resolve_access_token()
 
     fields, rows = read_csv(INDEX_BARS)
     required = [

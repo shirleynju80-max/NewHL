@@ -21,6 +21,8 @@ jobs:
     env:
       HSI_STALE_DAYS: "3"
       HSI_SYNC_RETRIES: "3"
+      HSI_LOGIN_USERNAME: ${{ secrets.HSI_LOGIN_USERNAME }}
+      HSI_LOGIN_PASSWORD: ${{ secrets.HSI_LOGIN_PASSWORD }}
       HSI_ACCESS_TOKEN: ${{ secrets.HSI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -32,52 +34,12 @@ jobs:
       - name: Install deps
         run: pip install requests
 
-      - name: Inspect HSI token lifetime (no token leak)
-        if: ${{ env.HSI_ACCESS_TOKEN != '' }}
-        run: |
-          python - <<'PY'
-          import base64
-          import datetime as dt
-          import json
-          import os
-
-          tok = os.environ.get("HSI_ACCESS_TOKEN", "").strip()
-          parts = tok.split(".")
-          if len(parts) < 2:
-            print("HSI token 非 JWT 结构，无法解析有效期（仅能在失效时被动发现）。")
-            raise SystemExit(0)
-          try:
-            seg = parts[1]
-            seg += "=" * (-len(seg) % 4)
-            payload = json.loads(base64.urlsafe_b64decode(seg))
-          except Exception as e:
-            print(f"HSI token payload 解析失败：{e}")
-            raise SystemExit(0)
-
-          cst = dt.timezone(dt.timedelta(hours=8))
-          now = dt.datetime.now(cst)
-          def fmt(ts):
-            return dt.datetime.fromtimestamp(int(ts), cst).strftime("%Y-%m-%d %H:%M:%S") if ts else "—"
-
-          exp = payload.get("exp")
-          iat = payload.get("iat")
-          print(f"HSI token iat(签发)={fmt(iat)} exp(过期)={fmt(exp)} 现在={now:%Y-%m-%d %H:%M:%S}")
-          if iat and exp:
-            print(f"HSI token 设计寿命 ≈ {(int(exp)-int(iat))/3600:.1f} 小时")
-          if exp:
-            remain = (int(exp) - now.timestamp()) / 3600
-            if remain <= 0:
-              print(f"::warning::HSI token 已过期 {abs(remain):.1f} 小时，本次同步将失败，请刷新 HSI_ACCESS_TOKEN。")
-            else:
-              print(f"HSI token 剩余有效 ≈ {remain:.1f} 小时")
-          PY
-
       - name: Sync index price / total return series
         run: python scripts/index_data_sync/sync_a_share_dividend_indices.py
 
       - name: Sync Hang Seng index series (optional)
         id: sync_hsi
-        if: ${{ env.HSI_ACCESS_TOKEN != '' }}
+        if: ${{ env.HSI_LOGIN_USERNAME != '' || env.HSI_ACCESS_TOKEN != '' }}
         continue-on-error: true
         run: |
           set +e
@@ -105,15 +67,15 @@ jobs:
             exit 1
           fi
 
-      - name: Warn if HSI token likely expired
-        if: ${{ env.HSI_ACCESS_TOKEN != '' && steps.sync_hsi.outcome == 'failure' }}
+      - name: Warn if HSI sync failed
+        if: ${{ (env.HSI_LOGIN_USERNAME != '' || env.HSI_ACCESS_TOKEN != '') && steps.sync_hsi.outcome == 'failure' }}
         run: |
-          echo "::warning::HSI sync failed; token likely expired or invalid. Please refresh repository secret HSI_ACCESS_TOKEN."
+          echo "::warning::HSI sync failed; check HSI_LOGIN_USERNAME/HSI_LOGIN_PASSWORD (or legacy HSI_ACCESS_TOKEN) and IndexLab account status."
 
-      - name: Warn if HSI token missing
-        if: ${{ env.HSI_ACCESS_TOKEN == '' }}
+      - name: Warn if HSI credentials missing
+        if: ${{ env.HSI_LOGIN_USERNAME == '' && env.HSI_ACCESS_TOKEN == '' }}
         run: |
-          echo "::warning::HSI_ACCESS_TOKEN is missing; Hang Seng indices will not be updated in this run."
+          echo "::warning::HSI credentials missing; set HSI_LOGIN_USERNAME + HSI_LOGIN_PASSWORD in repository secrets."
 
       - name: Sync H30269 RedRocket DID
         run: python scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
@@ -165,9 +127,8 @@ jobs:
             out.write(f"hsi_stale={'none' if not stale else stale}\n")
 
           if stale:
-            # 不再 raise，避免 HSI token 过期连带阻断当天 A 股/红色火箭数据提交。
-            # 真正过期由后续 webhook 告警驱动人工刷新 token。
-            print(f"::error::HSI 数据已过期，需刷新 HSI_ACCESS_TOKEN secret: {stale}")
+            # 不再 raise，避免 HSI 同步失败连带阻断当天 A 股/红色火箭数据提交。
+            print(f"::error::HSI 数据已过期，请检查 HSI 登录凭据或同步脚本：{stale}")
           else:
             print("HSI freshness check passed:", latest)
           PY
@@ -190,7 +151,7 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           FEISHU_BOT_SECRET: ${{ secrets.FEISHU_BOT_SECRET }}
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
-          HSI_TOKEN_PRESENT: ${{ env.HSI_ACCESS_TOKEN != '' }}
+          HSI_CREDENTIALS_PRESENT: ${{ env.HSI_LOGIN_USERNAME != '' || env.HSI_ACCESS_TOKEN != '' }}
           HSI_SYNC_OUTCOME: ${{ steps.sync_hsi.outcome }}
           HSI_STALE: ${{ steps.check_hsi_freshness.outputs.hsi_stale }}
           HSI_LATEST: ${{ steps.check_hsi_freshness.outputs.hsi_latest }}
@@ -208,7 +169,7 @@ jobs:
           import requests
 
           status = os.getenv("JOB_STATUS", "")
-          token_present = os.getenv("HSI_TOKEN_PRESENT", "") == "true"
+          credentials_present = os.getenv("HSI_CREDENTIALS_PRESENT", "") == "true"
           hsi_outcome = os.getenv("HSI_SYNC_OUTCOME", "")
           hsi_stale = os.getenv("HSI_STALE", "")
           hsi_latest = os.getenv("HSI_LATEST", "")
@@ -217,21 +178,19 @@ jobs:
           hsi_data_stale = bool(hsi_stale) and hsi_stale != "none"
 
           warnings = []
-          # 只有 HSI 数据“真正过期”（超过 HSI_STALE_DAYS）才告警，需要人工换 token。
-          # token 失效但数据仍在容忍期内属正常，不再打扰。
           if hsi_data_stale:
-            if token_present:
+            if credentials_present:
               warnings.append(
-                f"HSI 数据已过期，token 大概率失效，请更新仓库 secret HSI_ACCESS_TOKEN：{hsi_stale}"
+                f"HSI 数据已过期，请检查 HSI_LOGIN_USERNAME/HSI_LOGIN_PASSWORD 或同步脚本：{hsi_stale}"
               )
             else:
-              warnings.append(f"HSI 数据已过期且未配置 HSI_ACCESS_TOKEN：{hsi_stale}")
-          elif token_present and hsi_outcome == "failure":
+              warnings.append(f"HSI 数据已过期且未配置 HSI 登录凭据：{hsi_stale}")
+          elif credentials_present and hsi_outcome == "failure":
             print(
-              "HSI token 可能过期，但数据仍在容忍期内（未超过 HSI_STALE_DAYS），本次不发告警。"
+              "HSI 同步失败，但数据仍在容忍期内（未超过 HSI_STALE_DAYS），本次不发告警。"
             )
-          elif not token_present:
-            print("HSI_ACCESS_TOKEN 未配置，但数据仍在容忍期内，本次不发告警。")
+          elif not credentials_present:
+            print("HSI 登录凭据未配置，但数据仍在容忍期内，本次不发告警。")
 
           should_notify = status != "success" or bool(warnings)
           if not should_notify:

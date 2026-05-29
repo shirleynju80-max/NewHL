@@ -42,17 +42,24 @@ python3 scripts/index_data_sync/sync_a_share_dividend_indices.py
 
 ## 恒生系列口径
 
-`HSI114`、`HSSCSOY.HI` 使用恒生 Index360 登录态接口：
+`HSI114`、`HSSCSOY.HI` 使用恒生 Index360 登录态接口（T-1 日频，无盘中刷新）：
 
 ```bash
+# 推荐：脚本每次运行前自动登录 IndexLab 获取 accessToken（约 12 小时有效）
+HSI_LOGIN_USERNAME=<IndexLab 登录邮箱> \
+HSI_LOGIN_PASSWORD=<密码> \
+  python3 scripts/index_data_sync/sync_hsi_indices.py
+
+# 兼容：仍可直接注入短期 token（localStorage.token）
 HSI_ACCESS_TOKEN=<从已登录 Index360 localStorage.token 读取> \
   python3 scripts/index_data_sync/sync_hsi_indices.py
 ```
 
 来源与字段：
 
-- 接口：`https://www.hsi.com.hk/api/wsit-hsil-hiip-ea-productdata-proxy/v1/productData/e/indexes/v1`
-- 鉴权：请求头 `ACCESS_TOKEN`，只从环境变量读取，不写入脚本或仓库。
+- 登录：`POST /api/wsit-hsil-hiip-ea-public-proxy/v1/customers/e/login/v1`（`username`/`password`，无验证码）
+- 行情：`https://www.hsi.com.hk/api/wsit-hsil-hiip-ea-productdata-proxy/v1/productData/e/indexes/v1`
+- 鉴权：请求头 `ACCESS_TOKEN`；优先 `HSI_LOGIN_USERNAME`+`HSI_LOGIN_PASSWORD` 现登，否则读 `HSI_ACCESS_TOKEN`
 - `HSI114`：价格指数 `02033.00`，全收益指数 `12033.00`。
 - `HSSCSOY.HI`：价格指数 `02200.00`，全收益指数 `12200.00`。
 - `tri_close` 写恒生 `TRI_Grs` 全收益日收盘，`price_close` 写 PI 日收盘。

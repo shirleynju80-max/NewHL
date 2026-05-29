@@ -117,7 +117,9 @@ npm run release:worker-pages
 | `CLOUDFLARE_API_TOKEN` | wrangler 部署 Worker / 上传 R2 / Pages |
 | `CLOUDFLARE_ACCOUNT_ID` | wrangler 账户 ID |
 | `VITE_DATA_API_BASE_URL` | Pages 构建时注入 Worker URL |
-| `HSI_ACCESS_TOKEN` | 恒生 Index360 登录 token；用于 `index-t1-sync` 自动补齐 `HSI114`/`HSSCSOY.HI` |
+| `HSI_LOGIN_USERNAME` | 恒生 IndexLab 登录邮箱；`index-t1-sync` 每次运行前自动登录拉取 HSI114/HSSCSOY.HI |
+| `HSI_LOGIN_PASSWORD` | 恒生 IndexLab 登录密码（与 `HSI_LOGIN_USERNAME` 配对） |
+| `HSI_ACCESS_TOKEN` | （可选，legacy）短期 accessToken；未配置账密时可临时使用 |
 | `FEISHU_WEBHOOK_URL` | （可选）飞书机器人 webhook，接收指数同步告警 |
 | `FEISHU_BOT_SECRET` | （可选但建议）飞书机器人签名密钥；开启签名校验时必填 |
 | `WECOM_WEBHOOK_URL` | （可选）企业微信机器人 webhook，接收指数同步告警 |
@@ -137,7 +139,7 @@ npm run release:worker-pages
 第二阶段再做 GitHub Actions：
 
 - 公开接口脚本可直接在 Actions 跑
-- 需要登录态的 token 放到 GitHub Secrets，例如 `HSI_ACCESS_TOKEN`
+- 需要登录态的数据放到 GitHub Secrets，例如 `HSI_LOGIN_USERNAME` + `HSI_LOGIN_PASSWORD`
 - 禁止把 token 写入仓库、前端环境变量或 `public/`
 
 注意：公开前端为了画图仍会从 Worker API 收到图表所需数据；R2 只是避免原始 CSV 作为静态文件公开和避免数据源凭证暴露。若要完全隐藏原始序列，需要把指标计算和分页查询继续后移到 Worker。
