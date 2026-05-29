@@ -1,5 +1,12 @@
 {
   "etfs": {
+    "007751": {
+      "dividend_events": 21,
+      "dividend_signature": "b02944cd98cda4c2f2d61f81ae915db2a1f0e8172f7af7e2f1a8b813ead65998",
+      "last_checked_at": "2026-05-29",
+      "latest_ex_dividend_date": "2026-04-08",
+      "product_type": "otc_fund"
+    },
     "159143": {
       "bars_rows": 90,
       "dividend_events": 0,
@@ -25,6 +32,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "159221": {
@@ -46,30 +56,39 @@
       "overlap_mismatches": 0
     },
     "159232": {
-      "bars_rows": 0,
+      "bars_rows": 261,
       "dividend_events": 4,
       "dividend_signature": "1e7a15ef997234f9ea25c62af1b0f0b87b82273938123ed3dee48d3e8176af2d",
       "last_checked_at": "2026-05-29",
-      "last_refreshed_at": "",
+      "last_refreshed_at": "2026-05-29",
       "latest_ex_dividend_date": "2026-04-15",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "159399": {
-      "bars_rows": 304,
+      "bars_rows": 0,
       "dividend_events": 15,
       "dividend_signature": "021bebb741170722d5ebba9baa4f208756e61f41a1ee7bd28d6e7507b48dc8cf",
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "2026-05-29",
       "latest_ex_dividend_date": "2026-05-14",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "159569": {
-      "bars_rows": 0,
+      "bars_rows": 425,
       "dividend_events": 2,
       "dividend_signature": "69d6aefeca2974b63e1912a60b1448a4e0d621a70a0d2bdd674dcd169d043693",
       "last_checked_at": "2026-05-29",
-      "last_refreshed_at": "",
+      "last_refreshed_at": "2026-05-29",
       "latest_ex_dividend_date": "2025-12-23",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "159758": {
@@ -79,15 +98,21 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "510880": {
-      "bars_rows": 0,
+      "bars_rows": 4703,
       "dividend_events": 19,
       "dividend_signature": "4f3fa9c04de8694954e64e127d0b94bedb8e8805c715faa613f87254dac26167",
       "last_checked_at": "2026-05-29",
-      "last_refreshed_at": "",
+      "last_refreshed_at": "2026-05-29",
       "latest_ex_dividend_date": "2026-01-21",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "512890": {
@@ -97,24 +122,33 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "513530": {
-      "bars_rows": 0,
+      "bars_rows": 992,
       "dividend_events": 12,
       "dividend_signature": "690998a0896b72e49dc972551548ecf668c72841f29aa78778b1cfaad7918168",
       "last_checked_at": "2026-05-29",
-      "last_refreshed_at": "",
+      "last_refreshed_at": "2026-05-29",
       "latest_ex_dividend_date": "2026-05-18",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "513630": {
-      "bars_rows": 0,
+      "bars_rows": 596,
       "dividend_events": 6,
       "dividend_signature": "b408801d79d3cf7a387af5533aa969ac116d758cf48313f30a55971fedee6ce7",
       "last_checked_at": "2026-05-29",
-      "last_refreshed_at": "",
+      "last_refreshed_at": "2026-05-29",
       "latest_ex_dividend_date": "2026-05-21",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "513910": {
@@ -124,6 +158,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "513920": {
@@ -133,6 +170,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "2026-01-16",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "513950": {
@@ -142,6 +182,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "2026-02-13",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "515080": {
@@ -151,6 +194,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "2026-03-18",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "515100": {
@@ -160,6 +206,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "2025-12-23",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "515450": {
@@ -169,6 +218,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "2025-12-15",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "520550": {
@@ -196,6 +248,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "2025-07-23",
+      "maturity_status": "maturity: pending (0.85y / 2y, listed 2025-07-23)",
       "overlap_mismatches": 0
     },
     "561580": {
@@ -205,6 +260,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "2026-05-18",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "",
+      "maturity_status": "",
       "overlap_mismatches": 0
     },
     "562080": {
@@ -214,6 +272,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "2025-04-07",
+      "maturity_status": "maturity: pending (1.14y / 2y, listed 2025-04-07)",
       "overlap_mismatches": 0
     },
     "563580": {
@@ -241,6 +302,9 @@
       "last_checked_at": "2026-05-29",
       "last_refreshed_at": "",
       "latest_ex_dividend_date": "",
+      "maturity_full_refresh_at": "",
+      "maturity_listing_date": "2025-04-16",
+      "maturity_status": "maturity: pending (1.12y / 2y, listed 2025-04-16)",
       "overlap_mismatches": 0
     }
   },
