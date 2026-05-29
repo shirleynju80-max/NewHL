@@ -69,12 +69,12 @@ export function Layout() {
   return (
     <div className="ft-app flex min-h-screen flex-col">
       {loadError && (
-        <div className="border-b border-red-900/40 bg-red-950/90 px-4 py-2 text-sm text-red-100">
+        <div className="border-b border-red-900/30 bg-gradient-to-b from-red-950/80 to-red-950/40 px-4 py-2 text-sm text-red-200 shadow-sm backdrop-blur-md">
           {loadError}
         </div>
       )}
       {indexCsvError && (
-        <div className="border-b border-amber-900/40 bg-amber-950/90 px-4 py-2 text-sm text-amber-100">
+        <div className="border-b border-amber-900/30 bg-gradient-to-b from-amber-950/80 to-amber-950/40 px-4 py-2 text-sm text-amber-200 shadow-sm backdrop-blur-md">
           {indexCsvError}
         </div>
       )}

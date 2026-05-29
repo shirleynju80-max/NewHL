@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,11 +7,11 @@
 /* 价值底仓 · Fintech 暗色仪表盘 */
 :root {
   color-scheme: dark;
-  --ft-bg: #0a0c10;
-  --ft-card: #0f131a;
-  --ft-card-inner: #090d12;
-  --ft-border: #242a34;
-  --ft-border-soft: #1c212a;
+  --ft-bg: #030712;
+  --ft-card: #111827;
+  --ft-card-inner: #0f172a;
+  --ft-border: rgba(255, 255, 255, 0.08);
+  --ft-border-soft: rgba(255, 255, 255, 0.04);
   --ft-text: #eff1f5;
   --ft-muted: #8f95a3;
   --ft-dim: #6a7080;
@@ -17,20 +19,20 @@
   --ft-accent-grad: linear-gradient(90deg, #5e9bff, #9b7eff);
   --ft-good: #8cd4a5;
   --ft-warn: #fbbf24;
-  --ft-pill: #13171e;
+  --ft-pill: #1e293b;
   --ft-radius-sm: 4px;
   --ft-radius: 6px;
   --ft-radius-lg: 8px;
-  --fin-navy: #070d18;
-  --fin-navy-elevated: #0c1524;
-  --fin-navy-border: #1a2840;
+  --fin-navy: #0f172a;
+  --fin-navy-elevated: #1e293b;
+  --fin-navy-border: rgba(255, 255, 255, 0.1);
   --fin-navy-glow: rgba(56, 120, 200, 0.12);
-  --fin-surface: #0a0c10;
-  --fin-surface-deep: #060a10;
-  --fin-panel: #0f131a;
-  --fin-panel-muted: #13171e;
-  --fin-border: #242a34;
-  --fin-border-strong: #3a4353;
+  --fin-surface: #030712;
+  --fin-surface-deep: #020617;
+  --fin-panel: #111827;
+  --fin-panel-muted: #1e293b;
+  --fin-border: rgba(255, 255, 255, 0.08);
+  --fin-border-strong: rgba(255, 255, 255, 0.15);
   --fin-text: #eff1f5;
   --fin-muted: #8f95a3;
   --fin-dim: #6a7080;
@@ -58,9 +60,15 @@
   }
 
   body {
-    @apply min-h-screen font-sans antialiased tabular-nums;
+    @apply min-h-screen antialiased tabular-nums;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
     color: var(--ft-text);
-    background: var(--ft-bg);
+    background: radial-gradient(circle at top center, #111827 0%, var(--ft-bg) 100%);
+    background-attachment: fixed;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   }
 
   ::selection {
@@ -71,8 +79,8 @@
 
 @layer components {
   .fin-header {
-    @apply sticky top-0 z-30 border-b;
-    background: linear-gradient(180deg, var(--fin-navy-elevated) 0%, var(--fin-navy) 100%);
+    @apply sticky top-0 z-30 border-b backdrop-blur-md;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%);
     border-color: var(--fin-navy-border);
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.04) inset,
@@ -153,9 +161,9 @@
   .fin-panel {
     @apply border;
     border-radius: var(--ft-radius-lg);
-    border-color: rgba(148, 163, 184, 0.14);
-    background: var(--ft-card);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-card);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     color: var(--ft-text);
   }
 
@@ -217,9 +225,10 @@
   }
 
   .fin-page-title {
-    @apply text-[1.625rem] font-semibold tracking-tight text-[var(--fin-text)] sm:text-[1.875rem];
-    letter-spacing: -0.03em;
+    @apply text-[1.625rem] font-bold tracking-tight text-[var(--fin-text)] sm:text-[1.875rem];
+    letter-spacing: -0.04em;
     line-height: 1.2;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   }
 
   .fin-body {
@@ -276,23 +285,26 @@
   .fin-alert-warn {
     @apply border p-6 text-sm;
     border-radius: var(--ft-radius-lg);
-    border-color: rgba(251, 191, 36, 0.35);
-    background: rgba(120, 83, 20, 0.22);
+    border-color: rgba(251, 191, 36, 0.25);
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.1) 0%, rgba(251, 191, 36, 0.02) 100%);
     color: #fde68a;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-alert-warn--compact {
     @apply rounded-lg border px-3 py-2 text-sm;
-    border-color: rgba(251, 191, 36, 0.35);
-    background: rgba(120, 83, 20, 0.22);
+    border-color: rgba(251, 191, 36, 0.25);
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.1) 0%, rgba(251, 191, 36, 0.02) 100%);
     color: #fde68a;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-alert-error--compact {
     @apply rounded-lg border px-3 py-2 text-xs;
-    border-color: rgba(248, 113, 113, 0.35);
-    background: rgba(127, 29, 29, 0.25);
+    border-color: rgba(248, 113, 113, 0.25);
+    background: linear-gradient(180deg, rgba(248, 113, 113, 0.1) 0%, rgba(248, 113, 113, 0.02) 100%);
     color: #fecaca;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-alert-info--compact {
@@ -376,20 +388,23 @@
 
   .fin-zone-chip--buy {
     border-color: rgba(16, 185, 129, 0.42);
-    background: rgba(6, 78, 59, 0.44);
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0.1) 100%);
     color: #6ee7b7;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .fin-zone-chip--neutral {
     border-color: rgba(148, 163, 184, 0.32);
-    background: rgba(51, 65, 85, 0.38);
+    background: linear-gradient(180deg, rgba(148, 163, 184, 0.2) 0%, rgba(148, 163, 184, 0.05) 100%);
     color: #cbd5e1;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-zone-chip--sell {
     border-color: rgba(248, 113, 113, 0.44);
-    background: rgba(127, 29, 29, 0.42);
+    background: linear-gradient(180deg, rgba(248, 113, 113, 0.25) 0%, rgba(248, 113, 113, 0.1) 100%);
     color: #fca5a5;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .fin-soft-divider {
@@ -479,24 +494,27 @@
   }
 
   .fin-chip-filter {
-    @apply cursor-pointer border px-3 py-1.5 text-xs font-medium transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1;
+    @apply cursor-pointer border px-3 py-1.5 text-xs font-medium transition-all duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1;
     border-radius: var(--fin-radius);
-    border-color: rgba(148, 163, 184, 0.16);
-    background: var(--fin-panel);
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%), var(--fin-panel);
     color: var(--fin-muted);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .fin-chip-filter:hover {
     border-color: var(--fin-blue);
-    color: var(--fin-blue);
-    background: var(--fin-blue-soft);
+    color: var(--fin-blue-bright);
+    background: linear-gradient(180deg, rgba(79, 125, 243, 0.1) 0%, rgba(79, 125, 243, 0.02) 100%), var(--fin-panel);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-chip-filter-active {
     border-color: var(--fin-blue);
-    background: var(--fin-navy);
-    color: #f1f5f9;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+    background: linear-gradient(180deg, rgba(79, 125, 243, 0.2) 0%, rgba(79, 125, 243, 0.05) 100%), var(--fin-navy);
+    color: #ffffff;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1) inset, 0 0 8px rgba(79, 125, 243, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
 
   .fin-chip-filter-active:hover {
@@ -506,7 +524,7 @@
 
   .fin-journey {
     @apply fin-panel flex flex-wrap items-center gap-3 px-4 py-3;
-    background: linear-gradient(180deg, var(--fin-panel) 0%, var(--fin-panel-muted) 100%);
+    background: linear-gradient(180deg, var(--fin-panel) 0%, rgba(30, 41, 59, 0.3) 100%);
   }
 
   .fin-journey-label {
@@ -620,26 +638,29 @@
 
   .fin-status-good {
     @apply border px-1.5 py-0.5 font-mono text-[10px] font-medium;
-    border-radius: 2px;
-    border-color: #9fd4bc;
-    background: var(--fin-up-soft);
+    border-radius: 4px;
+    border-color: rgba(140, 212, 165, 0.3);
+    background: linear-gradient(180deg, rgba(140, 212, 165, 0.15) 0%, rgba(140, 212, 165, 0.05) 100%);
     color: var(--fin-up);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-status-warn {
     @apply border px-1.5 py-0.5 font-mono text-[10px] font-medium;
-    border-radius: 2px;
-    border-color: #e8c99a;
-    background: var(--fin-amber-soft);
+    border-radius: 4px;
+    border-color: rgba(251, 191, 36, 0.3);
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.15) 0%, rgba(251, 191, 36, 0.05) 100%);
     color: var(--fin-amber);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-status-neutral {
     @apply border px-1.5 py-0.5 font-mono text-[10px] font-medium;
-    border-radius: 2px;
-    border-color: var(--fin-border);
-    background: var(--fin-panel-muted);
+    border-radius: 4px;
+    border-color: rgba(143, 149, 163, 0.3);
+    background: linear-gradient(180deg, rgba(143, 149, 163, 0.15) 0%, rgba(143, 149, 163, 0.05) 100%);
     color: var(--fin-muted);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-choice {
@@ -667,7 +688,7 @@
 
   /* —— Fintech 暗色仪表盘（示例稿对齐） —— */
   .ft-app {
-    background: var(--ft-bg);
+    background: transparent;
     color: var(--ft-text);
   }
 
@@ -677,17 +698,18 @@
 
   .ft-top-bar {
     @apply flex flex-wrap items-end justify-between gap-4 border-b pb-4;
-    border-color: #252b36;
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   .ft-logo-title {
     font-size: 1.9rem;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #ffffff 0%, #9ba8c9 100%);
+    font-weight: 700;
+    letter-spacing: -0.8px;
+    background: linear-gradient(135deg, #ffffff 0%, #a5b4d1 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    text-shadow: 0 2px 10px rgba(255, 255, 255, 0.1);
   }
 
   .ft-logo-sub {
@@ -696,10 +718,12 @@
   }
 
   .ft-stats-pill {
-    @apply inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 text-xs;
+    @apply inline-flex flex-wrap items-center gap-2 px-3.5 py-1.5 text-xs border;
     border-radius: var(--ft-radius);
-    background: var(--ft-pill);
+    border-color: rgba(255, 255, 255, 0.05);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-pill);
     color: var(--ft-muted);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .ft-stats-sep {
@@ -720,7 +744,7 @@
 
   .ft-nav {
     @apply mb-8 mt-5 flex flex-wrap items-center gap-x-8 gap-y-2 border-b pb-2;
-    border-color: #252b36;
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   .ft-nav-divider {
@@ -738,11 +762,13 @@
 
   .ft-nav-link:hover {
     color: var(--ft-text);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.2);
   }
 
   .ft-nav-link--active {
     color: #ffffff;
     border-bottom: 2px solid var(--ft-accent);
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
   }
 
   .ft-main {
@@ -772,15 +798,16 @@
     @apply flex flex-1 flex-col transition-all duration-200;
     min-width: 320px;
     border-radius: var(--ft-radius-lg);
-    border: 1px solid var(--ft-border);
-    background: var(--ft-card);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-card);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
     overflow: hidden;
   }
 
   .ft-card:hover {
-    border-color: #3a4353;
+    border-color: rgba(255, 255, 255, 0.15);
     transform: translateY(-2px);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   }
 
   .ft-card--flat:hover {
@@ -797,7 +824,7 @@
   }
 
   .ft-card-title {
-    @apply flex items-center gap-2 text-2xl font-semibold;
+    @apply flex items-center gap-2 text-2xl font-bold tracking-tight;
     color: var(--ft-text);
   }
 
@@ -811,19 +838,23 @@
   }
 
   .ft-badge {
-    @apply inline-block px-3 py-1 text-xs;
+    @apply inline-block px-3 py-1 text-xs border font-medium;
     border-radius: var(--ft-radius-sm);
-    background: #1e2530;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
     color: #c0c8d9;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .ft-badge--success {
-    background: #1e3a2e;
+    border-color: rgba(140, 212, 165, 0.2);
+    background: linear-gradient(180deg, rgba(140, 212, 165, 0.15) 0%, rgba(140, 212, 165, 0.05) 100%);
     color: var(--ft-good);
   }
 
   .ft-badge--warn {
-    background: #3d2e1a;
+    border-color: rgba(251, 191, 36, 0.2);
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.15) 0%, rgba(251, 191, 36, 0.05) 100%);
     color: #fbbf24;
   }
 
@@ -1006,12 +1037,16 @@
   }
 
   .ft-btn {
-    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors;
-    background: var(--ft-accent);
+    @apply inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-all duration-200;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-accent);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
   }
 
   .ft-btn:hover {
-    background: #3d6ae8;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 100%), #3d6ae8;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
   }
 
   .ft-link {
@@ -1216,6 +1251,14 @@
     color: var(--ft-dim);
   }
 
+  .ft-compare-cols-table tbody tr {
+    transition: background-color 0.15s ease;
+  }
+
+  .ft-compare-cols-table tbody tr:hover {
+    background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%);
+  }
+
   .ft-compare-cols-table tbody th[scope="row"] {
     @apply pr-3 font-normal whitespace-nowrap;
     color: var(--ft-muted);
@@ -1350,19 +1393,23 @@
   }
 
   .ft-compare-bar-fill--up {
-    background: linear-gradient(90deg, #b91c1c, #f87171);
+    background: linear-gradient(90deg, rgba(248, 113, 113, 0.5), #f87171);
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.4);
   }
 
   .ft-compare-bar-fill--down {
-    background: linear-gradient(90deg, #047857, #34d399);
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.5), #34d399);
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
   }
 
   .ft-compare-bar-fill--favorable {
-    background: linear-gradient(90deg, #047857, #34d399);
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.5), #34d399);
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.4);
   }
 
   .ft-compare-bar-fill--unfavorable {
-    background: linear-gradient(90deg, #b91c1c, #f87171);
+    background: linear-gradient(90deg, rgba(248, 113, 113, 0.5), #f87171);
+    box-shadow: 0 0 8px rgba(248, 113, 113, 0.4);
   }
 
   .ft-highlight-number--compact {
@@ -1402,15 +1449,19 @@
   }
 
   .ft-product-item {
-    @apply mb-2 flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm transition-colors;
+    @apply mb-2 flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm transition-all duration-200 border;
     border-radius: var(--ft-radius);
-    background: var(--ft-card-inner);
+    border-color: rgba(255, 255, 255, 0.03);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-card-inner);
     text-decoration: none;
     color: inherit;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   .ft-product-item:hover {
-    background: #11171f;
+    border-color: rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%), #11171f;
+    transform: translateX(2px);
   }
 
   .ft-product-item-code {
@@ -1481,9 +1532,10 @@
 
   .ft-principle-num {
     @apply inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold;
-    background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+    background: linear-gradient(135deg, #1d4ed8, #4f7df3);
     color: #eff6ff;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+    box-shadow: 0 2px 8px rgba(79, 125, 243, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
   .ft-principle-card-title {
@@ -1539,15 +1591,18 @@
   }
 
   .ft-pool-chip {
-    @apply px-3 py-0.5 text-[0.7rem] transition-colors;
+    @apply px-3 py-1 text-[0.7rem] transition-colors border;
     border-radius: var(--ft-radius-sm);
-    background: var(--ft-pill);
+    border-color: rgba(255, 255, 255, 0.05);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-pill);
     color: var(--ft-muted);
     text-decoration: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   .ft-pool-chip:hover {
     border-color: var(--ft-accent);
+    background: linear-gradient(180deg, rgba(79, 125, 243, 0.1) 0%, rgba(79, 125, 243, 0) 100%), var(--ft-pill);
     color: var(--ft-text);
   }
 
@@ -1559,7 +1614,7 @@
 
   /* 内页：沿用 fin-* 类名，映射暗色 */
   .fin-page-header {
-    border-color: #252b36;
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   .fin-page-title,
@@ -1580,6 +1635,7 @@
 
   .fin-link:hover {
     color: #6b96f7;
+    text-shadow: 0 0 8px rgba(107, 150, 247, 0.4);
   }
 
   .fin-btn-primary {
@@ -1588,28 +1644,35 @@
   }
 
   .fin-btn-secondary {
-    border-color: var(--ft-border);
-    background: var(--ft-pill);
+    border-color: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 100%), var(--ft-pill);
     color: var(--ft-text);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .fin-btn-secondary:hover {
     border-color: var(--ft-accent);
-    background: rgba(79, 125, 243, 0.12);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 100%), rgba(79, 125, 243, 0.12);
     color: var(--ft-text);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .fin-panel-muted {
-    background: rgba(8, 12, 18, 0.5);
+    background: rgba(30, 41, 59, 0.4);
   }
 
   .fin-table-head {
-    background: #13171e;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.6) 0%, rgba(30, 41, 59, 0.2) 100%);
     color: var(--ft-muted);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .fin-row-hover {
+    transition: background-color 0.15s ease;
   }
 
   .fin-row-hover:hover {
-    background: rgba(79, 125, 243, 0.06);
+    background: linear-gradient(90deg, rgba(79, 125, 243, 0.08) 0%, rgba(79, 125, 243, 0.02) 100%);
   }
 
   .fin-chip-filter {
@@ -1662,7 +1725,7 @@
   .ft-app .bg-white\/70,
   .ft-app .bg-white\/80,
   .ft-app .bg-white\/90 {
-    background-color: rgba(15, 19, 26, 0.85) !important;
+    background-color: rgba(17, 24, 39, 0.85) !important;
   }
 
   .ft-app .bg-amber-50,
