@@ -56,7 +56,9 @@ HIS_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 F10_DIV_URL = "https://fundf10.eastmoney.com/fhsp_{code}.html"
 EM_UT = "fa5fd1943c7b386f172d689130dbedb1"
 KLINE_LMT = 120000
-KLINE_CHUNK_YEARS = 2
+KLINE_CHUNK_YEARS = 1
+KLINE_CHUNK_RETRIES = 5
+KLINE_CHUNK_SLEEP = 0.8
 JSON_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -393,12 +395,30 @@ def fetch_kline_range(secid: str, beg: str, end: str) -> list[Bar]:
     return parse_klines(klines)
 
 
+def fetch_kline_range_with_retry(secid: str, beg: str, end: str, *, retries: int = KLINE_CHUNK_RETRIES) -> list[Bar]:
+    last_error: Exception | None = None
+    for attempt in range(retries):
+        try:
+            rows = fetch_kline_range(secid, beg, end)
+            if rows:
+                return rows
+            last_error = RuntimeError("empty klines")
+        except Exception as exc:
+            last_error = exc
+        if attempt < retries - 1:
+            time.sleep(KLINE_CHUNK_SLEEP * (attempt + 1))
+    assert last_error is not None
+    raise last_error
+
+
 def fetch_adjusted_history(
     code: str,
     *,
     listing_dates: dict[str, str],
     existing: dict[str, dict[str, Bar]],
     end: str | None = None,
+    chunk_years: int = KLINE_CHUNK_YEARS,
+    chunk_sleep: float = KLINE_CHUNK_SLEEP,
 ) -> list[Bar]:
     secid = infer_secid(code)
     if not secid:
@@ -407,7 +427,7 @@ def fetch_adjusted_history(
     end_s = (end or date.today().isoformat()).replace("-", "")
 
     try:
-        rows = fetch_kline_range(secid, beg, end_s)
+        rows = fetch_kline_range_with_retry(secid, beg, end_s)
         if rows:
             return rows
     except Exception:
@@ -417,22 +437,23 @@ def fetch_adjusted_history(
     start_year = int(beg[:4])
     end_year = int(end_s[:4])
     chunk_errors = 0
-    for y in range(start_year, end_year + 1, KLINE_CHUNK_YEARS):
+    step = max(1, chunk_years)
+    for y in range(start_year, end_year + 1, step):
         chunk_beg = f"{y:04d}0101"
         if chunk_beg < beg:
             chunk_beg = beg
-        chunk_end_year = min(y + KLINE_CHUNK_YEARS - 1, end_year)
+        chunk_end_year = min(y + step - 1, end_year)
         chunk_end = f"{chunk_end_year:04d}1231"
         if chunk_end > end_s:
             chunk_end = end_s
         if chunk_beg > chunk_end:
             continue
         try:
-            for bar in fetch_kline_range(secid, chunk_beg, chunk_end):
+            for bar in fetch_kline_range_with_retry(secid, chunk_beg, chunk_end):
                 by_date[bar.date] = bar
         except Exception:
             chunk_errors += 1
-        time.sleep(0.35)
+        time.sleep(chunk_sleep)
 
     if not by_date:
         if chunk_errors:
@@ -588,6 +609,12 @@ def main() -> None:
     parser.add_argument("--tolerance", type=float, default=0.002, help="历史重合价格差异触发刷新阈值")
     parser.add_argument("--sleep", type=float, default=0.25, help="每个 ETF 间隔秒数")
     parser.add_argument(
+        "--chunk-sleep",
+        type=float,
+        default=KLINE_CHUNK_SLEEP,
+        help="K 线分年块之间的间隔秒数",
+    )
+    parser.add_argument(
         "--check-overlap",
         action="store_true",
         help="分红签名未变时也拉全量 K 线做重合价校验（默认跳过，减轻限流）",
@@ -692,6 +719,7 @@ def main() -> None:
                         code,
                         listing_dates=listing_dates,
                         existing=existing,
+                        chunk_sleep=args.chunk_sleep,
                     )
                     if not needs_refresh and args.check_overlap:
                         mismatch_count = bar_mismatch_count(

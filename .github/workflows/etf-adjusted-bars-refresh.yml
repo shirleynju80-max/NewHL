@@ -2,6 +2,19 @@ name: ETF adjusted bars refresh
 
 on:
   workflow_dispatch:
+    inputs:
+      codes:
+        description: "Optional comma-separated ETF codes (retry subset)"
+        required: false
+        type: string
+      sleep:
+        description: "Seconds between ETFs"
+        required: false
+        default: "2"
+      chunk_sleep:
+        description: "Seconds between kline year chunks"
+        required: false
+        default: "1.2"
   schedule:
     # 每周日北京时间 20:30（UTC 12:30）跑一次分红事件检查 + 前复权全量刷新
     - cron: "30 12 * * 0"
@@ -42,7 +55,12 @@ jobs:
       - name: Refresh ETF adjusted bars
         # 脚本内先抓 F10 分红、比对签名，再决定是否拉 K 线；无需单独前置任务。
         # 默认 20 只主跟踪（19 场内 + 007751 场外分红）；R2 已 bootstrap meta 避免冷启动误判。
-        run: python scripts/realtime_crawler/sync_etf_adjusted_bars.py --sleep 1.5
+        run: |
+          ARGS=(--sleep "${{ github.event.inputs.sleep || '1.5' }}" --chunk-sleep "${{ github.event.inputs.chunk_sleep || '0.8' }}")
+          if [ -n "${{ github.event.inputs.codes }}" ]; then
+            ARGS+=(--codes "${{ github.event.inputs.codes }}")
+          fi
+          python scripts/realtime_crawler/sync_etf_adjusted_bars.py "${ARGS[@]}"
 
       - name: Commit adjusted data if changed
         run: |
