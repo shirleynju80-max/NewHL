@@ -19,8 +19,17 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Verify Node for wrangler
+        run: |
+          node -v
+          major="$(node -p "process.versions.node.split('.')[0]")"
+          if [[ "${major}" -lt 22 ]]; then
+            echo "::error::wrangler@4 requires Node >= 22"
+            exit 1
+          fi
+
       - name: Install wrangler
-        run: npm install -g wrangler@4
+        run: npm install -g wrangler@4.95.0
 
       - name: Upload CSV to R2
         env:

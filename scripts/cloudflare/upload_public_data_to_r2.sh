@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DATA_DIR="${ROOT}/public/data"
 BUCKET="${R2_BUCKET:-newhl-data}"
-WRANGLER="${WRANGLER_BIN:-npx wrangler@4.95.0}"
+WRANGLER="${WRANGLER_BIN:-wrangler}"
 REMOTE_FLAG="${R2_REMOTE_FLAG:---remote}"
 
 if [[ ! -d "${DATA_DIR}" ]]; then
