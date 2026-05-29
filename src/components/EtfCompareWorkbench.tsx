@@ -106,26 +106,29 @@ function barsTailByWindow(bars: EtfDefinition["bars"], win: WindowKey) {
   return sliceBarsForWindow(bars, win);
 }
 
-/** 暗色仪表盘：正相关偏暖（分散度风险）、负相关偏蓝，与 --fin-* token 一致 */
+/** 正相关用琥珀（分散度提示），负相关用弱蓝；不用 error 红 */
 function corrCellStyle(v: number): CSSProperties {
   if (!Number.isFinite(v))
     return { backgroundColor: "transparent", color: "var(--fin-dim)" };
   const t = Math.min(1, Math.abs(v));
-  const alpha = 0.14 + t * 0.38;
-  if (v >= 0)
+  const alpha = 0.1 + t * 0.28;
+  if (v >= 0) {
+    if (v < 0.25)
+      return { backgroundColor: "transparent", color: "var(--fin-muted)" };
     return {
-      backgroundColor: `rgba(248, 113, 113, ${alpha})`,
-      color: t > 0.65 ? "#fecaca" : "var(--fin-muted)",
+      backgroundColor: `rgba(251, 191, 36, ${alpha})`,
+      color: t > 0.65 ? "var(--fin-amber)" : "var(--fin-muted)",
     };
+  }
   return {
-    backgroundColor: `rgba(79, 125, 243, ${alpha})`,
-    color: t > 0.65 ? "#bfdbfe" : "var(--fin-muted)",
+    backgroundColor: `rgba(79, 125, 243, ${alpha * 0.75})`,
+    color: t > 0.65 ? "var(--fin-blue-bright)" : "var(--fin-muted)",
   };
 }
 
 function corrDiagonalCellStyle(): CSSProperties {
   return {
-    backgroundColor: "rgba(79, 125, 243, 0.14)",
+    backgroundColor: "var(--fin-panel)",
     color: "var(--fin-text)",
     boxShadow: "inset 0 0 0 1px var(--fin-border)",
   };
@@ -171,12 +174,6 @@ function buildCorrelationClusterOrder(correlation: number[][]): number[] {
   return order;
 }
 
-function shortEtfLabel(name: string, code: string): string {
-  const n = name.trim();
-  if (!n || n === code) return code;
-  return n.length > 14 ? `${n.slice(0, 14)}…` : n;
-}
-
 /** 紧凑一行：维度标签 + chip 多选 */
 function CompactPoolRow({
   label,
@@ -200,9 +197,11 @@ function CompactPoolRow({
     comparableCodes.every((c) => compareCodes.includes(c));
 
   return (
-    <div className="compare-pool-row flex flex-wrap items-start gap-x-2 gap-y-1.5 py-2 last:border-b-0">
-      <div className="flex w-full min-w-[4.5rem] shrink-0 items-center justify-between gap-2 sm:w-auto sm:flex-col sm:items-start sm:justify-start">
-        <span className="fin-label text-[11px]">{label}</span>
+    <div className="compare-pool-row grid grid-cols-1 gap-2 py-3 last:border-b-0 sm:grid-cols-[5.5rem_minmax(0,1fr)] sm:gap-x-4">
+      <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-start sm:justify-start">
+        <span className="fin-nav-group-label normal-case tracking-normal">
+          {label}
+        </span>
         {comparableCodes.length > 0 ? (
           <button
             type="button"
@@ -213,7 +212,7 @@ function CompactPoolRow({
           </button>
         ) : null}
       </div>
-      <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+      <div className="flex min-w-0 flex-wrap gap-1.5">
         {items.map((item) => {
           const code = item.product.code;
           const checked = compareCodes.includes(code);
@@ -222,11 +221,7 @@ function CompactPoolRow({
             <label
               key={code}
               title={item.product.name}
-              className={`inline-flex max-w-full cursor-pointer items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] transition ${
-                checked
-                  ? "border-[rgba(79,125,243,0.35)] bg-[color-mix(in_srgb,var(--fin-blue-soft)_70%,transparent)] text-[var(--fin-text)]"
-                  : "border-[rgba(148,163,184,0.14)] bg-[var(--fin-panel)] fin-muted-text"
-              } ${disabled ? "cursor-not-allowed opacity-45" : "hover:border-[rgba(79,125,243,0.35)]"}`}
+              className={`compare-pool-chip ${checked ? "compare-pool-chip--on" : ""} ${disabled ? "compare-pool-chip--disabled" : ""}`}
             >
               <input
                 type="checkbox"
@@ -235,12 +230,7 @@ function CompactPoolRow({
                 onChange={() => toggleCompare(code)}
                 className="h-3 w-3 shrink-0 rounded border-fin-border accent-[var(--fin-blue)]"
               />
-              <span className="font-mono font-medium text-[var(--fin-text)]">
-                {code}
-              </span>
-              <span className="truncate">
-                {shortEtfLabel(item.product.name, code)}
-              </span>
+              <span className="font-mono font-medium">{code}</span>
             </label>
           );
         })}
@@ -609,7 +599,7 @@ export function EtfCompareWorkbench() {
             暂无观察池产品，请确认数据已加载。
           </p>
         ) : (
-          <div className="compare-pool-shell mt-2 px-2">
+          <div className="compare-pool-shell mt-3">
             <CompactPoolRow
               label="A股红利"
               items={pool.cn}
@@ -673,14 +663,16 @@ export function EtfCompareWorkbench() {
             <div>
               <h3 className="fin-section-title">收益与波动</h3>
               <p className="mt-1 text-xs fin-muted-text">
-                当前按<strong>{currentWindowLabel}</strong>口径计算；
-                <strong>区间收益</strong>=窗口首尾收盘涨跌；
-                <strong>年化收益</strong>按 252 交易日由区间复利折算；
-                <strong>最大回撤</strong>为区间内峰值到谷底；
-                <strong>年化波动</strong>为日收益样本标准差×√252；
-                <strong>夏普(简)</strong>=年化÷年化波动；<strong>卡玛</strong>
-                ≈年化÷|最大回撤|。
+                在<strong>{currentWindowLabel}</strong>
+                统一口径下横向比较各标的的收益、回撤与波动。
               </p>
+              <details className="mt-1 text-[11px] fin-muted-text">
+                <summary className="cursor-pointer fin-link">指标怎么算</summary>
+                <p className="mt-1 leading-relaxed">
+                  区间收益＝窗口首尾收盘涨跌；年化收益按 252
+                  交易日复利折算；最大回撤为区间内峰值到谷底；年化波动为日收益标准差×√252；风险收益比＝年化÷年化波动；卡玛≈年化÷|最大回撤|。
+                </p>
+              </details>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full min-w-[880px] text-sm">
                   <thead>
@@ -711,6 +703,7 @@ export function EtfCompareWorkbench() {
                       })}
                       {sortableTh("calmarLike", "卡玛", {
                         className: "px-3 py-2 font-normal text-right",
+                        title: "年化收益 ÷ |最大回撤|，数值越高越抗跌",
                       })}
                     </tr>
                   </thead>
@@ -796,7 +789,7 @@ export function EtfCompareWorkbench() {
             </div>
             <div id="overview-correlation" className="mt-8">
               <div className="flex flex-wrap items-end justify-between gap-3">
-                <h3 className="fin-section-title">日收益相关性（Pearson）</h3>
+                <h3 className="fin-section-title">日涨跌相关性</h3>
                 <label className="text-xs fin-muted-text">
                   排序
                   <select
@@ -812,12 +805,12 @@ export function EtfCompareWorkbench() {
                 </label>
               </div>
               <p className="mt-1 text-xs fin-muted-text">
-                当前按<strong>{currentWindowLabel}</strong>取样；仅使用各标的
-                <strong>日期交集</strong>上的日收益序列，重合不足 30
-                个交易日时不展示矩阵。
+                在<strong>{currentWindowLabel}</strong>内，仅用各标的
+                <strong>共同交易日</strong>的每日涨跌计算；共同交易日不足 30
+                天时不展示。
               </p>
               <p className="mt-1 text-[11px] fin-muted-text">
-                底色：暖色=正相关更强，蓝色=负相关更强；对角线为同标的；悬浮可看精确值。
+                底色：琥珀=正相关更强（分散度需留意），蓝色=负相关；对角线为同标的；悬浮可看精确值。
               </p>
               {!compareResult.overlapOk || !compareResult.correlation ? (
                 <p className="mt-3 text-sm fin-muted-text">

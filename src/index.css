@@ -361,8 +361,8 @@
 
   .fin-summary-tone-badge--warn {
     border-color: rgba(251, 191, 36, 0.32);
-    background: rgba(120, 83, 20, 0.18);
-    color: #fcd34d;
+    background: var(--fin-amber-soft);
+    color: var(--fin-amber);
   }
 
   .fin-step-pill {
@@ -479,13 +479,39 @@
   }
 
   .compare-pool-shell {
-    border: 1px solid rgba(148, 163, 184, 0.12);
-    background: color-mix(in srgb, var(--fin-panel-muted) 70%, transparent);
+    border: 1px solid var(--ft-border);
+    background: transparent;
     border-radius: var(--ft-radius-lg);
+    padding: 0.25rem 0.75rem;
   }
 
   .compare-pool-row {
-    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+    border-bottom: 1px solid var(--ft-border-soft);
+  }
+
+  .compare-pool-row:last-child {
+    border-bottom: none;
+  }
+
+  .compare-pool-chip {
+    @apply inline-flex cursor-pointer items-center gap-1.5 rounded border px-2 py-1 text-[11px] transition-colors;
+    border-color: var(--ft-border);
+    background: transparent;
+    color: var(--fin-muted);
+  }
+
+  .compare-pool-chip:hover:not(.compare-pool-chip--disabled) {
+    border-color: rgba(79, 125, 243, 0.35);
+  }
+
+  .compare-pool-chip--on {
+    border-color: rgba(79, 125, 243, 0.35);
+    background: var(--fin-blue-soft);
+    color: var(--fin-text);
+  }
+
+  .compare-pool-chip--disabled {
+    @apply cursor-not-allowed opacity-45;
   }
 
   .fin-monitor-pick {
