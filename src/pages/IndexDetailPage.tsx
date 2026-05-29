@@ -1189,7 +1189,7 @@ export function IndexDetailPage() {
         <section className="fin-alert-warn">
           <p className="font-medium">暂无指数日序列</p>
           <p className="mt-2 opacity-90">
-            暂无该指数的全收益日序列数据，图表与绩效无法展示。请补充指数行情数据后刷新；此处不使用 ETF 行情代替指数。
+            暂无该指数的全收益日序列数据，图表与绩效无法展示。
           </p>
         </section>
       )}
@@ -1447,7 +1447,7 @@ export function IndexDetailPage() {
             <div className="fin-alert-warn--compact mt-4 p-4 text-sm">
               <p className="font-medium">暂不展示股息率与利差图</p>
               <p className="mt-2 leading-relaxed opacity-90">
-                当前尚无可靠的历史股息率序列，股息率与利差图暂无法展示；接入数据后将自动恢复。
+                当前尚无可靠的历史股息率序列，股息率与利差图暂无法展示。
               </p>
               <p className="mt-2 text-xs opacity-80">
                 国债收益率仍正常展示；股息率不做前向填充或估算补全。

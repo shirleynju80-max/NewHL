@@ -570,7 +570,7 @@ export function MonitorPage() {
           next[code] = r.detail ?? "拉取失败";
           continue;
         }
-        const bits = [`${r.source === "web" ? "Web" : "API"} 拉取 OK`];
+        const bits = [`远程数据拉取成功`];
         if (r.consistency) {
           bits.push(...r.consistency.messages);
           if (r.consistency.mismatchSamples.length)

@@ -51,7 +51,7 @@ export function quoteFromLocalBars(bars: OhlcBar[]): LiveQuote | null {
     source: "local",
     detail:
       last.date >= shanghaiTodayYmd()
-        ? "本地 barsmore 当日定点"
+        ? "本地增量行情"
         : "本地最新收盘",
   };
 }
@@ -158,7 +158,7 @@ export async function fetchLiveQuote(
     quoteTime: now,
     fetchedAt: now,
     source: "local",
-    detail: "无可用实时源，价格无效",
+    detail: "暂无实时行情",
   };
 }
 

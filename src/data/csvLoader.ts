@@ -138,7 +138,7 @@ export function withIndexCsvSafe(
     const msg = e instanceof Error ? e.message : String(e);
     return {
       bundle: { ...bundle, indices: [], indexTracking: [] },
-      indexCsvError: `指数 CSV 解析失败（已忽略指数数据）：${msg}`,
+      indexCsvError: `指数基础数据解析异常（已忽略部分指数），可能影响相关策略的展示：${msg}`,
     };
   }
 }

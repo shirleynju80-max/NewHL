@@ -90,11 +90,11 @@ export async function fetchBarsFromWebTemplate(
     const url = `${base.replace(/\/$/, "")}?code=${encodeURIComponent(code)}`;
     const r = await fetch(url, { mode: "cors", cache: "no-store" });
     if (!r.ok)
-      return { ok: false, source: "web", detail: `Web HTTP ${r.status}` };
+      return { ok: false, source: "web", detail: `服务响应异常 (${r.status})` };
     const j = (await r.json()) as { bars?: OhlcBar[] };
     const bars = Array.isArray(j.bars) ? j.bars : null;
     if (!bars?.length)
-      return { ok: false, source: "web", detail: "JSON 缺少非空 bars 数组" };
+      return { ok: false, source: "web", detail: "返回数据格式异常" };
     return { ok: true, bars, source: "web" };
   } catch (e) {
     return {
@@ -124,11 +124,11 @@ export async function fetchBarsFromApiTemplate(
     if (key) headers.Authorization = `Bearer ${key}`;
     const r = await fetch(url, { headers, cache: "no-store" });
     if (!r.ok)
-      return { ok: false, source: "api", detail: `API HTTP ${r.status}` };
+      return { ok: false, source: "api", detail: `服务响应异常 (${r.status})` };
     const j = (await r.json()) as { bars?: OhlcBar[] };
     const bars = Array.isArray(j.bars) ? j.bars : null;
     if (!bars?.length)
-      return { ok: false, source: "api", detail: "响应缺少非空 bars" };
+      return { ok: false, source: "api", detail: "返回数据格式异常" };
     return { ok: true, bars, source: "api" };
   } catch (e) {
     return {
@@ -166,6 +166,6 @@ export async function tryWebThenApiBars(
   return {
     ok: false,
     source: "none",
-    detail: detail || "Web 与 API 均未返回数据",
+    detail: detail || "远程数据源均未返回数据",
   };
 }

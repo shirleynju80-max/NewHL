@@ -67,7 +67,7 @@ type Ctx = {
 const DataSourceContext = createContext<Ctx | null>(null);
 
 function sourceLabelForPublic(apiError?: string): string {
-  return apiError ? "站点数据（API 暂不可用）" : "站点数据";
+  return apiError ? "站点数据（实时更新暂不可用）" : "站点数据";
 }
 
 async function fetchTextIfOk(url: string): Promise<string | null> {
@@ -389,17 +389,13 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       const pub = await tryFetchPublicCsv();
       if (pub.status === "missing") {
         setLoadError(
-          apiError
-            ? `在线数据加载失败：${apiError}；本地行情数据也不可用，无法加载。`
-            : "本地行情数据不可用，无法重新加载。",
+          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
         );
         return;
       }
       if (pub.status === "error") {
         setLoadError(
-          apiError
-            ? `在线数据加载失败：${apiError}；重新加载本地数据也失败：${pub.message}`
-            : `重新加载本地数据失败：${pub.message}`,
+          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
         );
         return;
       }
@@ -455,7 +451,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       if (pub.status === "missing") {
         if (apiError) {
           setLoadError(
-            `在线数据加载失败：${apiError}；本地行情数据也不可用。当前显示示例数据。`,
+            `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
           );
         }
         setPublicCsvAutoLoading(false);
@@ -463,9 +459,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       }
       if (pub.status === "error") {
         setLoadError(
-          apiError
-            ? `在线数据加载失败：${apiError}；本地数据也失败：${pub.message}。当前显示示例数据。`
-            : `本地数据加载失败：${pub.message}。当前显示示例数据；请确认站点数据已部署，或使用页面上的文件选择器上传行情文件。`,
+          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`
         );
         setPublicCsvAutoLoading(false);
         return;
