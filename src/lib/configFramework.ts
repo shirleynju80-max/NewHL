@@ -220,7 +220,7 @@ export function dividendAllocationObservation(
     return {
       zone: "insufficient",
       title: "数据不足",
-      tone: "border-fin-border bg-fin-panel-muted text-[var(--fin-muted)]",
+      tone: "border-fin-border bg-transparent text-[var(--fin-muted)]",
       body: "当前缺少可对齐的股息率或国债收益率。",
     };
   }
@@ -247,14 +247,14 @@ export function dividendAllocationObservation(
     return {
       zone: "caution",
       title: "警惕区",
-      tone: "border-fin-border bg-fin-panel-muted text-[var(--fin-muted)]",
+      tone: "border-fin-border bg-transparent text-[var(--fin-muted)]",
       body: "红利相对债券的收益补偿较低，配置性价比参考意义偏弱。",
     };
   }
   return {
     zone: "neutral",
     title: "中性观察",
-    tone: "border-fin-border bg-fin-panel-muted text-[var(--fin-muted)]",
+    tone: "border-fin-border bg-transparent text-[var(--fin-muted)]",
     body: "配置吸引力不极端，更适合结合价格趋势与仓位继续观察。",
   };
 }

@@ -1,15 +1,16 @@
 import type { LiveQuote } from "../lib/liveQuote";
 import {
-  formatQuoteFetchedAt,
+  formatQuoteDataUpdateLine,
   formatQuotePriceLabel,
-  formatQuoteSourceLabel,
+  resolveQuoteTradeDate,
 } from "../lib/liveQuote";
+import type { OhlcBar } from "../types";
 
 type IntradayQuoteBarProps = {
   quote: LiveQuote | null;
   loading: boolean;
   lastClose: number;
-  onRefresh: () => void;
+  bars: OhlcBar[];
   compact?: boolean;
 };
 
@@ -17,28 +18,22 @@ export function IntradayQuoteBar({
   quote,
   loading,
   lastClose,
-  onRefresh,
+  bars,
   compact,
 }: IntradayQuoteBarProps) {
   const display = quote?.price ?? lastClose;
-  const priceLabel = quote ? formatQuotePriceLabel(quote.source) : "昨收参考";
+  const priceLabel = formatQuotePriceLabel(quote?.source ?? null);
+  const tradeDate = resolveQuoteTradeDate(quote, bars);
+
   return (
-    <div className={compact ? "space-y-2" : "space-y-3"}>
-      <div className="flex flex-wrap items-end gap-3">
+    <div className={compact ? "space-y-1.5" : "space-y-2"}>
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
         <div>
           <p className="text-xs text-fin-muted">{priceLabel}</p>
-          <p className="font-mono text-lg font-semibold text-[var(--fin-blue)]">
-            {loading && !quote ? "拉取中…" : display.toFixed(4)}
+          <p className="font-mono text-lg font-semibold text-[var(--fin-text)]">
+            {loading && !quote ? "加载中…" : display.toFixed(4)}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onRefresh()}
-          disabled={loading}
-          className="fin-btn-secondary rounded-full px-3 py-1 text-xs disabled:opacity-50"
-        >
-          {loading ? "刷新中…" : "刷新行情"}
-        </button>
         <p className="text-xs text-fin-muted">
           昨收{" "}
           <span className="font-mono fin-muted-text">
@@ -46,13 +41,9 @@ export function IntradayQuoteBar({
           </span>
         </p>
       </div>
-      {quote ? (
-        <p className="text-[10px] leading-relaxed text-fin-muted">
-          数据更新：{formatQuoteFetchedAt(quote.fetchedAt)} ·{" "}
-          {formatQuoteSourceLabel(quote.source)} · 交易日 {quote.tradeDate}
-          {quote.detail ? ` · ${quote.detail}` : null}
-        </p>
-      ) : null}
+      <p className="text-[10px] leading-relaxed text-fin-muted">
+        {formatQuoteDataUpdateLine(tradeDate)}
+      </p>
     </div>
   );
 }

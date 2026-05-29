@@ -4,9 +4,9 @@ import { PageHeader } from "../components/PageHeader";
 import { useDataSource } from "../context/DataSourceContext";
 import {
   fetchLiveQuote,
-  formatQuoteFetchedAt,
+  formatQuoteDataUpdateFootnote,
   formatQuotePriceLabel,
-  formatQuoteSourceLabel,
+  msUntilNextShanghaiBatchUpdate,
   resolvePreviousClose,
   type LiveQuote,
 } from "../lib/liveQuote";
@@ -18,7 +18,6 @@ import {
   strategyKindLabel,
   variantMonitorCompact,
 } from "../lib/strategyLabels";
-import { tryWebThenApiBars } from "../lib/marketDataSync";
 import { formatPct, formatSignedPct } from "../lib/formatDisplay";
 import { strategyPercentileContext } from "../lib/indicatorPercentile";
 import { mergeIntraday1345 } from "../lib/strategy";
@@ -122,26 +121,26 @@ function DividendRegisteredParamsPanel({
   if (!pool) return null;
   const gen = pool.generatedAt.slice(0, 10);
   return (
-    <details className="fin-panel fin-panel-muted group/registered overflow-hidden">
+    <details className="fin-panel group/registered overflow-hidden">
       <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
         <span className="font-semibold text-[var(--fin-text)]">
           <span className="mr-1.5 inline-block text-[var(--fin-dim)] transition group-open/registered:rotate-90">
             ▸
           </span>
-          已登记策略评估
+          监控策略评估
           <span className="ml-2 font-mono text-xs font-normal fin-muted-text">
             强超额 {pool.strongDualExcess.length} · 波段{" "}
             {pool.swingCandidates.length}
           </span>
         </span>
         <span className="text-xs fin-muted-text">
-          基于 {gen} 全样本回测，入选仍要求训练 + 验证均超额
+          基于 {gen} 全样本回测；入选要求前段与后段均跑赢买入持有
         </span>
       </summary>
       <div className="grid gap-4 border-t border-fin-border px-4 py-4 lg:grid-cols-2">
         <div>
           <p className="text-xs font-medium text-[var(--fin-text)]">
-            训练 + 验证均显著超额
+            前段 + 后段均显著超额
           </p>
           <p className="mt-1 text-[11px] fin-muted-text">
             下方仅展示全样本超额，即策略收益相对买入持有基准的差值。
@@ -155,8 +154,8 @@ function DividendRegisteredParamsPanel({
                 >
                   {row.etf}
                 </Link>{" "}
-                · {strategyKindLabel(row.strategy)} · 全样本超额{" "}
-                <span className="font-mono text-emerald-300">
+                · {strategyKindLabel(row.strategy)}                 · 全样本超额{" "}
+                <span className="font-mono font-semibold text-[var(--fin-text)]">
                   {formatSignedPct(row.excessReturn)}
                 </span>
               </li>
@@ -192,29 +191,6 @@ function DividendRegisteredParamsPanel({
       </div>
     </details>
   );
-}
-
-function msUntilNextShanghaiTime(hm: string): number {
-  const [hh, mm] = hm.split(":").map((x) => Number(x));
-  const now = new Date();
-  const shParts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(now);
-  const part = (type: string) =>
-    Number(shParts.find((p) => p.type === type)?.value ?? 0);
-  const current =
-    ((part("hour") * 60 + part("minute")) * 60 + part("second")) * 1000;
-  const target = (hh * 60 + mm) * 60 * 1000;
-  const day = 24 * 60 * 60 * 1000;
-  const delta = target - current;
-  return delta > 0 ? delta : delta + day;
 }
 
 function groupDefinitions(defs: EtfDefinition[]) {
@@ -381,24 +357,15 @@ export function MonitorPage() {
     });
   }, []);
 
-  const [lastRun, setLastRun] = useState<string | null>(null);
-  const [remoteSyncMsg, setRemoteSyncMsg] = useState<Record<string, string>>(
-    {},
-  );
-  const [syncBusy, setSyncBusy] = useState(false);
   const [quotesByCode, setQuotesByCode] = useState<Record<string, LiveQuote>>(
     {},
   );
-  const [quotesLoading, setQuotesLoading] = useState(false);
-  const [quotesFetchedAt, setQuotesFetchedAt] = useState<string | null>(null);
 
   const refreshLiveQuotes = useCallback(async () => {
     if (pref.codes.length === 0) {
       setQuotesByCode({});
-      setQuotesFetchedAt(null);
       return;
     }
-    setQuotesLoading(true);
     try {
       const entries = await Promise.all(
         pref.codes.map(async (code) => {
@@ -413,7 +380,6 @@ export function MonitorPage() {
         if (q) next[code] = q;
       }
       setQuotesByCode(next);
-      setQuotesFetchedAt(new Date().toISOString());
       setPref((prev) => {
         const snapByCode = {
           ...prev.snapByCode,
@@ -425,24 +391,22 @@ export function MonitorPage() {
         savePref(updated);
         return updated;
       });
-    } finally {
-      setQuotesLoading(false);
+    } catch {
+      // 行情拉取失败时保留已有快照
     }
   }, [pref.codes, getEtf]);
 
   useEffect(() => {
     void refreshLiveQuotes();
-    let interval: number | null = null;
-    const timeout = window.setTimeout(() => {
-      void refreshLiveQuotes();
-      interval = window.setInterval(
-        () => void refreshLiveQuotes(),
-        24 * 60 * 60 * 1000,
-      );
-    }, msUntilNextShanghaiTime("14:00"));
+    let handle: number | null = null;
+    const schedule = () => {
+      handle = window.setTimeout(() => {
+        void refreshLiveQuotes().finally(schedule);
+      }, msUntilNextShanghaiBatchUpdate());
+    };
+    schedule();
     return () => {
-      window.clearTimeout(timeout);
-      if (interval != null) window.clearInterval(interval);
+      if (handle != null) window.clearTimeout(handle);
     };
   }, [refreshLiveQuotes]);
 
@@ -554,50 +518,11 @@ export function MonitorPage() {
     swingCandidateSet,
   ]);
 
-  const runRefresh = () => {
-    setLastRun(new Date().toLocaleString("zh-CN", { hour12: false }));
-  };
-
-  const runRemoteSyncAll = async () => {
-    setSyncBusy(true);
-    const next: Record<string, string> = { ...remoteSyncMsg };
-    try {
-      for (const code of pref.codes) {
-        const etf = getEtf(code);
-        if (!etf?.bars.length) {
-          next[code] = "无本地 K 线";
-          continue;
-        }
-        const r = await tryWebThenApiBars(code, etf.bars);
-        if (!r.ok) {
-          next[code] = r.detail ?? "拉取失败";
-          continue;
-        }
-        const bits = [`远程数据拉取成功`];
-        if (r.consistency) {
-          bits.push(...r.consistency.messages);
-          if (r.consistency.mismatchSamples.length)
-            bits.push(...r.consistency.mismatchSamples.slice(0, 4));
-        }
-        next[code] = bits.join(" · ");
-      }
-      setRemoteSyncMsg(next);
-    } finally {
-      setSyncBusy(false);
-    }
-  };
-
   const poolSummary =
     pref.codes.length > 0
       ? pref.codes.slice(0, 6).join("、") +
         (pref.codes.length > 6 ? ` 等 ${pref.codes.length} 只` : "")
       : "未选择";
-  const quoteSourceSuffix = (source: LiveQuote["source"] | null): string => {
-    if (!source) return "";
-    const sourceLabel = formatQuoteSourceLabel(source);
-    const priceLabel = formatQuotePriceLabel(source);
-    return sourceLabel === priceLabel ? "" : ` · ${sourceLabel}`;
-  };
 
   return (
     <div className="ft-page space-y-4">
@@ -607,9 +532,9 @@ export function MonitorPage() {
         breadcrumbs={[{ label: "配置总览", to: "/" }, { label: "盘中监控" }]}
         description={
           <>
-            用 <strong>ETF 行情价</strong>
-            可用时的行情快照更新各策略的买卖标尺；不可用时回退到最新日 K
-            或本地收盘。含义见下方「标尺说明」。
+            用 ETF <strong>最新价格</strong>
+            更新各监控策略的买卖分位；盘中优先实时价，工作日 11:00、14:00
+            定点同步兜底。
           </>
         }
       />
@@ -663,19 +588,9 @@ export function MonitorPage() {
       </details>
 
       <section className="fin-panel p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-[var(--fin-text)]">
-            全策略信号与标尺
-          </h3>
-          <button
-            type="button"
-            onClick={() => void refreshLiveQuotes()}
-            disabled={quotesLoading || pref.codes.length === 0}
-            className="fin-btn-secondary rounded-full px-3 py-1 text-xs disabled:opacity-50"
-          >
-            {quotesLoading ? "刷新行情中…" : "刷新行情"}
-          </button>
-        </div>
+        <h3 className="text-sm font-semibold text-[var(--fin-text)]">
+          全策略信号与分位
+        </h3>
         {rowGroups.length === 0 ? (
           <p className="mt-4 text-sm fin-muted-text">请至少勾选一只标的。</p>
         ) : (
@@ -686,7 +601,7 @@ export function MonitorPage() {
                   <th className="px-2 py-1.5 font-normal">标的</th>
                   <th className="px-2 py-1.5 font-normal">行情价</th>
                   <th className="px-2 py-1.5 font-normal">策略</th>
-                  <th className="px-2 py-1.5 font-normal">标尺%</th>
+                  <th className="px-2 py-1.5 font-normal">分位</th>
                   <th className="px-2 py-1.5 font-normal">指标</th>
                   <th className="px-2 py-1.5 font-normal">区间</th>
                 </tr>
@@ -696,13 +611,7 @@ export function MonitorPage() {
                   g.rows.map((r, i) => (
                     <tr
                       key={`${r.code}-${r.variantKey}`}
-                      className={`hover:bg-fin-panel-muted/80 ${
-                        r.isStrongExcess
-                          ? "bg-emerald-500/[0.06]"
-                          : r.isSwingCandidate
-                            ? "bg-blue-500/[0.05]"
-                            : ""
-                      }`}
+                      className="fin-row-hover"
                     >
                       {i === 0 ? (
                         <td
@@ -726,7 +635,7 @@ export function MonitorPage() {
                           </Link>
                           {g.rows.length > 1 ? (
                             <p className="mt-0.5 text-[9px] text-[var(--fin-dim)]">
-                              {g.rows.length} 套登记参数
+                              {g.rows.length} 套策略
                             </p>
                           ) : null}
                         </td>
@@ -736,13 +645,12 @@ export function MonitorPage() {
                           rowSpan={g.rows.length}
                           className="px-2 py-1.5 align-top border-r border-fin-border"
                         >
-                          <p className="font-mono text-xs font-semibold text-[var(--fin-blue)]">
+                          <p className="font-mono text-xs font-semibold text-[var(--fin-text)]">
                             {r.snap.toFixed(4)}
                           </p>
                           <p className="text-[9px] text-[var(--fin-dim)]">
                             {formatQuotePriceLabel(r.quoteSource)} · 昨收{" "}
                             {r.lastClose.toFixed(4)}
-                            {quoteSourceSuffix(r.quoteSource)}
                           </p>
                         </td>
                       ) : null}
@@ -750,23 +658,15 @@ export function MonitorPage() {
                         className="px-2 py-1.5 text-[10px] text-[var(--fin-text)] max-w-[12rem] truncate"
                         title={r.strategyLabel}
                       >
-                        <span
-                          className={
-                            r.isStrongExcess
-                              ? "text-emerald-200"
-                              : r.isSwingCandidate
-                                ? "text-blue-200"
-                                : ""
-                          }
-                        >
+                        <span className="text-[var(--fin-text)]">
                           {r.strategyLabel}
                         </span>
                         {r.isStrongExcess ? (
-                          <span className="ml-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-0.5 text-[9px] text-emerald-200">
+                          <span className="fin-summary-tone-badge fin-summary-tone-badge--good ml-1 !mb-0 px-1 py-0 text-[9px]">
                             超额
                           </span>
                         ) : r.isSwingCandidate ? (
-                          <span className="ml-1 rounded border border-blue-500/30 bg-blue-500/10 px-1 py-0.5 text-[9px] text-blue-200">
+                          <span className="ml-1 rounded border border-fin-border px-1 py-0.5 text-[9px] fin-muted-text">
                             波段
                           </span>
                         ) : null}
@@ -790,85 +690,15 @@ export function MonitorPage() {
                 )}
               </tbody>
             </table>
+            <div className="border-t border-fin-border px-3 py-2 space-y-1 text-[10px] text-fin-muted">
+              <p>
+                分位数按照策略买卖点拉到 0–100%，计算当前价格所处的分位数。
+              </p>
+              <p>{formatQuoteDataUpdateFootnote()}</p>
+            </div>
           </div>
         )}
-        {quotesFetchedAt && pref.codes.length > 0 ? (
-          <p className="mt-3 border-t border-fin-border pt-3 text-center text-[10px] text-fin-muted">
-            行情数据更新：{formatQuoteFetchedAt(quotesFetchedAt)} · 每日 14:00
-            自动刷新一次 ·
-            实时源优先级：东方财富、新浪、腾讯；均不可用时使用最新日 K 收盘价
-          </p>
-        ) : null}
       </section>
-
-      <details className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-4 text-sm fin-muted-text">
-        <summary className="cursor-pointer list-none font-medium text-[var(--fin-text)] [&::-webkit-details-marker]:hidden">
-          <span className="mr-2 text-[var(--fin-dim)]">▸</span>
-          标尺说明（默认折叠）
-        </summary>
-        <p className="mt-3 leading-relaxed">
-          对纳入监控的 ETF，列出<strong>已登记的全部策略</strong>
-          （含 RSI、布林带等多套）在「昨日收盘 +
-          当前行情价」下的标尺与提醒。标尺 %
-          表示当前指标值在策略买、卖阈值之间的线性位置（0 贴近买侧，100
-          贴近卖侧），不是历史经验分位，也<strong>不是</strong>
-          指数实时点位。RSI
-          按超卖到超买区间线性映射；布林按当前价在下轨到上轨之间的位置线性映射。标尺
-          ≤20% 为临近买，20%–80% 为中性，≥80% 为临近卖。
-        </p>
-        <div className="mt-4 flex flex-wrap items-end gap-4">
-          <label className="text-sm fin-muted-text">
-            参考更新时点
-            <input
-              type="time"
-              value={pref.updateHm}
-              onChange={(e) => setPrefPatch({ updateHm: e.target.value })}
-              className="mt-1 block rounded-xl border border-fin-border px-3 py-2 font-mono text-sm"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={runRefresh}
-            className="fin-btn-primary rounded-full px-5 py-2.5 shadow-sm"
-          >
-            刷新汇总时刻
-          </button>
-          {lastRun && (
-            <p className="text-xs text-[var(--fin-dim)]">上次点击：{lastRun}</p>
-          )}
-        </div>
-      </details>
-
-      <details className="fin-panel p-4 text-sm">
-        <summary className="cursor-pointer list-none font-medium text-[var(--fin-text)] [&::-webkit-details-marker]:hidden">
-          <span className="mr-2 text-[var(--fin-dim)]">▸</span>
-          高级：外部行情校验（可选）
-        </summary>
-        <p className="mt-3 text-xs leading-relaxed fin-muted-text">
-          默认使用站点已发布的日 K
-          与盘中快照重算标尺。若已接入自有行情网关，可对已选标的拉取并比对重叠日期一致性。
-        </p>
-        <button
-          type="button"
-          disabled={syncBusy || pref.codes.length === 0}
-          onClick={() => void runRemoteSyncAll()}
-          className="fin-btn-secondary mt-3 rounded-full px-4 py-1.5 text-xs disabled:opacity-50"
-        >
-          {syncBusy ? "校验中…" : "对已选标的拉取并比对"}
-        </button>
-        {Object.keys(remoteSyncMsg).length > 0 && (
-          <ul className="mt-2 max-h-28 space-y-1 overflow-y-auto font-mono text-[10px] fin-muted-text">
-            {pref.codes.map((c) =>
-              remoteSyncMsg[c] ? (
-                <li key={c}>
-                  <span className="text-[var(--fin-blue)]">{c}</span>{" "}
-                  {remoteSyncMsg[c]}
-                </li>
-              ) : null,
-            )}
-          </ul>
-        )}
-      </details>
     </div>
   );
 }

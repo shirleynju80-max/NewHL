@@ -2,6 +2,11 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EtfProductCodeLink } from "../components/EtfProductDetailLink";
 import { PageHeader } from "../components/PageHeader";
+import {
+  FilterChipCount,
+  FilterGroup,
+  FilterSep,
+} from "../components/FilterToolbar";
 import { useDataSource } from "../context/DataSourceContext";
 import { buildIndexSpreadRows, indexSeriesForMode } from "../data/indexCsv";
 import { useHkBondAnchorPreference } from "../hooks/useHkBondAnchorPreference";
@@ -243,17 +248,6 @@ function countFilteredIndices(
   return n;
 }
 
-function FilterChipCount({ count }: { count: number }) {
-  return (
-    <span
-      className="ml-1 font-mono text-[10px] font-normal tabular-nums text-[var(--fin-dim)]"
-      title="当前筛选条件下符合的指数只数"
-    >
-      {count}只
-    </span>
-  );
-}
-
 export function IndicesListPage() {
   const {
     indices,
@@ -486,8 +480,8 @@ export function IndicesListPage() {
         breadcrumbs={[{ label: "配置总览", to: "/" }, { label: "指数研究" }]}
       />
 
-      <section className="fin-panel space-y-3 p-4">
-        <div className="flex flex-wrap items-end gap-3">
+      <section className="fin-panel space-y-2 p-4">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="min-w-[min(100%,220px)] flex-1 text-sm">
             <span className="fin-label">搜索</span>
             <input
@@ -495,15 +489,23 @@ export function IndicesListPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="指数或 ETF 代码、名称"
-              className="fin-select fin-interactive mt-1 block w-full rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm"
+              className="fin-select fin-interactive mt-1 block w-full rounded-md border border-fin-border bg-transparent px-3 py-2 text-sm"
               autoComplete="off"
               spellCheck={false}
             />
           </label>
+          <button
+            type="button"
+            onClick={() => setCompactTable((v) => !v)}
+            className="fin-chip-filter indices-filter-chip px-2 py-1.5 text-xs"
+            aria-pressed={compactTable}
+          >
+            {compactTable ? "显示全部列" : "简略列"}
+          </button>
           {hasActiveFilters ? (
             <button
               type="button"
-              className="fin-chip-filter px-3 py-2 text-sm"
+              className="fin-chip-filter indices-filter-chip px-2 py-1.5 text-xs"
               onClick={() => {
                 setQuery("");
                 setDimension("all");
@@ -516,9 +518,8 @@ export function IndicesListPage() {
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="fin-label shrink-0">维度</span>
+        <div className="indices-filter-bar flex flex-wrap items-center gap-x-1 gap-y-1 border-t border-fin-border pt-2">
+          <FilterGroup label="维度">
             {(
               [
                 "all",
@@ -529,7 +530,7 @@ export function IndicesListPage() {
                 key={id}
                 type="button"
                 onClick={() => setDimension(id)}
-                className={`fin-chip-filter ${dimension === id ? "fin-chip-filter-active" : ""}`}
+                className={`fin-chip-filter indices-filter-chip ${dimension === id ? "fin-chip-filter-active" : ""}`}
               >
                 {id === "all"
                   ? "全部"
@@ -546,15 +547,15 @@ export function IndicesListPage() {
                 />
               </button>
             ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="fin-label shrink-0">市场</span>
+          </FilterGroup>
+          <FilterSep />
+          <FilterGroup label="市场">
             {MARKET_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
                 type="button"
                 onClick={() => setMarket(opt.id)}
-                className={`fin-chip-filter ${market === opt.id ? "fin-chip-filter-active" : ""}`}
+                className={`fin-chip-filter indices-filter-chip ${market === opt.id ? "fin-chip-filter-active" : ""}`}
               >
                 {opt.label}
                 <FilterChipCount
@@ -569,15 +570,15 @@ export function IndicesListPage() {
                 />
               </button>
             ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="fin-label shrink-0">成立时间</span>
+          </FilterGroup>
+          <FilterSep />
+          <FilterGroup label="成立">
             {INCEPTION_OPTIONS.map((opt) => (
               <button
                 key={opt.id}
                 type="button"
                 onClick={() => setInceptionFilter(opt.id)}
-                className={`fin-chip-filter ${inceptionFilter === opt.id ? "fin-chip-filter-active" : ""}`}
+                className={`fin-chip-filter indices-filter-chip ${inceptionFilter === opt.id ? "fin-chip-filter-active" : ""}`}
               >
                 {opt.label}
                 <FilterChipCount
@@ -592,28 +593,20 @@ export function IndicesListPage() {
                 />
               </button>
             ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="fin-label shrink-0">时间窗</span>
+          </FilterGroup>
+          <FilterSep />
+          <FilterGroup label="时间窗">
             {PERF_WINDOWS.map((w) => (
               <button
                 key={w.id}
                 type="button"
                 onClick={() => setPerfWindow(w.id)}
-                className={`fin-chip-filter ${perfWindow === w.id ? "fin-chip-filter-active" : ""}`}
+                className={`fin-chip-filter indices-filter-chip ${perfWindow === w.id ? "fin-chip-filter-active" : ""}`}
               >
                 {w.label}
               </button>
             ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => setCompactTable((v) => !v)}
-            className="fin-chip-filter ml-auto"
-            aria-pressed={compactTable}
-          >
-            {compactTable ? "显示全部列" : "简略列"}
-          </button>
+          </FilterGroup>
         </div>
 
         {hasActiveFilters ? (
@@ -647,7 +640,7 @@ export function IndicesListPage() {
                     })
                   : null}
                 {sortableTh("inceptionDate", "成立日", {
-                  title: "指数正式发布/成立日（indices.csv inception_date）",
+                  title: "指数正式发布/成立日",
                 })}
                 {sortableTh("annualReturnPct", "年化")}
                 {sortableTh("maxDrawdownPct", "回撤")}
@@ -658,7 +651,9 @@ export function IndicesListPage() {
                     ? "px-2 py-2 font-normal text-right w-[4.5rem]"
                     : undefined,
                 })}
-                {sortableTh("calmarLike", "卡玛")}
+                {sortableTh("calmarLike", "回撤收益比", {
+                  title: "年化收益相对最大回撤，越高表示同样回撤下收益越高",
+                })}
                 <th
                   className={`font-normal ${compactTable ? "px-2 py-2 w-[4.5rem]" : "px-3 py-2"}`}
                 >

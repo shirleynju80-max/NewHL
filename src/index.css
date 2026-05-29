@@ -41,8 +41,8 @@
   --fin-blue-soft: rgba(79, 125, 243, 0.12);
   --fin-accent: #9b7eff;
   --fin-accent-soft: rgba(155, 126, 255, 0.12);
-  --fin-teal: #34d399;
-  --fin-teal-soft: rgba(52, 211, 153, 0.12);
+  --fin-teal: var(--fin-up);
+  --fin-teal-soft: var(--fin-up-soft);
   --fin-amber: #fbbf24;
   --fin-amber-soft: rgba(251, 191, 36, 0.12);
   --fin-up: #8cd4a5;
@@ -168,7 +168,7 @@
   }
 
   .fin-panel-accent-teal {
-    border-left: 3px solid var(--fin-teal);
+    border-left: 3px solid var(--fin-up);
   }
 
   .fin-panel-accent-blue {
@@ -517,18 +517,18 @@
   .fin-monitor-pick {
     @apply flex min-w-0 cursor-pointer flex-col rounded px-2.5 py-1.5 text-left transition-colors duration-150;
     border-left: 2px solid transparent;
-    background: var(--ft-card-inner);
+    background: transparent;
     color: var(--fin-muted);
   }
 
   .fin-monitor-pick:hover {
-    background: rgba(79, 125, 243, 0.06);
+    background: rgba(255, 255, 255, 0.03);
     color: var(--fin-text);
   }
 
   .fin-monitor-pick--active {
     border-left-color: var(--fin-blue);
-    background: rgba(79, 125, 243, 0.11);
+    background: rgba(79, 125, 243, 0.08);
     color: var(--fin-text);
   }
 
@@ -546,7 +546,7 @@
     @apply cursor-pointer border px-3 py-1.5 text-xs font-medium transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1;
     border-radius: var(--fin-radius);
     border-color: var(--ft-border);
-    background: var(--ft-card-inner);
+    background: transparent;
     color: var(--fin-muted);
     box-shadow: none;
   }
@@ -569,6 +569,10 @@
   .fin-chip-filter-active:hover {
     background: var(--fin-navy-elevated);
     color: #fff;
+  }
+
+  .indices-filter-chip {
+    @apply px-2 py-0.5 text-[11px];
   }
 
   .fin-journey {
@@ -854,7 +858,14 @@
   }
 
   .ft-two-columns {
-    @apply flex flex-wrap items-stretch gap-7;
+    @apply grid gap-7;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 1024px) {
+    .ft-two-columns {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .ft-card {
@@ -1398,6 +1409,18 @@
       width: 100%;
     }
 
+    .ft-nav {
+      @apply gap-x-4 gap-y-2;
+    }
+
+    .indices-filter-bar {
+      row-gap: 0.375rem;
+    }
+
+    .ft-logo-title {
+      font-size: 1.5rem;
+    }
+
     .ft-card-header {
       @apply px-5 pt-5;
     }
@@ -1639,60 +1662,80 @@
     color: #a8b0c0;
   }
 
-  .ft-pool-columns {
-    @apply mt-3 grid gap-0 border px-1 py-3 sm:px-2;
+  .ft-pool-section {
+    @apply border px-5 py-5 sm:px-6;
     border-radius: var(--ft-radius-lg);
     border-color: var(--ft-border);
     background: var(--ft-card);
+  }
+
+  .ft-pool-section-title {
+    @apply text-[0.9rem] font-semibold tracking-wide;
+    color: var(--ft-text);
+  }
+
+  .ft-pool-columns {
+    @apply mt-4 grid gap-4;
     grid-template-columns: 1fr;
   }
 
   @media (min-width: 768px) {
     .ft-pool-columns {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0;
     }
   }
 
   .ft-pool-column {
-    @apply px-3 py-1 sm:px-4;
+    @apply px-0 py-1 sm:px-4;
   }
 
-  .ft-pool-column--divide {
-    @apply md:border-r;
-    border-color: var(--ft-border-soft);
+  @media (min-width: 768px) {
+    .ft-pool-column:not(:last-child) {
+      border-right: 1px solid var(--ft-border-soft);
+    }
   }
 
   @media (max-width: 767px) {
-    .ft-pool-column--divide {
-      @apply border-b pb-3 mb-3 border-r-0;
-    }
-
-    .ft-pool-columns .ft-pool-column:last-child {
-      @apply mb-0 pb-0 border-b-0;
+    .ft-pool-column:not(:last-child) {
+      @apply border-b pb-4 mb-1;
+      border-color: var(--ft-border);
     }
   }
 
   .ft-pool-column-title {
-    @apply mb-2 text-[0.68rem] font-semibold uppercase tracking-wide;
-    color: var(--ft-dim);
+    @apply mb-3 text-xs font-semibold tracking-wide;
+    color: var(--ft-muted);
   }
 
   .ft-pool-chips {
-    @apply flex flex-wrap gap-2;
+    @apply flex flex-col gap-2;
   }
 
   .ft-pool-chip {
-    @apply px-3 py-1 text-[0.7rem] transition-colors border;
+    @apply flex flex-col gap-0.5 border px-3 py-2.5 transition-colors;
     border-radius: var(--ft-radius-sm);
     border-color: var(--ft-border-soft);
-    background: var(--ft-card-inner);
-    color: var(--ft-muted);
+    background: transparent;
     text-decoration: none;
+  }
+
+  .ft-pool-chip-name {
+    @apply text-sm font-medium leading-snug;
+    color: var(--ft-text);
+  }
+
+  .ft-pool-chip-code {
+    @apply font-mono text-[10px];
+    color: var(--ft-dim);
   }
 
   .ft-pool-chip:hover {
     border-color: var(--ft-accent);
-    background: var(--fin-blue-soft);
+    background: transparent;
+  }
+
+  .ft-pool-chip:hover .ft-pool-chip-name {
     color: var(--ft-text);
   }
 

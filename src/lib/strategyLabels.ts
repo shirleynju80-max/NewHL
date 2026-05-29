@@ -44,11 +44,13 @@ export function strategyKindLabel(strategyId: string): string {
   return "策略";
 }
 
+const USER_REGISTERED_LABEL_PREFIX = /^\[(观测注册|监控策略)\]\s*/;
+
 /** 下拉与表格：策略名 + 关键参数摘要 + 版本号 */
 export function variantOptionLabel(v: ParamStrategyVariant): string {
   if (isUserRegisteredVariantKey(v.key)) {
     return stripQuotedAnnotations(
-      v.label.replace(/^\[观测注册\]\s*/, "注册 · "),
+      v.label.replace(USER_REGISTERED_LABEL_PREFIX, "监控 · "),
     );
   }
   const sid = v.strategyId;
@@ -77,7 +79,7 @@ export function variantOptionLabel(v: ParamStrategyVariant): string {
 export function variantMonitorCompact(v: ParamStrategyVariant): string {
   if (isUserRegisteredVariantKey(v.key)) {
     return stripQuotedAnnotations(
-      v.label.replace(/^\[观测注册\]\s*/, "注册 · "),
+      v.label.replace(USER_REGISTERED_LABEL_PREFIX, "监控 · "),
     );
   }
   const noteLabel = stripQuotedAnnotations(v.label);

@@ -10,6 +10,12 @@ export type LiveQuoteSource =
   | "api"
   | "local";
 
+/** 工作日 ETF 行情定点同步（Realtime crawler，见 .github/workflows/realtime-crawler.yml） */
+export const INTRADAY_BATCH_UPDATE_TIMES = ["11:00", "14:00"] as const;
+
+/** 指数 T-1 盘后同步（Index T-1 sync），不用于 ETF 盘中价文案 */
+export const INDEX_T1_SYNC_UPDATE_TIMES = ["18:30", "20:30"] as const;
+
 export type LiveQuote = {
   price: number;
   prevClose?: number;
@@ -49,7 +55,7 @@ export function quoteFromLocalBars(bars: OhlcBar[]): LiveQuote | null {
     quoteTime: now,
     fetchedAt: now,
     source: "local",
-    detail: last.date >= shanghaiTodayYmd() ? "本地增量行情" : "本地最新收盘",
+    detail: last.date >= shanghaiTodayYmd() ? "增量价格" : "最新价格",
   };
 }
 
@@ -137,25 +143,39 @@ export async function fetchLiveQuote(
   localBars: OhlcBar[],
 ): Promise<LiveQuote> {
   const site = await fetchSiteQuoteApi(code);
-  if (site) return site;
+  if (site) return finalizeQuote(site, localBars);
 
   const remote = await fetchQuoteFromRemoteBars(code, localBars);
-  if (remote) return remote;
+  if (remote) return finalizeQuote(remote, localBars);
 
   const local = quoteFromLocalBars(localBars);
-  if (local) return local;
+  if (local) return finalizeQuote(local, localBars);
 
   const fallbackClose = localBars.at(-1)?.close;
   const now = new Date().toISOString();
+  return finalizeQuote(
+    {
+      price:
+        Number.isFinite(fallbackClose) && fallbackClose! > 0
+          ? fallbackClose!
+          : 1,
+      tradeDate: localBars.at(-1)?.date ?? shanghaiTodayYmd(),
+      quoteTime: now,
+      fetchedAt: now,
+      source: "local",
+      detail: "暂无实时行情",
+    },
+    localBars,
+  );
+}
+
+function finalizeQuote(quote: LiveQuote, bars: OhlcBar[]): LiveQuote {
+  const tradeDate = resolveQuoteTradeDate(quote, bars);
+  const prevClose = resolvePreviousClose(bars, quote);
   return {
-    price:
-      Number.isFinite(fallbackClose) && fallbackClose! > 0 ? fallbackClose! : 1,
-    prevClose: previousCloseFromBars(localBars),
-    tradeDate: localBars.at(-1)?.date ?? shanghaiTodayYmd(),
-    quoteTime: now,
-    fetchedAt: now,
-    source: "local",
-    detail: "暂无实时行情",
+    ...quote,
+    tradeDate,
+    prevClose: prevClose > 0 ? prevClose : quote.prevClose,
   };
 }
 
@@ -165,7 +185,43 @@ export function formatQuoteSourceLabel(source: LiveQuoteSource): string {
   if (source === "tencent") return "腾讯实时";
   if (source === "web") return "行情 Web";
   if (source === "api") return "行情 API";
-  return "本地收盘";
+  return "最新价格";
+}
+
+export function formatQuoteDataUpdateLine(tradeDate: string): string {
+  const slots = INTRADAY_BATCH_UPDATE_TIMES.join(" / ");
+  return `数据更新：盘中实时（${slots} 定点更新），交易日 ${tradeDate}`;
+}
+
+/** 表格底部统一注释：交易日取当前北京时间会话日 */
+export function formatQuoteDataUpdateFootnote(): string {
+  return formatQuoteDataUpdateLine(shanghaiTodayYmd());
+}
+
+export function msUntilNextShanghaiBatchUpdate(): number {
+  return Math.min(
+    ...INTRADAY_BATCH_UPDATE_TIMES.map((hm) => msUntilNextShanghaiTime(hm)),
+  );
+}
+
+export function msUntilNextShanghaiTime(hm: string): number {
+  const [hh, mm] = hm.split(":").map((x) => Number(x));
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const part = (type: string) =>
+    Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const current =
+    ((part("hour") * 60 + part("minute")) * 60 + part("second")) * 1000;
+  const target = (hh * 60 + mm) * 60 * 1000;
+  const day = 24 * 60 * 60 * 1000;
+  const delta = target - current;
+  return delta > 0 ? delta : delta + day;
 }
 
 export function isRealtimeQuoteSource(
@@ -178,8 +234,33 @@ export function formatQuotePriceLabel(
   source: LiveQuoteSource | null | undefined,
 ): string {
   if (isRealtimeQuoteSource(source)) return "实时价";
-  if (source === "web" || source === "api") return "最新日 K";
-  return "本地收盘";
+  if (source === "web" || source === "api") return "最新价格";
+  return "最新价格";
+}
+
+export function resolveQuoteTradeDate(
+  quote: LiveQuote | null | undefined,
+  bars: OhlcBar[],
+): string {
+  const today = shanghaiTodayYmd();
+  const lastBarDate = sortedBarDates(bars).at(-1);
+
+  if (quote?.tradeDate && quote.tradeDate >= today) {
+    return quote.tradeDate;
+  }
+  // 日历已进入新交易日，但 CSV 仍停在 T-1：交易日展示为「当前会话日」
+  if (lastBarDate && lastBarDate < today) {
+    return today;
+  }
+  if (quote?.tradeDate) return quote.tradeDate;
+  return lastBarDate ?? today;
+}
+
+function sortedBarDates(bars: OhlcBar[]): string[] {
+  return [...bars]
+    .filter((b) => Number.isFinite(b.close) && b.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((b) => b.date);
 }
 
 function previousCloseFromBars(
@@ -197,31 +278,49 @@ function previousCloseFromBars(
   return Number.isFinite(prev) && prev! > 0 ? prev : undefined;
 }
 
+/** 上一交易日收盘价：优先行情源昨收；否则取 CSV 中 today 之前最后一根 K 的 close。 */
 export function resolvePreviousClose(
   bars: OhlcBar[],
   quote?: LiveQuote | null,
 ): number {
+  const today = shanghaiTodayYmd();
+  const ydayClose = previousSessionCloseFromBars(bars, today);
+
   if (
-    typeof quote?.prevClose === "number" &&
+    isRealtimeQuoteSource(quote?.source) &&
+    quote?.tradeDate &&
+    quote.tradeDate >= today &&
+    typeof quote.prevClose === "number" &&
     Number.isFinite(quote.prevClose) &&
     quote.prevClose > 0
   ) {
     return quote.prevClose;
   }
-  const beforeQuoteDate = quote?.tradeDate
-    ? previousCloseFromBars(bars, quote.tradeDate)
-    : undefined;
-  if (beforeQuoteDate != null) return beforeQuoteDate;
+
+  if (ydayClose != null) return ydayClose;
+
+  if (quote?.tradeDate) {
+    const beforeQuote = previousCloseFromBars(bars, quote.tradeDate);
+    if (beforeQuote != null) return beforeQuote;
+  }
 
   const sorted = [...bars]
     .filter((b) => Number.isFinite(b.close) && b.close > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
-  if (!sorted.length) return 1;
-  const last = sorted[sorted.length - 1]!;
-  if (last.date >= shanghaiTodayYmd() && sorted.length >= 2) {
-    return sorted[sorted.length - 2]!.close;
-  }
-  return last.close;
+  if (sorted.length >= 2) return sorted[sorted.length - 2]!.close;
+  if (sorted.length === 1) return sorted[0]!.close;
+  return 1;
+}
+
+function previousSessionCloseFromBars(
+  bars: OhlcBar[],
+  today: string,
+): number | undefined {
+  const priorToday = [...bars]
+    .filter((b) => Number.isFinite(b.close) && b.close > 0 && b.date < today)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const ydayBar = priorToday.at(-1);
+  return ydayBar?.close;
 }
 
 export function formatQuoteFetchedAt(iso: string): string {

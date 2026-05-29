@@ -169,7 +169,7 @@ function PercentileMeter({
       ? Math.max(0, Math.min(100, percentile))
       : null;
   return (
-    <div className="rounded-2xl border border-fin-border bg-fin-panel-muted/70 p-4">
+    <div className="fin-panel p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs fin-muted-text">{label}</p>
@@ -179,15 +179,15 @@ function PercentileMeter({
         </div>
         <div className="text-right">
           <p className="text-xs fin-muted-text">历史分位</p>
-          <p className="mt-1 font-mono text-lg font-semibold text-[var(--fin-blue)]">
+          <p className="mt-1 font-mono text-lg font-semibold text-[var(--fin-text)]">
             {formatPct(pct)}
           </p>
         </div>
       </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--fin-panel-muted)]">
+      <div className="mt-3 h-2 overflow-hidden rounded-full border border-fin-border">
         <div
-          className="h-full rounded-full bg-[var(--fin-blue)]"
-          style={{ width: `${pct ?? 0}%`, opacity: 0.75 }}
+          className="h-full rounded-full bg-[var(--fin-up)]"
+          style={{ width: `${pct ?? 0}%`, opacity: 0.65 }}
         />
       </div>
       <p className="mt-2 text-xs fin-muted-text">{percentileTone(pct)}</p>
@@ -629,7 +629,7 @@ export function IndexDetailPage() {
   if (!def) {
     if (raw && (publicCsvAutoLoading || indices.length === 0)) {
       return (
-        <div className="rounded-lg border border-fin-border bg-fin-panel-muted px-4 py-8 text-sm fin-muted-text">
+        <div className="rounded-lg border border-fin-border px-4 py-8 text-sm fin-muted-text">
           正在加载指数数据…
         </div>
       );
@@ -887,17 +887,22 @@ export function IndexDetailPage() {
             className="fin-section-scroll fin-panel overflow-hidden"
           >
             <div className="flex flex-wrap items-center gap-3 border-b border-fin-border px-5 py-4 xl:flex-nowrap">
-              <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-sm font-medium">
-                {QUICK_RANGES.map((r) => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => applyQuickRange(r)}
-                    className={`fin-chip-filter min-w-12 px-2 py-1.5 ${quickRange === r.id ? "fin-chip-filter-active" : ""}`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-[var(--fin-dim)]">
+                  时间窗
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
+                  {QUICK_RANGES.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => applyQuickRange(r)}
+                      className={`fin-chip-filter min-w-12 px-2 py-1.5 ${quickRange === r.id ? "fin-chip-filter-active" : ""}`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               {firstPerfDate && lastPerfDate ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -938,7 +943,7 @@ export function IndexDetailPage() {
                     );
                     setCompareCandidate("");
                   }}
-                  className="fin-select w-full max-w-[280px] rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm"
+                  className="fin-select w-full max-w-[280px] rounded-md border border-fin-border bg-transparent px-3 py-2 text-sm"
                 >
                   <option value="">指数比较</option>
                   {compareOptions.map((ix) => (
@@ -953,7 +958,7 @@ export function IndexDetailPage() {
               {visibleLineDefs.map((line) => (
                 <span
                   key={line.key}
-                  className="inline-flex items-center gap-2 rounded-md border border-fin-border bg-fin-panel-muted px-3 py-1.5 text-sm font-medium text-[var(--fin-text)]"
+                  className="inline-flex items-center gap-2 rounded-md border border-fin-border px-3 py-1.5 text-sm font-medium text-[var(--fin-text)]"
                 >
                   <span
                     className="h-2 w-2 rounded-full"
@@ -1231,7 +1236,7 @@ export function IndexDetailPage() {
                     {allocationAdvice.body}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-fin-border bg-fin-panel-muted/70 p-4">
+                <div className="fin-panel p-4">
                   <p className="text-xs fin-muted-text">当前股息率</p>
                   <p className="mt-1 font-mono text-2xl font-semibold text-[var(--fin-text)]">
                     {formatPct(latestSpreadPoint?.divYieldPct)}
@@ -1240,7 +1245,7 @@ export function IndexDetailPage() {
                     股息率越高，红利资产的现金回报吸引力越强
                   </p>
                 </div>
-                <div className="rounded-2xl border border-fin-border bg-fin-panel-muted/70 p-4">
+                <div className="fin-panel p-4">
                   <p className="text-xs fin-muted-text">当前股债利差</p>
                   <p className="mt-1 font-mono text-2xl font-semibold text-[var(--fin-text)]">
                     {formatPct(latestSpreadPoint?.spreadPct)}
@@ -1252,13 +1257,13 @@ export function IndexDetailPage() {
               </div>
 
               <div className="flex flex-wrap gap-2 text-[11px] fin-muted-text">
-                <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                  绿色底色：利差较高，红利相对债券补偿更充分
+                <span className="rounded border border-fin-border px-2 py-1">
+                  绿色区域：利差较高，红利相对债券补偿更充分
                 </span>
-                <span className="rounded border border-slate-500/30 bg-slate-500/10 px-2 py-1">
-                  灰色底色：利差偏低，性价比需要谨慎观察
+                <span className="rounded border border-fin-border px-2 py-1">
+                  灰色区域：利差偏低，需审慎观察
                 </span>
-                <span className="rounded border border-fin-border bg-fin-panel-muted px-2 py-1">
+                <span className="rounded border border-fin-border px-2 py-1">
                   价格线使用左轴；股息率、国债收益率、利差使用右轴
                 </span>
               </div>

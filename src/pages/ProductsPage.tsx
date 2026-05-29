@@ -2,6 +2,10 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { useDataSource } from "../context/DataSourceContext";
 import { PageHeader } from "../components/PageHeader";
 import {
+  FilterGroup,
+  FilterSep,
+} from "../components/FilterToolbar";
+import {
   EtfProductsDataFootnote,
   EtfSelectionGuide,
   ProductsByIndexSections,
@@ -111,7 +115,7 @@ export function ProductsPage() {
           </div>
           <div>
             <dt className="fin-label">主跟踪</dt>
-            <dd className="font-mono font-semibold text-[var(--fin-blue)]">
+            <dd className="font-mono font-semibold text-[var(--fin-text)]">
               {poolStats.primary} 只
             </dd>
           </div>
@@ -124,8 +128,8 @@ export function ProductsPage() {
         </dl>
       </PageHeader>
 
-      <section className="fin-panel space-y-3 p-4">
-        <div className="flex flex-wrap items-end gap-3">
+      <section className="fin-panel space-y-2 p-4">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="min-w-[min(100%,220px)] flex-1 text-sm">
             <span className="fin-label">搜索</span>
             <input
@@ -133,7 +137,7 @@ export function ProductsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="指数或 ETF 代码、名称"
-              className="fin-select fin-interactive mt-1 block w-full rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm"
+              className="fin-select fin-interactive mt-1 block w-full rounded-md border border-fin-border bg-transparent px-3 py-2 text-sm"
               autoComplete="off"
               spellCheck={false}
             />
@@ -141,7 +145,7 @@ export function ProductsPage() {
           {hasActiveFilters ? (
             <button
               type="button"
-              className="fin-chip-filter px-3 py-2 text-sm"
+              className="fin-chip-filter indices-filter-chip px-2 py-1.5 text-xs"
               onClick={() => {
                 setQuery("");
                 setDimension("all");
@@ -154,30 +158,34 @@ export function ProductsPage() {
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="fin-label shrink-0">维度</span>
-          {DIMENSION_FILTERS.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => setDimension(d.id)}
-              className={`fin-chip-filter px-2.5 py-1 text-xs ${dimension === d.id ? "fin-chip-filter-active" : ""}`}
-            >
-              {d.label}
-            </button>
-          ))}
-          <span className="fin-label ml-2 shrink-0">数据</span>
-          {DATA_FILTERS.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => setDataStatus(d.id)}
-              className={`fin-chip-filter px-2.5 py-1 text-xs ${dataStatus === d.id ? "fin-chip-filter-active" : ""}`}
-            >
-              {d.label}
-            </button>
-          ))}
-          <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs fin-muted-text">
+        <div className="indices-filter-bar flex flex-wrap items-center gap-x-1 gap-y-1 border-t border-fin-border pt-2">
+          <FilterGroup label="维度">
+            {DIMENSION_FILTERS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDimension(d.id)}
+                className={`fin-chip-filter indices-filter-chip ${dimension === d.id ? "fin-chip-filter-active" : ""}`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </FilterGroup>
+          <FilterSep />
+          <FilterGroup label="数据">
+            {DATA_FILTERS.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDataStatus(d.id)}
+                className={`fin-chip-filter indices-filter-chip ${dataStatus === d.id ? "fin-chip-filter-active" : ""}`}
+              >
+                {d.label}
+              </button>
+            ))}
+          </FilterGroup>
+          <FilterSep />
+          <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 px-1 text-[11px] fin-muted-text">
             <input
               type="checkbox"
               checked={primaryOnly}

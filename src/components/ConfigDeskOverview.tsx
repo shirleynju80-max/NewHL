@@ -328,7 +328,7 @@ export function ConfigDeskOverview({
                         </span>
                         {pctNum != null ? (
                           <span className="ft-compare-value ft-compare-percentile-hist">
-                            {pctNum}%（历史分位数）
+                            {pctNum}%（历史分位）
                           </span>
                         ) : null}
                       </div>
@@ -387,19 +387,19 @@ export function ConfigDeskOverview({
       </section>
 
       {poolColumns.some((col) => col.chips.length > 0) ? (
-        <section aria-labelledby="core-index-pool-title">
+        <section
+          className="ft-pool-section"
+          aria-labelledby="core-index-pool-title"
+        >
           <h3
             id="core-index-pool-title"
-            className="text-[0.85rem] font-semibold text-[var(--ft-text)]"
+            className="ft-pool-section-title"
           >
             底层核心指数池跟踪
           </h3>
           <div className="ft-pool-columns">
-            {poolColumns.map((col, colIndex) => (
-              <div
-                key={col.title}
-                className={`ft-pool-column${colIndex < poolColumns.length - 1 ? " ft-pool-column--divide" : ""}`}
-              >
+            {poolColumns.map((col) => (
+              <div key={col.title} className="ft-pool-column">
                 <p className="ft-pool-column-title">{col.title}</p>
                 <div className="ft-pool-chips">
                   {col.chips.map((chip) => (
@@ -408,7 +408,8 @@ export function ConfigDeskOverview({
                       to={chip.href}
                       className="ft-pool-chip"
                     >
-                      {chip.name}({chip.code})
+                      <span className="ft-pool-chip-name">{chip.name}</span>
+                      <span className="ft-pool-chip-code">{chip.code}</span>
                     </Link>
                   ))}
                 </div>

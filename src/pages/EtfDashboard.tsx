@@ -682,7 +682,7 @@ function EtfDashboardPageInner() {
 
   const windowLabel =
     winBt && winBt.barsWin.length > 0
-      ? `${winBt.barsWin[0].date} ~ ${winBt.barsWin[winBt.barsWin.length - 1].date}（${winBt.barsWin.length} 根 K 线）`
+      ? `${winBt.barsWin[0].date} ~ ${winBt.barsWin[winBt.barsWin.length - 1].date}（${winBt.barsWin.length} 个交易日）`
       : "";
 
   const tabs: { id: TabId; label: string; hide?: boolean }[] = [
@@ -713,7 +713,7 @@ function EtfDashboardPageInner() {
               { label: etf.meta.code },
             ]}
           />
-          <p className="mt-2 text-xs font-medium text-[var(--fin-blue)]">
+          <p className="mt-2 text-xs font-medium text-[var(--fin-dim)]">
             产品执行
           </p>
           <h2 className="fin-page-title mt-1">{etf.meta.name}</h2>
@@ -724,7 +724,7 @@ function EtfDashboardPageInner() {
             {productRecord?.isPrimary === false ? (
               <span className="fin-muted-text">参考产品 · </span>
             ) : (
-              <span className="font-medium text-[var(--fin-blue)]">
+              <span className="font-medium text-[var(--fin-text)]">
                 主跟踪 ·{" "}
               </span>
             )}
@@ -742,9 +742,9 @@ function EtfDashboardPageInner() {
             </Link>
           ) : null}
         </div>
-        <div className="fin-panel px-5 py-4 text-sm max-w-md space-y-3">
+        <div className="fin-panel px-5 py-3 text-sm max-w-md space-y-2">
           {productRecord ? (
-            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-b border-fin-border pb-3">
+            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-b border-fin-border pb-2">
               <dt className="text-[var(--fin-dim)]">产品分组</dt>
               <dd className="font-medium text-[var(--fin-text)]">
                 {ETF_PRODUCT_GROUP_LABELS[productRecord.productGroup]?.title ??
@@ -786,7 +786,7 @@ function EtfDashboardPageInner() {
               <dd
                 className={
                   productRecord.isPrimary
-                    ? "font-medium text-[var(--fin-blue)]"
+                    ? "font-medium text-[var(--fin-text)]"
                     : "fin-muted-text"
                 }
               >
@@ -796,7 +796,7 @@ function EtfDashboardPageInner() {
           ) : null}
           {strategyEligible ? (
             <>
-              <div className="border-b border-fin-border pb-3">
+              <div className="border-b border-fin-border pb-2">
                 <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                   <p className="text-xs text-[var(--fin-dim)]">
                     监控策略 · 买卖区间趋势
@@ -808,11 +808,11 @@ function EtfDashboardPageInner() {
                 {variantZoneRows.length === 0 ? (
                   <p className="mt-2 text-xs fin-muted-text">暂无监控策略</p>
                 ) : (
-                  <ul className="mt-2 max-h-52 space-y-2 overflow-y-auto">
+                  <ul className="mt-1.5 max-h-40 space-y-1.5 overflow-y-auto">
                     {variantZoneRows.map(({ v, pctCtx, zoneLabel }) => (
                       <li
                         key={v.key}
-                        className={`rounded-lg border border-fin-border bg-fin-panel-muted/70 px-2.5 py-2 ${
+                        className={`rounded-lg border border-fin-border px-2 py-1.5 ${
                           v.key === activeVariant?.key
                             ? "ring-1 ring-[var(--fin-blue)]/50"
                             : ""
@@ -830,36 +830,17 @@ function EtfDashboardPageInner() {
                           </span>
                         </div>
                         {pctCtx ? (
-                          <p className="mt-1 text-[10px] leading-snug fin-muted-text">
-                            {pctCtx.metricName} {pctCtx.metricValue} · 标尺{" "}
+                          <p className="mt-0.5 text-[10px] leading-snug fin-muted-text">
+                            {pctCtx.metricName} {pctCtx.metricValue} · 分位{" "}
                             <span className="font-mono font-semibold text-[var(--fin-text)]">
                               {formatPct(pctCtx.percentile)}
                             </span>
-                            <span className="text-[var(--fin-dim)]">
-                              {" "}
-                              · 0 买侧 100 卖侧
-                            </span>
-                          </p>
-                        ) : null}
-                        {pctCtx?.hint ? (
-                          <p className="mt-0.5 text-[10px] text-[var(--fin-dim)]">
-                            {pctCtx.hint}
                           </p>
                         ) : null}
                       </li>
                     ))}
                   </ul>
                 )}
-                <p className="text-xs fin-muted-text mt-2 border-t border-fin-border pt-2">
-                  截至最近收盘的持仓：
-                  <span className="font-semibold text-[var(--fin-text)]">
-                    {latestGlobalPosition}
-                  </span>
-                  <span className="text-[var(--fin-dim)]">
-                    {" "}
-                    · 按当前所选策略统计；与下方图表时间段末尾可能不一致
-                  </span>
-                </p>
               </div>
             </>
           ) : strategyIneligibleReason ? (
@@ -911,12 +892,12 @@ function EtfDashboardPageInner() {
       {tab === "backtest" && strategyEligible && (
         <section className="space-y-6">
           {trackingIndexCode ? (
-            <div className="rounded-2xl border border-fin-border bg-[var(--fin-blue-soft)]/50 px-4 py-3 text-sm text-[var(--fin-text)]">
+            <div className="rounded-2xl border border-fin-border px-4 py-3 text-sm text-[var(--fin-text)]">
               <strong className="font-medium">指数研究</strong>
               （股息率、股债利差、指数绩效）在指数详情页，
               <Link
                 to={`/indices/${encodeURIComponent(trackingIndexCode)}`}
-                className="ml-2 font-medium text-[var(--fin-blue)] hover:underline"
+                className="ml-2 fin-link"
               >
                 打开 {trackingIndexCode} 指数详情 →
               </Link>
@@ -950,7 +931,7 @@ function EtfDashboardPageInner() {
                 </Link>
               </div>
               <select
-                className="mt-2 w-full max-w-xl rounded-xl border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm font-medium text-[var(--fin-text)]"
+                className="mt-2 w-full max-w-xl rounded-xl border border-fin-border bg-transparent px-3 py-2 text-sm font-medium text-[var(--fin-text)]"
                 value={activeVariant?.key ?? ""}
                 onChange={(e) => setVariantKey(e.target.value)}
               >
@@ -1050,7 +1031,7 @@ function EtfDashboardPageInner() {
               </p>
             ) : null}
             {chartsReady && variants.length > 1 && activeVariant ? (
-              <div className="rounded-lg border border-fin-border bg-fin-panel-muted/90 px-3 py-2">
+              <div className="rounded-lg border border-fin-border px-3 py-2">
                 <p className="text-xs font-medium text-[var(--fin-text)]">
                   对比策略（可选，最多 3 个）
                 </p>
@@ -1094,7 +1075,7 @@ function EtfDashboardPageInner() {
             ) : null}
             {chartsReady ? (
               <div className="flex flex-col gap-2">
-                <div className="min-h-0 rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
+                <div className="min-h-0 rounded-xl border border-fin-border px-2 py-2">
                   <ResponsiveContainer width="100%" height={260}>
                     <ComposedChart
                       syncId="etfbt"
@@ -1215,7 +1196,7 @@ function EtfDashboardPageInner() {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="min-h-0 rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
+                <div className="min-h-0 rounded-xl border border-fin-border px-2 py-2">
                   <ResponsiveContainer width="100%" height={260}>
                     <ComposedChart
                       syncId="etfbt"
@@ -1388,7 +1369,7 @@ function EtfDashboardPageInner() {
                   </ResponsiveContainer>
                 </div>
                 {barCount > MIN_WINDOW_BARS && brushData.length > 0 && (
-                  <div className="rounded-xl border border-fin-border bg-fin-panel-muted/80 px-2 py-2">
+                  <div className="rounded-xl border border-fin-border px-2 py-2">
                     <p className="mb-1 px-1 text-[10px] font-medium uppercase tracking-wide text-[var(--fin-dim)]">
                       选择时间段 · 拖动两端或平移滑块
                     </p>
@@ -1456,7 +1437,7 @@ function EtfDashboardPageInner() {
               </h3>
               <p className="mt-1 text-xs fin-muted-text">
                 已平仓轮次 +
-                窗口内买入后尚未卖出的持有；净值为策略复利。已平仓行按
+                窗口内买入后尚未卖出的持有；买入价/卖出价为对应交易日收盘价，与上方价格图一致。同一轮内多次买入信号不新开仓、不刷新成本，策略收益与持仓天数均自本轮<strong>首次</strong>买入日至卖出日计。已平仓行按
                 <strong>买入日升序</strong>排列；MA 自定义的
                 <strong>卖触发</strong>
                 列按持仓内逐日规则与信号一致，标出本笔首次触发的「止盈」「回撤」或「止盈+回撤（同日）」。
@@ -1469,8 +1450,8 @@ function EtfDashboardPageInner() {
                     <th className="px-4 py-3">类型</th>
                     <th className="px-4 py-3">买入日</th>
                     <th className="px-4 py-3">卖出日</th>
-                    <th className="px-4 py-3">买入净值</th>
-                    <th className="px-4 py-3">卖出净值</th>
+                    <th className="px-4 py-3">买入价</th>
+                    <th className="px-4 py-3">卖出价</th>
                     <th className="px-4 py-3">买触发</th>
                     <th className="px-4 py-3">卖触发</th>
                     <th className="px-4 py-3">收益 %</th>
@@ -1494,7 +1475,7 @@ function EtfDashboardPageInner() {
                         .map((r) => (
                           <tr
                             key={r.round}
-                            className="hover:bg-fin-panel-muted/80"
+                            className="fin-row-hover"
                           >
                             <td className="px-4 py-2.5 font-mono fin-muted-text">
                               第 {r.round} 轮
@@ -1505,8 +1486,12 @@ function EtfDashboardPageInner() {
                             <td className="px-4 py-2.5 font-mono fin-muted-text">
                               {r.sellDate}
                             </td>
-                            <td className="px-4 py-2.5">{r.buyNav}</td>
-                            <td className="px-4 py-2.5">{r.sellNav}</td>
+                            <td className="px-4 py-2.5">
+                              {r.buyPrice.toFixed(4)}
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {r.sellPrice.toFixed(4)}
+                            </td>
                             <td
                               className="px-4 py-2.5 fin-muted-text max-w-[160px] truncate"
                               title={r.buyTrigger}
@@ -1537,9 +1522,7 @@ function EtfDashboardPageInner() {
                             —
                           </td>
                           <td className="px-4 py-2.5">
-                            {rounds.length
-                              ? rounds[rounds.length - 1]!.sellNav
-                              : 1}
+                            {openInWindow.price.toFixed(4)}
                           </td>
                           <td className="px-4 py-2.5">—</td>
                           <td
@@ -1574,15 +1557,14 @@ function EtfDashboardPageInner() {
                 盘中信号
               </h3>
               <p className="mt-1 text-xs text-fin-muted leading-relaxed">
-                以行情快照覆盖当日最后一根 K 的收盘；实时源不可用时回退到最新日
-                K 或本地收盘，对下表各策略重算信号与标尺 %（非历史分位）。
+                用最新价格更新当日收盘估算，对下表各监控策略重算信号与分位（非历史经验分位）。
               </p>
             </div>
             <IntradayQuoteBar
               quote={liveQuote.quote}
               loading={liveQuote.loading}
               lastClose={lastClose}
-              onRefresh={() => void liveQuote.refresh()}
+              bars={etf.bars}
             />
             <EtfRegisteredParamsList etf={etf} compact className="pb-1" />
             {!variants.length ? (
@@ -1594,14 +1576,14 @@ function EtfDashboardPageInner() {
                     <tr>
                       <th className="px-2 py-1.5 font-normal">策略</th>
                       <th className="px-2 py-1.5 font-normal">信号</th>
-                      <th className="px-2 py-1.5 font-normal">标尺</th>
+                      <th className="px-2 py-1.5 font-normal">分位</th>
                       <th className="px-2 py-1.5 font-normal">指标</th>
                       <th className="px-2 py-1.5 font-normal">区间</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-fin-border">
                     {intradayRows.map(({ v, sig, pctCtx, zoneLabel }) => (
-                      <tr key={v.key} className="hover:bg-fin-panel-muted/80">
+                      <tr key={v.key} className="fin-row-hover">
                         <td
                           className="px-2 py-1.5 font-medium text-[var(--fin-text)] max-w-[14rem] truncate"
                           title={variantMonitorCompact(v)}
@@ -1609,17 +1591,19 @@ function EtfDashboardPageInner() {
                           {variantMonitorCompact(v)}
                         </td>
                         <td className="px-2 py-1.5">
-                          <span
-                            className={
-                              sig === "BUY"
-                                ? "font-semibold text-emerald-700"
-                                : sig === "SELL"
-                                  ? "font-semibold text-red-700"
-                                  : "fin-muted-text"
-                            }
-                          >
-                            {sig}
-                          </span>
+                          {sig === "BUY" ? (
+                            <span className="fin-zone-chip fin-zone-chip--buy">
+                              买
+                            </span>
+                          ) : sig === "SELL" ? (
+                            <span className="fin-zone-chip fin-zone-chip--sell">
+                              卖
+                            </span>
+                          ) : (
+                            <span className="fin-zone-chip fin-zone-chip--neutral">
+                              观望
+                            </span>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 font-mono text-[var(--fin-text)]">
                           {pctCtx != null ? formatPct(pctCtx.percentile) : "—"}
@@ -1651,7 +1635,7 @@ function EtfDashboardPageInner() {
               </div>
             )}
             <p className="text-xs fin-muted-text">
-              区间：标尺 ≤20% 为临近买，20%–80% 为中性，≥80% 为临近卖。
+              区间：分位 ≤20% 为临近买，20%–80% 为中性，≥80% 为临近卖。
             </p>
           </div>
         </section>
@@ -1679,7 +1663,7 @@ function EtfDashboardPageInner() {
             </p>
           )}
           <p className="text-xs text-[var(--fin-dim)] border-t border-fin-border pt-4">
-            本产品页中的回测与图表基于<strong>ETF 日 K 收盘价</strong>
+            本产品页中的回测与图表基于<strong>ETF 历史收盘价</strong>
             ，不代表指数实时点位。
           </p>
         </section>
@@ -1701,7 +1685,7 @@ function Stat({
 }) {
   if (compact) {
     return (
-      <div className="rounded-lg border border-fin-border bg-fin-panel-muted px-2.5 py-2">
+      <div className="rounded-lg border border-fin-border px-2.5 py-2">
         <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--fin-dim)]">
           {label}
         </p>

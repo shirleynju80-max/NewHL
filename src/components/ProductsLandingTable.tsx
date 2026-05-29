@@ -244,9 +244,12 @@ function IndexCandidatePanel({ group }: { group: EtfProductsByIndexGroup }) {
           <p className="mt-1.5 text-xs fin-muted-text">
             {group.products.length} 只候选 ETF
             {primary ? (
-              <span className="text-[var(--fin-blue)]">
+              <span className="text-[var(--fin-muted)]">
                 {" "}
-                · 主跟踪 {primary.code}
+                · 主跟踪{" "}
+                <span className="font-mono text-[var(--fin-text)]">
+                  {primary.code}
+                </span>
               </span>
             ) : null}
           </p>

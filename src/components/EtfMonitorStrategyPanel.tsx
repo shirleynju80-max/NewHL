@@ -65,7 +65,7 @@ export function EtfMonitorStrategyPanel({
           <p className="mt-1 text-xs fin-muted-text">
             控制本页回测、图表与右侧买卖区间列表；删除后不再展示。恢复默认仅保留
             <span className="text-[var(--fin-text)]"> 系统内置 </span>
-            策略（{builtinVariants.length} 套），观测注册项将移出列表。
+            策略（{builtinVariants.length} 套），自定义监控策略将移出列表。
           </p>
         </div>
         <button
@@ -98,7 +98,7 @@ export function EtfMonitorStrategyPanel({
             return (
               <li
                 key={v.key}
-                className={`flex items-start justify-between gap-3 rounded-lg border border-fin-border bg-fin-panel-muted/70 px-3 py-2 ${
+                className={`flex items-start justify-between gap-3 rounded-lg border border-fin-border px-3 py-2 ${
                   v.key === activeKey ? "ring-1 ring-[var(--fin-blue)]/50" : ""
                 }`}
               >
@@ -108,9 +108,9 @@ export function EtfMonitorStrategyPanel({
                   </p>
                   <p className="mt-0.5 text-[10px] fin-muted-text">
                     {builtin ? (
-                      <span className="text-[var(--fin-blue)]">内置</span>
+                      <span>内置</span>
                     ) : (
-                      <span className="text-[var(--fin-amber)]">观测注册</span>
+                      <span className="text-[var(--fin-amber)]">监控策略</span>
                     )}
                     {v.key === activeKey ? (
                       <span className="text-[var(--fin-dim)]"> · 当前回测</span>

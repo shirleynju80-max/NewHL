@@ -65,7 +65,7 @@ export function IndexConclusionCard({
     );
 
     return (
-      <section className="fin-panel border-l-[3px] border-l-emerald-600 p-5">
+      <section className="fin-panel border-l-[3px] border-l-[var(--fin-up)] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs font-medium fin-muted-text">研究结论</p>
@@ -89,7 +89,7 @@ export function IndexConclusionCard({
         <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <dt className="text-xs fin-muted-text">最新股息率</dt>
-            <dd className="mt-1 font-mono text-xl font-semibold text-emerald-800">
+            <dd className="mt-1 font-mono text-xl font-semibold text-[var(--fin-text)]">
               {formatPct(divSnap.latestYieldPct)}
             </dd>
             {divSnap.latestYieldPct == null && divSnap.missingReason ? (
@@ -171,7 +171,7 @@ export function IndexConclusionCard({
   const y5 = overview?.y5 ?? overview?.all;
 
   return (
-    <section className="fin-panel border-l-[3px] border-l-teal-700 p-5">
+    <section className="fin-panel border-l-[3px] border-l-[var(--fin-up)] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-medium fin-muted-text">研究结论</p>
@@ -185,7 +185,7 @@ export function IndexConclusionCard({
               ? "fin-status-good border-transparent bg-transparent px-0"
               : availTone === "warn"
                 ? "fin-alert-chip border-transparent bg-transparent px-0"
-                : "border-fin-border bg-fin-panel-muted fin-muted-text"
+                : "border border-fin-border fin-muted-text"
           }`}
         >
           {dataAvailabilityLabel(avail)}

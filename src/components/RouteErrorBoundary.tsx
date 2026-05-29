@@ -38,7 +38,7 @@ export class RouteErrorBoundary extends Component<Props, State> {
           Safari
           硬刷新后若出现白屏，多为脚本异常或本地缓存数据损坏。可尝试下方操作。
         </p>
-        <pre className="overflow-x-auto rounded-lg border border-fin-border bg-fin-panel-muted p-3 text-[11px] text-[var(--fin-red)]">
+        <pre className="overflow-x-auto rounded-lg border border-fin-border bg-transparent p-3 text-[11px] text-[var(--fin-red)]">
           {msg}
         </pre>
         <div className="flex flex-wrap gap-3 text-sm">

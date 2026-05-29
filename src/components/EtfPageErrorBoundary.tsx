@@ -42,7 +42,7 @@ export class EtfPageErrorBoundary extends Component<Props, State> {
           Safari
           硬刷新后若仅本页白屏，多为本地策略缓存损坏或图表初始化异常。可先清除本站数据后重载。
         </p>
-        <pre className="overflow-x-auto rounded-lg border border-fin-border bg-fin-panel-muted p-3 text-[11px] text-[var(--fin-red)]">
+        <pre className="overflow-x-auto rounded-lg border border-fin-border bg-transparent p-3 text-[11px] text-[var(--fin-red)]">
           {msg}
         </pre>
         <div className="flex flex-wrap gap-3 text-sm">

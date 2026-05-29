@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import { Link } from "react-router-dom";
 import { useDataSource } from "../context/DataSourceContext";
@@ -104,34 +103,6 @@ type CorrOrderMode = "code" | "cluster";
 
 function barsTailByWindow(bars: EtfDefinition["bars"], win: WindowKey) {
   return sliceBarsForWindow(bars, win);
-}
-
-/** 正相关用琥珀（分散度提示），负相关用弱蓝；不用 error 红 */
-function corrCellStyle(v: number): CSSProperties {
-  if (!Number.isFinite(v))
-    return { backgroundColor: "transparent", color: "var(--fin-dim)" };
-  const t = Math.min(1, Math.abs(v));
-  const alpha = 0.1 + t * 0.28;
-  if (v >= 0) {
-    if (v < 0.25)
-      return { backgroundColor: "transparent", color: "var(--fin-muted)" };
-    return {
-      backgroundColor: `rgba(251, 191, 36, ${alpha})`,
-      color: t > 0.65 ? "var(--fin-amber)" : "var(--fin-muted)",
-    };
-  }
-  return {
-    backgroundColor: `rgba(79, 125, 243, ${alpha * 0.75})`,
-    color: t > 0.65 ? "var(--fin-blue-bright)" : "var(--fin-muted)",
-  };
-}
-
-function corrDiagonalCellStyle(): CSSProperties {
-  return {
-    backgroundColor: "var(--fin-panel)",
-    color: "var(--fin-text)",
-    boxShadow: "inset 0 0 0 1px var(--fin-border)",
-  };
 }
 
 /** 贪心聚类序：尽量把高正相关标的排在相邻位置 */
@@ -467,7 +438,7 @@ export function EtfCompareWorkbench() {
         {
           title: "近5年优选",
           value: `${best.code} ${formatPct(best.block.annualReturnPct)}`,
-          note: `${best.name} · 卡玛 ${best.block.calmarLike ?? "—"}`,
+          note: `${best.name} · 回撤收益比 ${best.block.calmarLike ?? "—"}`,
           href: "#overview-metrics",
           tone: "good",
         },
@@ -650,7 +621,7 @@ export function EtfCompareWorkbench() {
         </div>
         {compareCodes.length < 2 && (
           <p className="mt-6 text-sm fin-muted-text">
-            请在对比标的池勾选至少 2 只已有日 K 的主跟踪 ETF。
+            请在对比标的池勾选至少 2 只已有历史行情的主跟踪 ETF。
           </p>
         )}
         {compareCodes.length >= 2 && !compareResult && (
@@ -670,7 +641,7 @@ export function EtfCompareWorkbench() {
                 <summary className="cursor-pointer fin-link">指标怎么算</summary>
                 <p className="mt-1 leading-relaxed">
                   区间收益＝窗口首尾收盘涨跌；年化收益按 252
-                  交易日复利折算；最大回撤为区间内峰值到谷底；年化波动为日收益标准差×√252；风险收益比＝年化÷年化波动；卡玛≈年化÷|最大回撤|。
+                  交易日复利折算；最大回撤为区间内峰值到谷底；年化波动为日收益标准差×√252；风险收益比＝年化÷年化波动；回撤收益比≈年化÷|最大回撤|。
                 </p>
               </details>
               <div className="mt-3 overflow-x-auto">
@@ -701,9 +672,9 @@ export function EtfCompareWorkbench() {
                         className: "px-3 py-2 font-normal text-right",
                         title: "年化收益 ÷ 年化波动（类夏普，非无风险夏普）",
                       })}
-                      {sortableTh("calmarLike", "卡玛", {
+                      {sortableTh("calmarLike", "回撤收益比", {
                         className: "px-3 py-2 font-normal text-right",
-                        title: "年化收益 ÷ |最大回撤|，数值越高越抗跌",
+                        title: "年化收益相对最大回撤，越高表示同样回撤下收益越高",
                       })}
                     </tr>
                   </thead>
@@ -809,9 +780,6 @@ export function EtfCompareWorkbench() {
                 <strong>共同交易日</strong>的每日涨跌计算；共同交易日不足 30
                 天时不展示。
               </p>
-              <p className="mt-1 text-[11px] fin-muted-text">
-                底色：琥珀=正相关更强（分散度需留意），蓝色=负相关；对角线为同标的；悬浮可看精确值。
-              </p>
               {!compareResult.overlapOk || !compareResult.correlation ? (
                 <p className="mt-3 text-sm fin-muted-text">
                   {compareResult.overlapDates.length > 0
@@ -860,15 +828,15 @@ export function EtfCompareWorkbench() {
                           {corrOrderedIndices.map((colIdx) => {
                             const v =
                               compareResult.correlation![rowIdx][colIdx];
-                            const cellStyle =
-                              rowIdx === colIdx
-                                ? corrDiagonalCellStyle()
-                                : corrCellStyle(v);
+                            const isDiagonal = rowIdx === colIdx;
                             return (
                               <td
                                 key={`${rowIdx}-${colIdx}`}
-                                className="px-3 py-2 text-center font-mono text-xs tabular-nums"
-                                style={cellStyle}
+                                className={`px-3 py-2 text-center font-mono text-xs tabular-nums ${
+                                  isDiagonal
+                                    ? "font-semibold text-[var(--fin-text)]"
+                                    : "fin-muted-text"
+                                }`}
                                 title={`${compareResult.corrLabels[rowIdx]} vs ${compareResult.corrLabels[colIdx]}: ${v.toFixed(4)}`}
                               >
                                 {v.toFixed(2)}

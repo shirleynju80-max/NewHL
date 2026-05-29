@@ -38,7 +38,7 @@ function triggerLabel(strategyId: string, side: "BUY" | "SELL"): string {
 }
 
 /**
- * 单仓模型：持仓中再次出现 BUY 时不新增流水，仅刷新参考买入价/日（与下一笔 SELL 的盈亏一致）。
+ * 单仓模型：一轮自首次 BUY 至 SELL；持仓中再次 BUY 仅作信号展示，不刷新成本、不新开仓。
  */
 export function buildTrades(
   bars: OhlcBar[],
@@ -53,11 +53,11 @@ export function buildTrades(
       ? params.ma_custom_rule
       : null;
   const trades: TradePoint[] = [];
-  let lastBuyIdx: number | null = null;
+  let entryIdx: number | null = null;
   for (let i = 0; i < bars.length; i++) {
     if (signals[i] === "BUY") {
-      if (lastBuyIdx == null) {
-        lastBuyIdx = i;
+      if (entryIdx == null) {
+        entryIdx = i;
         trades.push({
           date: bars[i].date,
           side: "BUY",
@@ -65,19 +65,17 @@ export function buildTrades(
           reason: triggerLabel(strategyId, "BUY"),
           param_version: paramVersion,
         });
-      } else {
-        lastBuyIdx = i;
       }
       continue;
     }
-    if (signals[i] === "SELL" && lastBuyIdx != null) {
-      const buy = bars[lastBuyIdx].close;
+    if (signals[i] === "SELL" && entryIdx != null) {
+      const buy = bars[entryIdx].close;
       const sell = bars[i].close;
       const pnl = ((sell - buy) / buy) * 100;
-      const holdDays = i - lastBuyIdx;
+      const holdDays = i - entryIdx;
       const sellReason =
         rule != null
-          ? maCustomSellTriggerLabel(bars, lastBuyIdx, i, rule)
+          ? maCustomSellTriggerLabel(bars, entryIdx, i, rule)
           : triggerLabel(strategyId, "SELL");
       trades.push({
         date: bars[i].date,
@@ -88,7 +86,7 @@ export function buildTrades(
         holdDays,
         pnlPct: Math.round(pnl * 100) / 100,
       });
-      lastBuyIdx = null;
+      entryIdx = null;
     }
   }
   return trades;

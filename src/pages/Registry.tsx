@@ -47,6 +47,7 @@ import {
   isUserRegisteredVariantKey,
   registeredIdFromVariantKey,
   strategyKindLabel,
+  variantMonitorCompact,
 } from "../lib/strategyLabels";
 import type { ParamStrategyVariant, RegisteredStrategyKind } from "../types";
 
@@ -61,7 +62,7 @@ function RegistryResultSummary({
 }) {
   const hints = noBeatBuyHoldHints(gridResult);
   return (
-    <div className="fin-panel fin-panel-muted mt-4 space-y-3 p-4 text-sm">
+    <div className="fin-panel mt-4 space-y-3 border border-fin-border p-4 text-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-muted)]">
         回测摘要
       </p>
@@ -71,9 +72,9 @@ function RegistryResultSummary({
         {gridResult.meta.barCount} 日
       </p>
       {gridResult.globalRobustBest && (
-        <p className="text-xs text-[var(--fin-blue-bright)]">
-          <span className="fin-best-badge-robust">验证集最优</span> —{" "}
-          {gridResult.globalRobustBest.label} · 验证超额{" "}
+        <p className="text-xs fin-muted-text">
+          <span className="fin-best-badge-robust">后段最优</span> —{" "}
+          {gridResult.globalRobustBest.label} · 后段超额{" "}
           {gridResult.globalRobustBest.excessValPct != null
             ? formatSignedPct(gridResult.globalRobustBest.excessValPct)
             : "—"}
@@ -119,13 +120,13 @@ function noBeatBuyHoldHints(result: GridSearchOutcome): string[] | null {
     ...result.maCross,
     ...result.maCustom,
   ];
-  if (!rows.length) return ["网格无有效成交组合，可放宽参数范围或延长样本"];
+  if (!rows.length) return ["未找到有效买卖轮次，可放宽参数范围或延长样本"];
   const bestFullExcess =
     result.globalFullBest?.excessReturnPct ??
     Math.max(...rows.map((r) => r.excessReturnPct));
   if (bestFullExcess > 0) return null;
 
-  const hints: string[] = ["当前 Top 组合在全样本上均未跑赢买入持有"];
+  const hints: string[] = ["当前优选组合在全样本上均未跑赢买入持有"];
   const {
     barCount,
     buyHoldReturnPct,
@@ -144,8 +145,8 @@ function noBeatBuyHoldHints(result: GridSearchOutcome): string[] | null {
   if (buyHoldAnnualPct > 12 && buyHoldMaxDrawdownPct > -20) {
     hints.push("年化较强、回撤不深，均值回归类信号易被趋势碾压");
   }
-  if (valBarCount < 60) hints.push("验证段不足约 60 日，分段排序参考价值有限");
-  if (trainBarCount < 60) hints.push("训练段过短，易过拟合短窗噪声");
+  if (valBarCount < 60) hints.push("后段不足约 60 日，分段排序参考价值有限");
+  if (trainBarCount < 60) hints.push("前段样本过短，易过拟合短窗噪声");
   if (rows.every((r) => r.roundCount < 3))
     hints.push("换手轮次过少，信号稀疏或参数过严");
 
@@ -377,7 +378,7 @@ export function RegistryPage() {
     () =>
       dataMode === "bundle" && selectedDef && !selectedBacktestEligible
         ? selectedIsOtcFund
-          ? "场外基金使用净值序列，不参与此处的日 K 网格回测；可在精选跟踪和产品详情中查看。"
+          ? "场外基金使用净值序列，不参与此处的批量回测；可在精选跟踪和产品详情中查看。"
           : etfBacktestIneligibleReason(
               selectedDef,
               selectedProduct,
@@ -537,7 +538,7 @@ export function RegistryPage() {
   const addCustomBaseline = useCallback(() => {
     setBaselineAddError(null);
     if (!barsForRun || barsForRun.length < 40) {
-      setBaselineAddError("K 线不足 40 根，无法计算 Baseline。");
+      setBaselineAddError("历史数据过短（不足 40 个交易日），无法计算对照参数。");
       return;
     }
     if (baselineSlots.length >= MAX_CUSTOM_BASELINES) {
@@ -674,8 +675,8 @@ export function RegistryPage() {
       setGridResult(null);
       setGridErr(
         dataMode === "bundle"
-          ? "当前标的 K 线不足 40 根或未加载。请确认数据已加载，并选择有数据的标的。"
-          : "请先上传 bars.csv 并选择标的；K 线需不少于 40 根。",
+          ? "当前标的历史数据不足 40 个交易日或未加载。请确认数据已加载，并选择有数据的标的。"
+          : "请先上传行情 CSV 并选择标的；历史数据需不少于 40 个交易日。",
       );
       return;
     }
@@ -755,7 +756,7 @@ export function RegistryPage() {
         e.paramVersion === row.paramVersion,
     );
     if (dup) {
-      setToast("该组合已在观测列表中（含已注册项）。");
+      setToast("该组合已在监控列表中（含已注册项）。");
       return;
     }
     const kind: RegisteredStrategyKind = row.family;
@@ -768,7 +769,7 @@ export function RegistryPage() {
       params: row.params,
     });
     setToast(
-      "已加入观测列表。在单标的页「策略参数」下拉里会出现「观测注册」项，可随时删除。",
+      "已加入监控列表。在单标的页「策略参数」下拉里会出现「监控策略」项，可随时删除。",
     );
   };
 
@@ -794,7 +795,7 @@ export function RegistryPage() {
           <>
             策略层 · 在底仓之上验证交易规则（可含择时），
             <strong>不构成投资建议</strong>
-            。首屏一键回测；参数网格与观测列表在下方高级区。
+            。首屏一键回测；参数范围与监控列表在下方高级区。
           </>
         }
       />
@@ -806,7 +807,7 @@ export function RegistryPage() {
           <div className="space-y-3">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem] lg:items-end">
               <label className="block text-sm">
-                <span className="fin-label">落地产品（ETF）</span>
+                <span className="fin-label">选择产品（ETF）</span>
                 <input
                   type="search"
                   value={productQuery}
@@ -819,38 +820,25 @@ export function RegistryPage() {
               </label>
               <label className="text-sm fin-muted-text">
                 <span className="text-xs font-medium fin-muted-text">
-                  训练集占比
+                  样本切分
                 </span>
                 <select
                   value={trainRatioPct}
                   onChange={(e) => setTrainRatioPct(Number(e.target.value))}
                   className="fin-input mt-1 block w-full px-2 py-2"
+                  title="前段用于拟合，后段用于验证"
                 >
                   {TRAIN_RATIO_PCT_OPTIONS.map((p) => (
                     <option key={p} value={p}>
-                      {p}%
+                      前 {p}% / 后 {100 - p}%
                     </option>
                   ))}
                 </select>
               </label>
             </div>
 
-            {selectedCode ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-fin-border bg-fin-panel-muted px-3 py-2 text-sm">
-                <span className="fin-label">当前</span>
-                <span className="font-mono font-semibold text-[var(--fin-text)]">
-                  {selectedCode}
-                </span>
-                {selectedProductOption?.name ? (
-                  <span className="fin-muted-text">
-                    {selectedProductOption.name}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-
             <details
-              className="rounded-md border border-fin-border bg-fin-panel-muted/50"
+              className="rounded-md border border-fin-border"
               open={productQuery.trim() ? true : undefined}
             >
               <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs [&::-webkit-details-marker]:hidden">
@@ -866,7 +854,7 @@ export function RegistryPage() {
               <div
                 className="flex max-h-44 flex-wrap gap-2 overflow-y-auto border-t border-fin-border p-3"
                 role="listbox"
-                aria-label="可选落地产品"
+                aria-label="可选产品"
               >
                 {filteredProductOptions.length > 0 ? (
                   filteredProductOptions.map((o) => {
@@ -898,6 +886,20 @@ export function RegistryPage() {
                 )}
               </div>
             </details>
+
+            {selectedCode ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-fin-border px-3 py-2 text-sm">
+                <span className="fin-label">当前</span>
+                <span className="font-mono font-semibold text-[var(--fin-text)]">
+                  {selectedCode}
+                </span>
+                {selectedProductOption?.name ? (
+                  <span className="fin-muted-text">
+                    {selectedProductOption.name}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="fin-alert-warn--compact mt-4">
@@ -907,8 +909,8 @@ export function RegistryPage() {
 
         {barsForRun && (
           <p className="mt-2 text-xs fin-muted-text">
-            共 {barsForRun.length} 根日 K · 默认参数网格（RSI / 布林 / MA）·
-            训练 {trainRatioPct}%
+            共 {barsForRun.length} 个交易日 · 默认参数组合（RSI / 布林 / MA）·
+            样本切分 前 {trainRatioPct}% / 后 {100 - trainRatioPct}%
             {dataMode === "bundle" && selectedDef ? (
               <span className="text-[var(--fin-dim)]">
                 {" "}
@@ -927,10 +929,10 @@ export function RegistryPage() {
             onClick={() => void runBacktest()}
             className="fin-btn-primary px-6 py-2.5 disabled:opacity-50"
           >
-            {gridBusy ? "回测计算中…" : "执行回测（默认网格）"}
+            {gridBusy ? "回测计算中…" : "执行回测（默认组合）"}
           </button>
           <a href="#registry-config" className="text-xs fin-link">
-            ① 回测配置（网格范围）↓
+            ① 回测参数范围 ↓
           </a>
           <a href="#registry-custom-baseline" className="text-xs fin-link">
             ② 自定义参数对比 ↓
@@ -956,11 +958,11 @@ export function RegistryPage() {
           boardVerifySummary &&
           selectedDef &&
           selectedBacktestEligible && (
-            <p className="mt-4 rounded-lg border border-fin-border bg-fin-panel-muted/80 px-3 py-2 text-xs fin-muted-text">
+            <p className="mt-4 rounded-lg border border-fin-border px-3 py-2 text-xs fin-muted-text">
               看板默认参数：策略{" "}
               {formatPct(boardVerifySummary.strategyReturnPct)} · 超额{" "}
               {formatPct(boardVerifySummary.excessReturnPct)} ·
-              点击上方执行网格回测查看 Top 组合。
+              点击上方执行回测查看优选组合。
             </p>
           )}
       </section>
@@ -968,14 +970,12 @@ export function RegistryPage() {
       <details id="registry-config" className="fin-panel p-5">
         <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
           <span className="mr-2 text-[var(--fin-dim)]">▸</span>
-          <span className="fin-section-title">
-            ① 回测配置（参数网格搜索范围）
-          </span>
+          <span className="fin-section-title">① 回测参数范围</span>
         </summary>
         <p className="mt-2 text-xs fin-muted-text">
-          控制「执行回测」时的<strong>网格枚举范围</strong>（RSI / 布林 / MA
-          金叉 / MA 自定义多组参数）。与下方「② 自定义参数对比」无关：后者只添加
-          <strong>一组</strong>对照 Baseline，不参与网格搜索。
+          控制「执行回测」时枚举的策略参数范围（RSI / 布林 / MA
+          金叉 / MA 自定义）。与下方「② 自定义参数对比」无关：后者只添加
+          <strong>一组</strong>对照参数，不参与批量搜索。
         </p>
 
         <div className="mt-5 flex flex-wrap gap-3">
@@ -1021,7 +1021,7 @@ export function RegistryPage() {
               onClick={() => barsInputRef.current?.click()}
               className="fin-btn-secondary px-4 py-2 text-sm"
             >
-              选择 bars.csv
+              选择行情 CSV
             </button>
             {barsText && (
               <button
@@ -1032,7 +1032,7 @@ export function RegistryPage() {
                   setBarsErr(null);
                   setGridErr(null);
                 }}
-                className="rounded-lg border border-fin-border px-4 py-2 text-sm fin-muted-text hover:bg-fin-panel-muted"
+                className="rounded-lg border border-fin-border px-4 py-2 text-sm fin-muted-text hover:border-[var(--fin-text)]/25 hover:text-[var(--fin-text)]"
               >
                 清除上传
               </button>
@@ -1045,11 +1045,11 @@ export function RegistryPage() {
 
         <div className="mt-6 space-y-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-dim)]">
-            参数搜索范围（网格枚举）
+            策略参数范围
           </p>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-5">
+            <div className="fin-panel p-5">
               <h4 className="text-sm font-semibold text-[var(--fin-text)]">
                 RSI
               </h4>
@@ -1116,7 +1116,7 @@ export function RegistryPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-5">
+            <div className="fin-panel p-5">
               <h4 className="text-sm font-semibold text-[var(--fin-text)]">
                 布林带
               </h4>
@@ -1175,12 +1175,12 @@ export function RegistryPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-fin-border bg-fin-panel-muted/50 p-5 lg:col-span-2">
+            <div className="fin-panel p-5 lg:col-span-2">
               <h4 className="text-sm font-semibold text-[var(--fin-text)]">
                 MA
               </h4>
               <div className="mt-3 grid gap-4 lg:grid-cols-2">
-                <div className="fin-panel fin-panel-muted p-4">
+                <div className="rounded-lg border border-fin-border p-4">
                   <p className="text-xs font-medium text-[var(--fin-text)]">
                     金叉
                   </p>
@@ -1218,7 +1218,7 @@ export function RegistryPage() {
                     </label>
                   </div>
                 </div>
-                <div className="fin-panel fin-panel-muted p-4">
+                <div className="rounded-lg border border-fin-border p-4">
                   <p className="text-xs font-medium text-[var(--fin-text)]">
                     自定义
                   </p>
@@ -1275,7 +1275,7 @@ export function RegistryPage() {
             <button
               type="button"
               onClick={() => setSearchForm(formFromDefaults())}
-              className="rounded-lg border border-fin-border px-4 py-2 text-sm fin-muted-text hover:bg-fin-panel-muted"
+              className="rounded-lg border border-fin-border px-4 py-2 text-sm fin-muted-text hover:border-[var(--fin-text)]/25 hover:text-[var(--fin-text)]"
             >
               恢复默认搜索范围
             </button>
@@ -1335,7 +1335,7 @@ export function RegistryPage() {
             {selectedCode ? (
               <>
                 {" · "}
-                <span className="font-mono text-lg text-[var(--fin-blue)]">
+                <span className="font-mono text-lg text-[var(--fin-text)]">
                   {selectedCode}
                 </span>
               </>
@@ -1345,13 +1345,8 @@ export function RegistryPage() {
         <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm fin-muted-text">
-              与单标的页摘要同源：按成交重建权益曲线后统计收益、回撤、买卖笔数与持仓节奏。
-              每类 Top {topN}：按<strong>全样本超额</strong>取{" "}
-              {topN - Math.floor(topN / 2)} 个、按<strong>验证集超额</strong>取{" "}
-              {Math.floor(topN / 2)} 个（去重；奇数时全样本多 1 个）。例：布林带
-              Top 2 常为「全样本最优布林」（如 60/2.5）+「验证集最优布林」（如
-              40/2）。页顶「全样本最优」徽标为 RSI/布林/MA <strong>全体</strong>
-              跨类最优，勿与类内 Top 表混读。
+              与 ETF 详情页回测摘要同源。每类展示 {topN}{" "}
+              组：兼顾全样本超额与后段超额；摘要区的「全样本最优 / 后段最优」为跨策略类型的全局对照，勿与下表类内行混读。
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm fin-muted-text">
@@ -1366,7 +1361,7 @@ export function RegistryPage() {
             >
               {TOP_N_OPTIONS.map((n) => (
                 <option key={n} value={n}>
-                  Top {n}
+                  优选 {n} 组
                 </option>
               ))}
             </select>
@@ -1377,16 +1372,15 @@ export function RegistryPage() {
         </div>
 
         {!gridResult && (
-          <p className="mt-6 rounded-xl border border-dashed border-fin-border bg-fin-panel-muted/50 px-4 py-8 text-center text-sm fin-muted-text">
-            在首屏选择落地产品并点击「执行回测」后，此处展开 Top
-            组合表与买入持有对照。
+          <p className="mt-6 rounded-xl border border-dashed border-fin-border px-4 py-8 text-center text-sm fin-muted-text">
+            在首屏选择产品并点击「执行回测」后，此处展开优选组合表与买入持有对照。
           </p>
         )}
 
         {gridResult && (
           <>
-            <div className="mt-6 rounded-lg border border-fin-border bg-[var(--fin-blue-soft)]/80 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-blue)]">
+            <div className="mt-6 fin-panel border border-fin-border px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-muted)]">
                 基础统计 · 买入持有
               </p>
               <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
@@ -1399,18 +1393,18 @@ export function RegistryPage() {
                 <div>
                   <span className="fin-muted-text">样本</span>
                   <p className="font-medium text-[var(--fin-text)]">
-                    {gridResult.meta.barCount} 根日 K
+                    {gridResult.meta.barCount} 个交易日
                   </p>
                 </div>
                 <div>
                   <span className="fin-muted-text">累计收益</span>
-                  <p className="font-semibold text-[var(--fin-blue)]">
+                  <p className="font-semibold text-[var(--fin-text)]">
                     {formatPct(gridResult.meta.buyHoldReturnPct)}
                   </p>
                 </div>
                 <div>
                   <span className="fin-muted-text">年化收益</span>
-                  <p className="font-semibold text-[var(--fin-blue)]">
+                  <p className="font-semibold text-[var(--fin-text)]">
                     {formatPct(gridResult.meta.buyHoldAnnualPct)}
                   </p>
                 </div>
@@ -1425,20 +1419,20 @@ export function RegistryPage() {
 
             {customBaselineRows.length > 0 ? (
               <p className="fin-alert-info--compact mt-4 text-xs">
-                已添加 {customBaselineRows.length} 组自定义 Baseline（
+                已添加 {customBaselineRows.length} 组自定义对照（
                 {customBaselineRows.map((r) => r.label).join("、")}
-                ）。增删请前往「② 自定义参数对比」；网格范围请前往「①
-                回测配置」。
+                ）。增删请前往「② 自定义参数对比」；参数范围请前往「①
+                回测参数范围」。
               </p>
             ) : null}
 
-            <p className="fin-input mt-3 px-3 py-2 text-[11px]">
+            <p className="mt-3 rounded-lg border border-fin-border px-3 py-2 text-[11px] fin-muted-text">
               <span className="font-sans font-semibold text-[var(--fin-text)]">
-                训练 / 验证窗口 ·{" "}
+                样本切分 ·{" "}
               </span>
-              训练 {gridResult.split.trainStartDate}→
+              前段 {gridResult.split.trainStartDate}→
               {gridResult.split.trainEndDate}（{gridResult.split.trainBarCount}{" "}
-              日，{(gridResult.split.trainRatio * 100).toFixed(0)}%） · 验证{" "}
+              日，{(gridResult.split.trainRatio * 100).toFixed(0)}%） · 后段{" "}
               {gridResult.split.valStartDate}→{gridResult.split.valEndDate}（
               {gridResult.split.valBarCount} 日）
             </p>
@@ -1472,8 +1466,8 @@ export function RegistryPage() {
               <div className="mt-3 space-y-2">
                 {gridResult.globalRobustBest && (
                   <p className="fin-alert-info--compact text-[11px]">
-                    <span className="fin-best-badge-robust">验证集最优</span> —{" "}
-                    {gridResult.globalRobustBest.label} · 验证超额{" "}
+                    <span className="fin-best-badge-robust">后段最优</span> —{" "}
+                    {gridResult.globalRobustBest.label} · 后段超额{" "}
                     {gridResult.globalRobustBest.excessValPct != null
                       ? formatSignedPct(
                           gridResult.globalRobustBest.excessValPct,
@@ -1485,7 +1479,7 @@ export function RegistryPage() {
                   </p>
                 )}
                 {gridResult.globalFullBest && (
-                  <p className="fin-panel fin-panel-muted px-3 py-2 text-[11px]">
+                  <p className="fin-panel border border-fin-border px-3 py-2 text-[11px]">
                     <span className="fin-best-badge-full">全样本最优</span> —{" "}
                     {gridResult.globalFullBest.label} · 策略{" "}
                     {formatPct(gridResult.globalFullBest.cumReturnPct)} · 超额{" "}
@@ -1502,21 +1496,20 @@ export function RegistryPage() {
               !gridResult.globalFullBest &&
               boardVerifySummary &&
               selectedDef && (
-                <p className="mt-3 rounded-lg border border-fin-border bg-fin-panel-muted/80 px-3 py-2 text-[11px] text-[var(--fin-text)]">
+                <p className="mt-3 rounded-lg border border-fin-border px-3 py-2 text-[11px] text-[var(--fin-text)]">
                   看板默认参数：策略{" "}
                   {formatPct(boardVerifySummary.strategyReturnPct)} · 超额{" "}
                   {formatPct(boardVerifySummary.excessReturnPct)} · 回撤{" "}
                   {formatPct(boardVerifySummary.maxDrawdownPct)} · 胜率{" "}
                   {formatPct(boardVerifySummary.winRate * 100)} · 轮次{" "}
-                  {boardVerifySummary.roundCount}。产生有效候选后，此处展示
-                  <strong>验证集最优</strong>与<strong>全样本最优</strong>
-                  摘要。
+                  {boardVerifySummary.roundCount}。                  产生有效候选后，此处展示<strong>后段最优</strong>与
+                  <strong>全样本最优</strong>摘要。
                 </p>
               )}
 
             <div className="mt-4 space-y-8">
               <ResultTable
-                title={`RSI Top ${topN}`}
+                title={`RSI · 优选 ${topN}`}
                 tableFamily="rsi"
                 topN={topN}
                 rows={gridResult.rsi}
@@ -1524,7 +1517,7 @@ export function RegistryPage() {
                 customBaselineRows={customBaselineRows}
               />
               <ResultTable
-                title={`布林带 Top ${topN}`}
+                title={`布林带 · 优选 ${topN}`}
                 tableFamily="boll"
                 topN={topN}
                 rows={gridResult.boll}
@@ -1532,7 +1525,7 @@ export function RegistryPage() {
                 customBaselineRows={customBaselineRows}
               />
               <ResultTable
-                title={`MA 金叉 Top ${topN}`}
+                title={`MA 金叉 · 优选 ${topN}`}
                 tableFamily="ma"
                 topN={topN}
                 rows={gridResult.maCross}
@@ -1540,7 +1533,7 @@ export function RegistryPage() {
                 customBaselineRows={customBaselineRows}
               />
               <ResultTable
-                title={`MA 自定义 Top ${topN}`}
+                title={`MA 自定义 · 优选 ${topN}`}
                 tableFamily="ma_custom"
                 topN={topN}
                 rows={gridResult.maCustom}
@@ -1558,12 +1551,12 @@ export function RegistryPage() {
       <details id="registry-observations" className="fin-panel p-5">
         <summary className="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
           <span className="fin-section-title">
-            <span className="mr-1.5 text-[var(--fin-dim)]">▸</span>④ 当前观测{" "}
+            <span className="mr-1.5 text-[var(--fin-dim)]">▸</span>④ 监控策略{" "}
             <span className="font-normal fin-muted-text">（默认折叠）</span>
           </span>
         </summary>
         <p className="mt-2 text-xs fin-muted-text">
-          灰标为默认参数；蓝标为自选注册、可删除。加入后可在产品详情页的策略参数中选择。
+          灰标为默认参数；高亮为自选监控策略、可删除。加入后可在产品详情页的策略参数中选择。
         </p>
 
         {etfDefinitions.length === 0 ? (
@@ -1576,11 +1569,11 @@ export function RegistryPage() {
               return (
                 <div
                   key={etf.meta.code}
-                  className="fin-panel fin-panel-muted p-3"
+                  className="fin-panel p-3"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-fin-border pb-2">
                     <div>
-                      <p className="font-mono text-[10px] text-[var(--fin-blue)]">
+                      <p className="font-mono text-[10px] text-[var(--fin-dim)]">
                         {etf.meta.code}
                       </p>
                       <p className="text-sm font-semibold text-[var(--fin-text)]">
@@ -1619,10 +1612,10 @@ export function RegistryPage() {
               {uploadOnlyRegistered.map((r) => (
                 <li
                   key={r.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-fin-border bg-fin-panel-muted/50 px-2 py-1.5 text-xs"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-fin-border px-2 py-1.5 text-xs"
                 >
                   <div>
-                    <span className="font-mono text-[var(--fin-blue)]">
+                    <span className="font-mono text-[var(--fin-dim)]">
                       {r.etfCode}
                     </span>
                     <span className="mx-1.5 fin-muted-text">|</span>
@@ -1659,20 +1652,20 @@ function ObservationRow({
   const registered = isUserRegisteredVariantKey(variant.key);
   const kind = strategyKindLabel(variant.strategyId);
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fin-border bg-fin-panel-muted/40 px-3 py-2.5 text-sm">
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-fin-border px-3 py-2.5 text-sm">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
               registered
-                ? "bg-[var(--fin-blue-soft)] text-[var(--fin-blue)]"
-                : "bg-fin-panel-muted fin-muted-text"
+                ? "border border-[rgba(251,191,36,0.35)] text-[var(--fin-amber)]"
+                : "border border-fin-border fin-muted-text"
             }`}
           >
-            {registered ? "自选注册" : "默认参数"}
+            {registered ? "监控策略" : "默认参数"}
           </span>
           <span className="font-medium text-[var(--fin-text)]">
-            {variant.label}
+            {variantMonitorCompact(variant)}
           </span>
         </div>
         <p className="mt-0.5 text-xs fin-muted-text">策略类型：{kind}</p>
@@ -1750,7 +1743,7 @@ function ResultTable({
         {r.pickSlots.includes("val") &&
         valRank != null &&
         valRank <= valBadgeCap ? (
-          <span className="fin-rank-badge-robust">验证 Top{valRank}</span>
+          <span className="fin-rank-badge-robust">后段 Top{valRank}</span>
         ) : null}
       </>
     );
@@ -1759,9 +1752,8 @@ function ResultTable({
     <div>
       <h4 className="fin-section-title">{title}</h4>
       <p className="mt-1 text-[11px] fin-muted-text">
-        主表为全样本口径。类内按入选位标注全样本 Top1–{fullBadgeCap}、验证 Top1–
-        {valBadgeCap}（与「每类展示」一致）；跨策略族全局最优只在摘要区展示。
-        {familyBaselines.length > 0 ? " 对照行=自定义参数。" : null}
+        全样本口径；类内标注全样本 / 后段优选位次。自定义对照参数以单独行展示。
+        {familyBaselines.length > 0 ? " 紫色行为自定义对照。" : null}
       </p>
       <div className="mt-3 overflow-x-auto">
         <table className="min-w-[1120px] w-full text-left text-sm">
@@ -1771,8 +1763,8 @@ function ResultTable({
               <th className="px-3 py-2">策略收益 %</th>
               <th className="px-3 py-2">最大回撤 %</th>
               <th className="px-3 py-2">全样本超额 %</th>
-              <th className="px-3 py-2">训练超额 %</th>
-              <th className="px-3 py-2">验证超额 %</th>
+              <th className="px-3 py-2">前段超额 %</th>
+              <th className="px-3 py-2">后段超额 %</th>
               <th className="px-3 py-2">胜率</th>
               <th className="px-3 py-2">买卖次数</th>
               <th className="px-3 py-2">均持仓天</th>
@@ -1858,14 +1850,14 @@ function ResultTable({
                   <td className="px-3 py-2 font-mono">
                     {formatPct(r.maxDrawdownPct)}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[var(--fin-blue)]">
+                  <td className="px-3 py-2 font-mono fin-muted-text">
                     {r.excessReturnPct > 0 ? "+" : ""}
                     {formatPct(r.excessReturnPct)}
                   </td>
                   <td className="px-3 py-2 font-mono fin-muted-text">
                     {fmtEx(r.excessTrainPct)}
                   </td>
-                  <td className="px-3 py-2 font-mono text-[var(--fin-blue-bright)]">
+                  <td className="px-3 py-2 font-mono fin-muted-text">
                     {fmtEx(r.excessValPct)}
                   </td>
                   <td className="px-3 py-2 font-mono">
@@ -1892,7 +1884,7 @@ function ResultTable({
                       onClick={() => onRegister(r)}
                       className="fin-btn-primary px-3 py-1 text-xs"
                     >
-                      加入观测
+                      加入监控
                     </button>
                   </td>
                 </tr>

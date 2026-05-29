@@ -21,10 +21,10 @@ import { useStrategyRegistry } from "../context/StrategyRegistryContext";
 
 function statusBadgeClass(tone: ReturnType<typeof productDataStatusTone>) {
   if (tone === "good")
-    return "border-emerald-200 bg-[var(--fin-up-soft)] text-fin-up";
+    return "border border-[rgba(140,212,165,0.35)] bg-[var(--fin-up-soft)] text-fin-up";
   if (tone === "warn")
     return "border-amber-200 bg-[var(--fin-amber-soft)] text-fin-amber";
-  return "border-fin-border bg-fin-panel-muted text-fin-muted";
+  return "border border-fin-border text-fin-muted";
 }
 
 function trackingStatusClass(tone: ReturnType<typeof productDataStatusTone>) {
@@ -75,11 +75,11 @@ export function ProductLandingGroup({
                   title={p.isPrimary ? undefined : "参考产品，非盘中默认标的"}
                 />
                 {p.isPrimary ? (
-                  <span className="fin-chip border-fin-blue/30 bg-[var(--fin-blue-soft)] text-fin-blue">
+                  <span className="fin-chip border border-fin-border font-medium text-[var(--fin-text)]">
                     主跟踪
                   </span>
                 ) : (
-                  <span className="fin-chip border-fin-border bg-fin-panel-muted text-fin-muted">
+                  <span className="fin-chip border border-fin-border text-fin-muted">
                     参考
                   </span>
                 )}
@@ -162,7 +162,7 @@ export function IndexTrackingProductsTable({
                 </td>
                 <td className="px-3 py-2.5 text-xs">
                   {p.isPrimary ? (
-                    <span className="font-medium text-[var(--fin-blue)]">
+                    <span className="font-medium text-[var(--fin-text)]">
                       主
                     </span>
                   ) : (

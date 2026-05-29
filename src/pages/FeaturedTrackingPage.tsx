@@ -17,8 +17,9 @@ import { etfProductStrategyEligible } from "../lib/etfListingAge";
 import { strategyPercentileContext } from "../lib/indicatorPercentile";
 import {
   fetchLiveQuote,
+  formatQuoteDataUpdateFootnote,
   formatQuotePriceLabel,
-  formatQuoteSourceLabel,
+  msUntilNextShanghaiBatchUpdate,
   resolvePreviousClose,
   type LiveQuote,
 } from "../lib/liveQuote";
@@ -119,7 +120,6 @@ type StrategyRow = {
   zoneLabel: string;
   metricLine: string;
   isBollinger: boolean;
-  currentState: string;
 };
 
 function metricToSortValue(v: number | null | undefined): number {
@@ -256,12 +256,6 @@ function strategyRowsForEtf(
         variant.strategyId,
         merged,
       );
-      const intradaySignals = computeSignals(
-        merged,
-        variant.params,
-        variant.strategyId,
-      );
-      const lastSig = intradaySignals[intradaySignals.length - 1] ?? "HOLD";
       const isBollinger = usesBollStrategy(variant.strategyId);
       return {
         etf,
@@ -279,16 +273,6 @@ function strategyRowsForEtf(
             ? `${intradayCtx.metricName}=${intradayCtx.metricValue}`
             : "—",
         isBollinger,
-        currentState:
-          lastSig === "BUY"
-            ? "买入触发"
-            : lastSig === "SELL"
-              ? "卖出触发"
-              : intradayCtx?.zone === "buy_hint"
-                ? "买入侧观察"
-                : intradayCtx?.zone === "sell_hint"
-                  ? "卖出侧观察"
-                  : summary.position,
       };
     })
     .sort((a, b) => b.summary.excessReturnPct - a.summary.excessReturnPct);
@@ -594,22 +578,35 @@ export function FeaturedTrackingPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all(
-      focusRows.map(async (row) => {
-        if (!row.product || !row.etf?.bars.length) return null;
-        const quote = await fetchLiveQuote(row.product.code, row.etf.bars);
-        return quote ? ([row.product.code, quote] as const) : null;
-      }),
-    ).then((items) => {
+
+    const pullQuotes = async () => {
+      const items = await Promise.all(
+        focusRows.map(async (row) => {
+          if (!row.product || !row.etf?.bars.length) return null;
+          const quote = await fetchLiveQuote(row.product.code, row.etf.bars);
+          return quote ? ([row.product.code, quote] as const) : null;
+        }),
+      );
       if (cancelled) return;
       setQuotes(
         Object.fromEntries(
           items.filter((x): x is [string, LiveQuote] => Boolean(x)),
         ),
       );
-    });
+    };
+
+    void pullQuotes();
+    let handle: number | null = null;
+    const schedule = () => {
+      handle = window.setTimeout(() => {
+        void pullQuotes().finally(schedule);
+      }, msUntilNextShanghaiBatchUpdate());
+    };
+    schedule();
+
     return () => {
       cancelled = true;
+      if (handle != null) window.clearTimeout(handle);
     };
   }, [focusRows]);
 
@@ -669,7 +666,7 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
             今日可操作摘要
           </h2>
           <p className="mt-1 text-xs fin-muted-text">
-            按已登记 ETF 策略的盘中标尺归类；先看区间，再看下方明细。
+            按监控策略的盘中分位归类；先看区间，再看下方明细。
           </p>
         </div>
         <Link
@@ -683,7 +680,7 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
         {items.map((item) => (
           <div
             key={item.label}
-            className="rounded-lg border border-fin-border bg-fin-panel-muted/60 p-3"
+            className="rounded-lg border border-fin-border p-3"
           >
             <div className="flex items-center justify-between gap-2">
               <span className={zoneClass(item.label)}>{item.label}</span>
@@ -704,13 +701,6 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
 }
 
 function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
-  const quoteSourceSuffix = (source: LiveQuote["source"] | null): string => {
-    if (!source) return "";
-    const sourceLabel = formatQuoteSourceLabel(source);
-    const priceLabel = formatQuotePriceLabel(source);
-    return sourceLabel === priceLabel ? "" : ` · ${sourceLabel}`;
-  };
-
   return (
     <section className="fin-panel overflow-hidden">
       <header className="border-b border-fin-border px-5 py-4">
@@ -718,16 +708,16 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
           ETF 策略
         </h2>
         <p className="mt-1 text-xs fin-muted-text">
-          按 ETF 分组展示已登记参数；组内按超额收益降序。回测口径与 ETF
-          详情页一致；盘中信号优先使用实时价，缺失时回退最新日 K
-          或本地收盘。现金流类产品满 2 年并登记策略后会自动纳入。
+          按 ETF 分组展示监控策略；组内按超额收益降序。回测口径与 ETF
+          详情页一致；盘中优先实时价，工作日 11:00、14:00 定点同步兜底。现金流类产品满
+          2 年并配置策略后会自动纳入。
         </p>
       </header>
       <div className="overflow-x-auto">
         <table className="featured-strategy-table min-w-[1180px] w-full text-xs">
           <thead>
             <tr className="fin-table-head">
-              <th className="px-4 py-3 text-left font-normal">ETF / 指数</th>
+              <th className="px-4 py-3 text-left font-normal">ETF</th>
               <th className="px-3 py-3 text-left font-normal">策略</th>
               <th className="px-3 py-3 text-right font-normal">策略收益</th>
               <th className="px-3 py-3 text-right font-normal">策略年化</th>
@@ -768,13 +758,18 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                       <p className="mt-1 font-mono text-[10px] fin-muted-text">
                         {item.indexCode}
                       </p>
+                      <p className="mt-2 font-mono text-[10px] fin-muted-text">
+                        {formatQuotePriceLabel(strategy.quoteSource)}{" "}
+                        {strategy.latestPrice.toFixed(4)} · 昨收{" "}
+                        {strategy.prevClose.toFixed(4)}
+                      </p>
                       <p className="featured-etf-strategy-count mt-2">
                         {rowSpan} 套策略
                       </p>
                     </td>
                   ) : null}
                   <td className="px-3 py-3 align-top">
-                    <span className="rounded border border-fin-border bg-fin-panel-muted px-2 py-1 text-[11px]">
+                    <span className="rounded border border-fin-border px-2 py-1 text-[11px]">
                       {strategyStyle(strategy.summary)}
                     </span>
                     <p className="mt-1.5 max-w-[14rem] leading-snug">
@@ -794,8 +789,8 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                   <td
                     className={`px-3 py-3 text-right align-top font-mono ${
                       strategy.summary.excessReturnPct >= 0
-                        ? "text-emerald-300"
-                        : "text-rose-300"
+                        ? "text-[var(--fin-up)]"
+                        : "text-[var(--fin-down)]"
                     }`}
                   >
                     {formatSignedPct(strategy.summary.excessReturnPct)}
@@ -812,22 +807,17 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                     )}
                   </td>
                   <td className="px-3 py-3 align-top">
-                    <span className={zoneClass(strategy.zoneLabel)}>
-                      {strategy.zoneLabel}
-                    </span>
-                    <p className="mt-1 font-mono text-[10px] fin-muted-text">
-                      分位 {formatPct(strategy.signalPct, 1)}
-                      {!strategy.isBollinger ? ` · ${strategy.metricLine}` : ""}
-                    </p>
-                    <p className="mt-1 text-[10px] fin-muted-text">
-                      当前状态：{strategy.currentState}
-                    </p>
-                    <p className="mt-1 text-[10px] fin-muted-text">
-                      {formatQuotePriceLabel(strategy.quoteSource)}{" "}
-                      {strategy.latestPrice.toFixed(4)} / 昨收{" "}
-                      {strategy.prevClose.toFixed(4)}
-                      {quoteSourceSuffix(strategy.quoteSource)}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className={zoneClass(strategy.zoneLabel)}>
+                        {strategy.zoneLabel}
+                      </span>
+                      <span className="font-mono text-[10px] fin-muted-text">
+                        分位 {formatPct(strategy.signalPct, 1)}
+                        {!strategy.isBollinger
+                          ? ` · ${strategy.metricLine}`
+                          : ""}
+                      </span>
+                    </div>
                   </td>
                 </tr>
               ));
@@ -838,13 +828,18 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                   colSpan={9}
                   className="px-4 py-6 text-center fin-muted-text"
                 >
-                  暂无可评估策略（需满 2 年上市且已登记参数）。
+                  暂无可评估策略（需满 2 年上市且已配置监控策略）。
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
       </div>
+      {groups.length ? (
+        <p className="border-t border-fin-border px-5 py-2 text-[10px] fin-muted-text">
+          {formatQuoteDataUpdateFootnote()}
+        </p>
+      ) : null}
     </section>
   );
 }

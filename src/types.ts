@@ -55,6 +55,8 @@ export type TradePoint = {
   price: number;
   reason: string;
   param_version: string;
+  /** 持仓中再次 BUY：刷新成本基准，不新开仓 */
+  refresh?: boolean;
   holdDays?: number;
   pnlPct?: number;
 };

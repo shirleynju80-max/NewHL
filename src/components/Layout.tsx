@@ -76,7 +76,7 @@ export function Layout() {
         </div>
       )}
 
-      <div className="ft-dashboard mx-auto w-full max-w-[1440px] flex-1 px-4 py-8 sm:px-6">
+      <div className="ft-dashboard mx-auto w-full max-w-[1440px] flex-1 px-4 py-8 sm:px-6 xl:max-w-[min(1520px,calc(100vw-3rem))]">
         <header className="ft-top-bar">
           <Link to="/" className="ft-logo group">
             <h1 className="ft-logo-title">价值底仓配置台</h1>

@@ -138,8 +138,8 @@ export function RegistryCustomBaseline({
   if (!productSelected) {
     return (
       <p className={`text-xs fin-muted-text${embedded ? " mt-3" : " mt-4"}`}>
-        选择落地产品后，可先选策略类型并填写参数，点击「添加」生成对比
-        Baseline（最多 {MAX_CUSTOM_BASELINES} 组）。
+        选择产品后，可先选策略类型并填写参数，点击「添加」加入对照组（最多{" "}
+        {MAX_CUSTOM_BASELINES} 组）。
       </p>
     );
   }
@@ -267,20 +267,18 @@ export function RegistryCustomBaseline({
     );
   })();
 
-  const shellClass = embedded
-    ? "mt-3"
-    : "fin-panel fin-panel-muted mt-6 px-4 py-3";
+  const shellClass = embedded ? "mt-3" : "fin-panel mt-6 border border-fin-border px-4 py-3";
 
   return (
     <div className={shellClass}>
       {!embedded ? (
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-[var(--fin-muted)]">
-            自定义参数 · 对比 Baseline
+            自定义参数 · 对照组
           </p>
           <p className="mt-1 text-[11px] fin-muted-text">
             先选策略类型，填写参数后点击「添加」；最多 {MAX_CUSTOM_BASELINES}{" "}
-            组，结果表按组显示 vs 自定义列。
+            组，结果表按组显示对照行。
           </p>
         </div>
       ) : null}
@@ -336,7 +334,7 @@ export function RegistryCustomBaseline({
           <button
             type="button"
             onClick={onClearAll}
-            className="rounded-lg border border-fin-border px-3 py-1.5 text-xs fin-muted-text hover:bg-fin-panel-muted"
+            className="rounded-lg border border-fin-border px-3 py-1.5 text-xs fin-muted-text hover:border-[var(--fin-text)]/25 hover:text-[var(--fin-text)]"
           >
             清除全部
           </button>
@@ -348,7 +346,7 @@ export function RegistryCustomBaseline({
         ) : null}
         {!barsReady ? (
           <span className="text-xs text-[var(--fin-amber)]">
-            K 线不足 40 根，无法计算
+            历史数据过短（不足 40 个交易日），无法计算
           </span>
         ) : null}
       </div>
@@ -367,7 +365,7 @@ export function RegistryCustomBaseline({
           {slots.map((slot, index) => (
             <li
               key={slot.id}
-              className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[rgba(148,163,184,0.14)] bg-fin-panel-muted/60 px-3 py-2"
+              className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-fin-border px-3 py-2"
             >
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-[var(--fin-text)]">
@@ -392,13 +390,13 @@ export function RegistryCustomBaseline({
                     </span>
                     <span>
                       <span className="fin-muted-text">全样本超额 </span>
-                      <span className="font-mono text-[var(--fin-blue)]">
+                      <span className="font-mono text-[var(--fin-text)]">
                         {formatSignedPct(slot.row.excessReturnPct)}
                       </span>
                     </span>
                     <span>
                       <span className="fin-muted-text">验证超额 </span>
-                      <span className="font-mono text-[var(--fin-blue-bright)]">
+                      <span className="font-mono text-[var(--fin-text)]">
                         {formatSignedPct(slot.row.excessValPct)}
                       </span>
                     </span>

@@ -25,7 +25,7 @@ export function getParamVariants(
     .map(
       (r): ParamStrategyVariant => ({
         key: `reg:${r.id}`,
-        label: `[观测注册] ${stripQuotedAnnotations(r.label)}`,
+        label: `[监控策略] ${stripQuotedAnnotations(r.label)}`,
         strategyId: r.strategyId,
         paramVersion: r.paramVersion,
         params: r.params,
@@ -99,7 +99,7 @@ export function paramVariantsSummaryLine(
 
 function enrichVariantLabel(baseLabel: string, strategyId: string): string {
   const kind = strategyKindLabel(strategyId);
-  if (baseLabel.includes(kind) || baseLabel.includes("观测注册"))
+  if (baseLabel.includes(kind) || baseLabel.includes("监控策略"))
     return baseLabel;
   return `${baseLabel} · ${kind}`;
 }
