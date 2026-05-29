@@ -844,7 +844,7 @@ function EtfDashboardPageInner() {
               >
                 指数详情
               </Link>
-              查看指数全收益与股息率研究。
+              查看指数。
             </>
           ) : null}
         </div>

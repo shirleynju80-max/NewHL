@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { BondAnchorToggle } from "../components/BondAnchorToggle";
 import { IndexConclusionCard } from "../components/IndexConclusionCard";
-import { IndexDetailSectionNav } from "../components/IndexDetailSectionNav";
+import { IndexOfficialIntroLink } from "../components/IndexOfficialIntroLink";
 import { PageBreadcrumb } from "../components/PageBreadcrumb";
 import { CsIndexDatePicker } from "../components/CsIndexRangePicker";
 import { EtfProductCodeLink } from "../components/EtfProductDetailLink";
@@ -29,6 +29,7 @@ import {
 } from "../lib/bondAnchor";
 import { CHART_THEME as CHART } from "../lib/chartTheme";
 import { formatPct } from "../lib/formatDisplay";
+import { indexOfficialIntroUrl } from "../lib/indexOfficialLinks";
 import { productsForIndex, primaryProductForIndex } from "../lib/etfProducts";
 import { etfDashboardHref } from "../lib/etfListingAge";
 import {
@@ -50,8 +51,10 @@ import {
   cumulativeReturnSeries,
   finiteMax,
   finiteMin,
+  isMetricWindowSatisfied,
   metricWindowBlock,
   ohlcBarsToSeries,
+  satisfiedMetricWindowIds,
   type DateValuePoint,
 } from "../lib/indexPanelMetrics";
 
@@ -143,16 +146,32 @@ function shortIndexName(name: string) {
   return name.replace(/^中证/, "").replace(/指数$/, "");
 }
 
-function signedPct(v: number | null | undefined) {
+function signedPct(
+  v: number | null | undefined,
+  windowSatisfied = true,
+) {
+  if (!windowSatisfied) return "/";
   if (typeof v !== "number" || !Number.isFinite(v)) return "—";
   const sign = v > 0 ? "▲" : v < 0 ? "▼" : "";
   return `${sign}${Math.abs(v).toFixed(1)}`;
 }
 
-function signedClass(v: number | null | undefined) {
+function signedClass(
+  v: number | null | undefined,
+  windowSatisfied = true,
+) {
+  if (!windowSatisfied) return "text-[var(--fin-dim)]";
   if (typeof v !== "number" || !Number.isFinite(v) || v === 0)
     return "text-[var(--fin-text)]";
   return v > 0 ? "text-[var(--fin-up)]" : "text-[var(--fin-down)]";
+}
+
+function formatVolPct(
+  v: number | null | undefined,
+  windowSatisfied = true,
+) {
+  if (!windowSatisfied) return "/";
+  return formatPct(v);
 }
 
 function PercentileMeter({
@@ -534,6 +553,18 @@ export function IndexDetailPage() {
       ),
     [visibleLineDefs],
   );
+  const seriesByLineKey = useMemo(
+    () => new Map(visibleLineDefs.map((line) => [line.key, line.series])),
+    [visibleLineDefs],
+  );
+  const visibleReturnWindows = useMemo(
+    () => satisfiedMetricWindowIds(triSeries, RETURN_WINDOWS),
+    [triSeries],
+  );
+  const visibleAnnualWindows = useMemo(
+    () => satisfiedMetricWindowIds(triSeries, ANNUAL_WINDOWS),
+    [triSeries],
+  );
 
   const shouldShowSpreadModule = Boolean(
     def && hasIndexBars && indexShowsSpread(def.meta.category),
@@ -642,6 +673,10 @@ export function IndexDetailPage() {
   const launchDate =
     metaText(def.meta, "launch_date") ?? def.meta.inception_date;
   const weightingMethod = metaText(def.meta, "weighting_method");
+  const introUrl = indexOfficialIntroUrl(def.meta);
+  const methodologyUrl = def.meta.methodology_url?.trim() || null;
+  const showMethodologyDoc =
+    methodologyUrl != null && methodologyUrl !== introUrl;
   const methodologySummary =
     metaText(def.meta, "methodology_summary") ??
     "（未提供 methodology_summary）";
@@ -778,11 +813,6 @@ export function IndexDetailPage() {
         </div>
       </div>
 
-      <IndexDetailSectionNav
-        hasBars={hasBars}
-        showSpread={shouldShowSpreadModule}
-      />
-
       <div id="section-conclusion" className="fin-section-scroll">
         <IndexConclusionCard
           def={def}
@@ -800,7 +830,7 @@ export function IndexDetailPage() {
         <h2 className="text-base font-semibold text-[var(--fin-text)]">
           基本信息
         </h2>
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <dt className="text-xs fin-muted-text">指数名称</dt>
             <dd className="mt-1 font-medium text-[var(--fin-text)]">
@@ -831,18 +861,24 @@ export function IndexDetailPage() {
               {weightingMethod ?? "—"}
             </dd>
           </div>
+          <div>
+            <dt className="text-xs fin-muted-text">官网介绍</dt>
+            <dd className="mt-1">
+              <IndexOfficialIntroLink meta={def.meta} />
+            </dd>
+          </div>
         </dl>
         <p className="text-sm fin-muted-text leading-relaxed whitespace-pre-wrap">
           {methodologySummary}
         </p>
-        {def.meta.methodology_url ? (
+        {showMethodologyDoc ? (
           <a
-            href={def.meta.methodology_url}
+            href={methodologyUrl}
             className="inline-block text-sm fin-link"
             target="_blank"
             rel="noreferrer"
           >
-            官方文档链接
+            编制方案文档
           </a>
         ) : null}
       </section>
@@ -1084,19 +1120,19 @@ export function IndexDetailPage() {
                   <th className="w-[220px] px-3 py-3 text-left"></th>
                   <th
                     className="border-l border-fin-border px-2 py-3 text-center"
-                    colSpan={RETURN_WINDOWS.length}
+                    colSpan={visibleReturnWindows.length}
                   >
                     阶段性收益（%）
                   </th>
                   <th
                     className="border-l border-fin-border px-2 py-3 text-center"
-                    colSpan={ANNUAL_WINDOWS.length}
+                    colSpan={visibleAnnualWindows.length}
                   >
                     年化收益（%）
                   </th>
                   <th
                     className="border-l border-fin-border px-2 py-3 text-center"
-                    colSpan={ANNUAL_WINDOWS.length}
+                    colSpan={visibleAnnualWindows.length}
                   >
                     年化波动率（%）
                   </th>
@@ -1105,7 +1141,7 @@ export function IndexDetailPage() {
                   <th className="px-3 py-3 text-left font-mono text-[var(--fin-muted)]">
                     {latestDate}
                   </th>
-                  {RETURN_WINDOWS.map((id) => (
+                  {visibleReturnWindows.map((id) => (
                     <th
                       key={id}
                       className="border-l border-fin-border px-2 py-3 text-center"
@@ -1113,7 +1149,7 @@ export function IndexDetailPage() {
                       {METRIC_WINDOWS.find((w) => w.id === id)?.label}
                     </th>
                   ))}
-                  {ANNUAL_WINDOWS.map((id) => (
+                  {visibleAnnualWindows.map((id) => (
                     <th
                       key={`ann-${id}`}
                       className="border-l border-fin-border px-2 py-3 text-center"
@@ -1121,7 +1157,7 @@ export function IndexDetailPage() {
                       {METRIC_WINDOWS.find((w) => w.id === id)?.label}
                     </th>
                   ))}
-                  {ANNUAL_WINDOWS.map((id) => (
+                  {visibleAnnualWindows.map((id) => (
                     <th
                       key={`vol-${id}`}
                       className="border-l border-fin-border px-2 py-3 text-center"
@@ -1148,36 +1184,45 @@ export function IndexDetailPage() {
                         </span>
                       </div>
                     </td>
-                    {RETURN_WINDOWS.map((id) => {
+                    {visibleReturnWindows.map((id) => {
+                      const rowSeries = seriesByLineKey.get(row.id) ?? [];
+                      const satisfied = isMetricWindowSatisfied(rowSeries, id);
                       const v = metricWindowBlock(row, id).totalReturnPct;
                       return (
                         <td
                           key={id}
-                          className={`px-2 py-3 text-center font-mono ${signedClass(v)}`}
+                          className={`px-2 py-3 text-center font-mono ${signedClass(v, satisfied)}`}
                         >
-                          {signedPct(v)}
+                          {signedPct(v, satisfied)}
                         </td>
                       );
                     })}
-                    {ANNUAL_WINDOWS.map((id) => {
+                    {visibleAnnualWindows.map((id) => {
+                      const rowSeries = seriesByLineKey.get(row.id) ?? [];
+                      const satisfied = isMetricWindowSatisfied(rowSeries, id);
                       const v = metricWindowBlock(row, id).annualReturnPct;
                       return (
                         <td
                           key={`ann-${id}`}
-                          className={`px-2 py-3 text-center font-mono ${signedClass(v)}`}
+                          className={`px-2 py-3 text-center font-mono ${signedClass(v, satisfied)}`}
                         >
-                          {signedPct(v)}
+                          {signedPct(v, satisfied)}
                         </td>
                       );
                     })}
-                    {ANNUAL_WINDOWS.map((id) => (
-                      <td
-                        key={`vol-${id}`}
-                        className="px-2 py-3 text-center font-mono"
-                      >
-                        {formatPct(metricWindowBlock(row, id).annualVolPct)}
-                      </td>
-                    ))}
+                    {visibleAnnualWindows.map((id) => {
+                      const rowSeries = seriesByLineKey.get(row.id) ?? [];
+                      const satisfied = isMetricWindowSatisfied(rowSeries, id);
+                      const v = metricWindowBlock(row, id).annualVolPct;
+                      return (
+                        <td
+                          key={`vol-${id}`}
+                          className="px-2 py-3 text-center font-mono text-[var(--fin-dim)]"
+                        >
+                          {formatVolPct(v, satisfied)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -1232,9 +1277,11 @@ export function IndexDetailPage() {
                   <p className="text-sm font-semibold">
                     {allocationAdvice.title}
                   </p>
-                  <p className="mt-2 text-xs leading-relaxed">
-                    {allocationAdvice.body}
-                  </p>
+                  {allocationAdvice.body ? (
+                    <p className="mt-2 text-xs leading-relaxed">
+                      {allocationAdvice.body}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="fin-panel p-4">
                   <p className="text-xs fin-muted-text">当前股息率</p>

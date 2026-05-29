@@ -37,6 +37,12 @@ import {
   metricOhlcForIndexRow,
   SP_INDEX_ETF_PROXY_FOOTNOTE,
 } from "../lib/indexEtfProxy";
+import {
+  calcMetricBlockForWindow,
+  isMetricWindowSatisfied,
+  ohlcBarsToSeries,
+  type MetricWindowId,
+} from "../lib/indexPanelMetrics";
 import type {
   EtfDefinition,
   IndexDefinition,
@@ -84,11 +90,11 @@ const FOCUS_ITEMS: FocusItem[] = [
 ];
 
 const WINDOWS = [
-  { id: "y1", label: "近1年", years: 1 },
-  { id: "y3", label: "近3年", years: 3 },
-  { id: "y5", label: "近5年", years: 5 },
-  { id: "y10", label: "近10年", years: 10 },
-] as const;
+  { id: "y1", label: "近1年" },
+  { id: "y3", label: "近3年" },
+  { id: "y5", label: "近5年" },
+  { id: "y10", label: "近10年" },
+] as const satisfies ReadonlyArray<{ id: MetricWindowId; label: string }>;
 
 type WindowId = (typeof WINDOWS)[number]["id"];
 
@@ -105,7 +111,13 @@ type WindowMetric = {
   annualVolPct: number | null;
   start: string;
   end: string;
+  satisfied: boolean;
 };
+
+function fmtWindowPct(v: number | null | undefined, satisfied: boolean): string {
+  if (!satisfied) return "/";
+  return formatPct(v);
+}
 
 type StrategyRow = {
   etf: EtfDefinition;
@@ -139,60 +151,27 @@ function dimensionLabel(dimension: FocusItem["dimension"]): string {
   return dimension === "cash" ? "现金创造" : "股东回报";
 }
 
-function metricForWindow(bars: OhlcBar[], years: number): WindowMetric {
-  if (bars.length < 2) {
+function metricForWindow(bars: OhlcBar[], windowId: MetricWindowId): WindowMetric {
+  const series = ohlcBarsToSeries(bars);
+  const satisfied = isMetricWindowSatisfied(series, windowId);
+  if (!satisfied) {
     return {
       annualReturnPct: null,
       maxDrawdownPct: null,
       annualVolPct: null,
       start: "—",
-      end: "—",
+      end: series.at(-1)?.date ?? "—",
+      satisfied: false,
     };
   }
-  const end = bars[bars.length - 1]!.date;
-  const cut = new Date(end);
-  cut.setFullYear(cut.getFullYear() - years);
-  const cutStr = cut.toISOString().slice(0, 10);
-  const slice = bars.filter((b) => b.date >= cutStr);
-  if (slice.length < 40) {
-    return {
-      annualReturnPct: null,
-      maxDrawdownPct: null,
-      annualVolPct: null,
-      start: "—",
-      end,
-    };
-  }
-  const first = slice[0]!;
-  const last = slice[slice.length - 1]!;
-  const nYears = (slice.length - 1) / 252;
-  const annualReturnPct =
-    nYears > 0
-      ? (Math.pow(last.close / first.close, 1 / nYears) - 1) * 100
-      : null;
-  let peak = first.close;
-  let maxDd = 0;
-  for (const b of slice) {
-    peak = Math.max(peak, b.close);
-    if (peak > 0) maxDd = Math.max(maxDd, (peak - b.close) / peak);
-  }
-  const rets: number[] = [];
-  for (let i = 1; i < slice.length; i++) {
-    const p = slice[i - 1]!.close;
-    const c = slice[i]!.close;
-    if (p > 0 && c > 0) rets.push(c / p - 1);
-  }
-  const mean = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : 0;
-  const variance =
-    rets.length > 1
-      ? rets.reduce((a, r) => a + (r - mean) ** 2, 0) / (rets.length - 1)
-      : 0;
+  const mb = calcMetricBlockForWindow(series, windowId);
   return {
-    annualReturnPct,
-    maxDrawdownPct: maxDd * 100,
-    annualVolPct: Math.sqrt(variance) * Math.sqrt(252) * 100,
-    start: first.date,
-    end: last.date,
+    annualReturnPct: mb.annualReturnPct,
+    maxDrawdownPct: mb.maxDrawdownPct,
+    annualVolPct: mb.annualVolPct,
+    start: mb.startDate ?? "—",
+    end: mb.endDate ?? "—",
+    satisfied: true,
   };
 }
 
@@ -328,7 +307,7 @@ function buildIndexMatrixRows(focusRows: FocusRow[]): IndexMatrixRow[] {
       row.etf,
     );
     const metrics = Object.fromEntries(
-      WINDOWS.map((w) => [w.id, metricForWindow(source.bars, w.years)]),
+      WINDOWS.map((w) => [w.id, metricForWindow(source.bars, w.id)]),
     ) as Record<WindowId, WindowMetric>;
     return {
       indexCode: row.item.indexCode,
@@ -530,19 +509,19 @@ function FeaturedIndexMatrix({ focusRows }: { focusRows: FocusRow[] }) {
                       key={`${row.indexCode}-${w.id}-ret`}
                       className="border-l border-fin-border px-3 py-3 text-right align-top font-mono"
                     >
-                      {formatPct(m.annualReturnPct)}
+                      {fmtWindowPct(m.annualReturnPct, m.satisfied)}
                     </td>,
                     <td
                       key={`${row.indexCode}-${w.id}-dd`}
                       className="px-3 py-3 text-right align-top font-mono"
                     >
-                      {formatPct(m.maxDrawdownPct)}
+                      {fmtWindowPct(m.maxDrawdownPct, m.satisfied)}
                     </td>,
                     <td
                       key={`${row.indexCode}-${w.id}-vol`}
                       className="px-3 py-3 text-right align-top font-mono"
                     >
-                      {formatPct(m.annualVolPct)}
+                      {fmtWindowPct(m.annualVolPct, m.satisfied)}
                     </td>,
                   ];
                 })}

@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EtfProductCodeLink } from "../components/EtfProductDetailLink";
+import { IndexOfficialIntroLink } from "../components/IndexOfficialIntroLink";
 import { PageHeader } from "../components/PageHeader";
 import {
   FilterChipCount,
@@ -13,7 +14,6 @@ import { useHkBondAnchorPreference } from "../hooks/useHkBondAnchorPreference";
 import { resolveBondAnchorForIndex } from "../lib/bondAnchor";
 import { formatPct, formatPctValue } from "../lib/formatDisplay";
 import {
-  etfProductDetailNavigable,
   primaryProductForIndex,
   type EtfProductRecord,
 } from "../lib/etfProducts";
@@ -30,20 +30,24 @@ import {
   type ConfigDimensionFilter,
 } from "../lib/configFramework";
 import {
+  indexOfficialIntroUrl,
+  indicesMissingOfficialIntro,
+} from "../lib/indexOfficialLinks";
+import {
   fetchRedrocketDivYieldMeta,
   indexDivYieldFootnote,
   type RedrocketDivYieldMeta,
 } from "../lib/redrocketDivYieldMeta";
 import {
-  calcMetricBlock,
-  sliceSeriesForWindow,
+  calcMetricBlockForWindow,
+  isMetricWindowSatisfied,
   type DateValuePoint,
   type MetricWindowId,
 } from "../lib/indexPanelMetrics";
 
 type MarketFilter = "all" | "cn" | "hk";
 type InceptionFilter = "all" | "y5" | "y10";
-type PerfWindow = "y3" | "y5" | "y10" | "all";
+type PerfWindow = "ytd" | "y1" | "y3" | "y5" | "y10" | "all";
 
 const MARKET_OPTIONS: { id: MarketFilter; label: string }[] = [
   { id: "all", label: "全部" },
@@ -66,6 +70,8 @@ const PERF_WINDOWS: {
   label: string;
   metricId: MetricWindowId;
 }[] = [
+  { id: "ytd", label: "今年来", metricId: "ytd" },
+  { id: "y1", label: "近1年", metricId: "y1" },
   { id: "y3", label: "近3年", metricId: "y3" },
   { id: "y5", label: "近5年", metricId: "y5" },
   { id: "y10", label: "近10年", metricId: "y10" },
@@ -136,7 +142,7 @@ function isListVisibleIndex(code: string): boolean {
 
 function metricForWindow(series: DateValuePoint[], win: PerfWindow) {
   const id: MetricWindowId = win === "all" ? "all" : win;
-  return calcMetricBlock(sliceSeriesForWindow(series, id));
+  return calcMetricBlockForWindow(series, id);
 }
 
 import { SP_INDEX_ETF_PROXY_CODES } from "../lib/indexEtfProxy";
@@ -169,11 +175,19 @@ function marketOf(category: string): "cn" | "hk" | null {
   return null;
 }
 
-function fmtPctCell(v: number | null | undefined): string {
+function fmtPctCell(
+  v: number | null | undefined,
+  windowSatisfied = true,
+): string {
+  if (!windowSatisfied) return "/";
   return formatPct(v);
 }
 
-function fmtRatio(v: number | null | undefined): string {
+function fmtRatio(
+  v: number | null | undefined,
+  windowSatisfied = true,
+): string {
+  if (!windowSatisfied) return "/";
   return formatPctValue(v);
 }
 
@@ -291,6 +305,14 @@ export function IndicesListPage() {
     [divYieldMeta],
   );
 
+  const missingIntroLabels = useMemo(
+    () =>
+      indicesMissingOfficialIntro(
+        indices.filter((ix) => isListVisibleIndex(ix.meta.index_code)),
+      ),
+    [indices],
+  );
+
   const [perfWindow, setPerfWindow] = useState<PerfWindow>("y5");
   const [sort, setSort] = useState<SortState>({
     key: "calmarLike",
@@ -334,6 +356,12 @@ export function IndicesListPage() {
         );
         const primaryEtf = primary ? getEtf(primary.code) : undefined;
         const metricSeries = listMetricSeriesForIndex(def, primaryEtf);
+        const metricWindowId: MetricWindowId =
+          perfWindow === "all" ? "all" : perfWindow;
+        const windowSatisfied = isMetricWindowSatisfied(
+          metricSeries,
+          metricWindowId,
+        );
         const mb = metricForWindow(metricSeries, perfWindow);
         const dim = indexToConfigDimension(def.meta.category);
         const spreadRows = buildIndexSpreadRows(
@@ -353,6 +381,7 @@ export function IndicesListPage() {
           avail: indexDataAvailability(def),
           primary,
           mb,
+          windowSatisfied,
           sharpe: sharpeLike(mb.annualReturnPct, mb.annualVolPct),
           baseDate: def.meta.base_date?.trim() || null,
           inceptionDate: def.meta.inception_date?.trim() || null,
@@ -651,7 +680,7 @@ export function IndicesListPage() {
                     ? "px-2 py-2 font-normal text-right w-[4.5rem]"
                     : undefined,
                 })}
-                {sortableTh("calmarLike", "回撤收益比", {
+                {sortableTh("calmarLike", "收益/回撤", {
                   title: "年化收益相对最大回撤，越高表示同样回撤下收益越高",
                 })}
                 <th
@@ -682,6 +711,7 @@ export function IndicesListPage() {
                   avail,
                   primary,
                   mb,
+                  windowSatisfied,
                   sharpe,
                   baseDate,
                   inceptionDate,
@@ -689,9 +719,6 @@ export function IndicesListPage() {
                 }) => {
                   const tone = dataAvailabilityTone(avail);
                   const primaryEtf = primary ? getEtf(primary.code) : undefined;
-                  const primaryNavigable =
-                    primary != null &&
-                    etfProductDetailNavigable(primary, primaryEtf);
                   const shortInception = isShortInception(inceptionDate);
                   const inceptionYears = yearsSinceInception(inceptionDate);
                   return (
@@ -743,21 +770,21 @@ export function IndicesListPage() {
                         {fmtMetaDate(inceptionDate)}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
-                        {fmtPctCell(mb.annualReturnPct)}
+                        {fmtPctCell(mb.annualReturnPct, windowSatisfied)}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
-                        {fmtPctCell(mb.maxDrawdownPct)}
+                        {fmtPctCell(mb.maxDrawdownPct, windowSatisfied)}
                       </td>
                       {!compactTable ? (
                         <td className="px-3 py-2 font-mono text-xs">
-                          {fmtPctCell(mb.annualVolPct)}
+                          {fmtPctCell(mb.annualVolPct, windowSatisfied)}
                         </td>
                       ) : null}
                       <td className="px-3 py-2 font-mono text-xs">
-                        {fmtRatio(sharpe)}
+                        {fmtRatio(sharpe, windowSatisfied)}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
-                        {fmtRatio(mb.calmar)}
+                        {fmtRatio(mb.calmar, windowSatisfied)}
                       </td>
                       <td
                         className={`font-mono text-xs ${compactTable ? "px-2" : "px-3 py-2"}`}
@@ -799,26 +826,16 @@ export function IndicesListPage() {
                         >
                           详情
                         </Link>
-                        {primary ? (
+                        {indexOfficialIntroUrl(def.meta) ? (
                           <>
                             <span className="fin-muted-separator" aria-hidden>
                               |
                             </span>
-                            {primaryNavigable ? (
-                              <Link
-                                to={`/etf/${encodeURIComponent(primary.code)}`}
-                                className="fin-link"
-                              >
-                                ETF
-                              </Link>
-                            ) : (
-                              <span
-                                className="fin-muted-text cursor-not-allowed"
-                                title="暂无行情，ETF 看板不可用"
-                              >
-                                ETF
-                              </span>
-                            )}
+                            <IndexOfficialIntroLink
+                              meta={def.meta}
+                              className="fin-link"
+                              label="官网"
+                            />
                           </>
                         ) : null}
                       </td>
@@ -836,11 +853,14 @@ export function IndicesListPage() {
               ETF 行情数据替代。
             </span>
             <span className="block">
-              <span className="font-semibold text-[var(--fin-muted)]">
-                成立日不足 {SHORT_INCEPTION_YEARS} 年
-              </span>
-              ：成立日列略加重；行左侧细色条为弱提示（非警示）。
+              成立日不足 {SHORT_INCEPTION_YEARS} 年：关注数据长度
             </span>
+            {missingIntroLabels.length > 0 ? (
+              <span className="block">
+                暂无编制机构官网介绍链接：
+                {missingIntroLabels.join("、")}
+              </span>
+            ) : null}
           </p>
         </div>
       )}

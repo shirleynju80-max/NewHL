@@ -1,6 +1,7 @@
 import type { EtfDefinition, OhlcBar } from "../types";
 import {
   calcMetricBlock,
+  isMetricWindowSatisfied,
   metricBlockToSeriesBlock,
   sliceSeriesForWindow,
   type MetricWindowId,
@@ -61,10 +62,14 @@ export type SeriesMetricBlock = {
   sharpeLike: number | null;
 } | null;
 
-function seriesBlockFromPoints(
-  points: { date: string; value: number }[],
+function seriesBlockFromWindow(
+  series: { date: string; value: number }[],
+  id: MetricWindowId,
 ): SeriesMetricBlock {
-  return metricBlockToSeriesBlock(calcMetricBlock(points));
+  if (!isMetricWindowSatisfied(series, id)) return null;
+  return metricBlockToSeriesBlock(
+    calcMetricBlock(sliceSeriesForWindow(series, id)),
+  );
 }
 
 function sortedBarsSeries(d: EtfDefinition): {
@@ -100,8 +105,7 @@ export function buildSeriesOverviewRowFromNav(
   if (closes.length !== dates.length || closes.length < MIN_WINDOW_DAYS)
     return null;
   const series = dates.map((date, i) => ({ date, value: closes[i]! }));
-  const block = (id: MetricWindowId) =>
-    seriesBlockFromPoints(sliceSeriesForWindow(series, id));
+  const block = (id: MetricWindowId) => seriesBlockFromWindow(series, id);
   return {
     code,
     name,

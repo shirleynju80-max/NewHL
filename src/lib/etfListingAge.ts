@@ -94,7 +94,7 @@ export function etfProductStrategyIneligibleReason(
   minYears: number = ETF_MIN_BACKTEST_YEARS,
 ): string {
   if (isCashCreationEtf(etf, product)) {
-    return "现金流类产品不登记 ETF 层策略参数，策略回测与盘中信号暂不适用。";
+    return "产品成立时间较短，暂未提供策略参数。";
   }
   const start = etfListingStartDate(etf, product);
   const years = etfListingYears(etf, product);

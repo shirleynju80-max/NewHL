@@ -3,8 +3,8 @@ import type { BondSeriesPoint, IndexDefinition } from "../types";
 import type { EtfProductRecord } from "./etfProducts";
 import { formatPct, formatSignedPct } from "./formatDisplay";
 import {
-  calcMetricBlock,
-  sliceSeriesForWindow,
+  calcMetricBlockForWindow,
+  isMetricWindowSatisfied,
   type MetricBlock,
   type MetricWindowId,
 } from "./indexPanelMetrics";
@@ -69,12 +69,11 @@ function yearsSinceInception(inception?: string): number | null {
 
 function y5MetricBlock(def: IndexDefinition | undefined): MetricBlock | null {
   if (!def?.bars.length) return null;
-  const tri = sliceSeriesForWindow(
-    indexSeriesForMode(def.bars, "tri"),
-    CASH_BENCHMARK_WINDOW,
-  );
-  if (tri.length < CASH_BENCH_MIN_POINTS) return null;
-  return calcMetricBlock(tri);
+  const tri = indexSeriesForMode(def.bars, "tri");
+  if (!isMetricWindowSatisfied(tri, CASH_BENCHMARK_WINDOW)) return null;
+  const mb = calcMetricBlockForWindow(tri, CASH_BENCHMARK_WINDOW);
+  if (mb.points < CASH_BENCH_MIN_POINTS) return null;
+  return mb;
 }
 
 function formatY5PeriodLabel(block: MetricBlock): string {

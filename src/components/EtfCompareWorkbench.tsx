@@ -11,7 +11,7 @@ import {
   groupEtfProductsByIndex,
   type EtfProductRecord,
 } from "../lib/etfProducts";
-import { compareDefinitions, type SeriesMetricBlock } from "../lib/compareEtfs";
+import { compareDefinitions, type SeriesMetricBlock, type SeriesOverviewRow } from "../lib/compareEtfs";
 import { formatPct, formatPctValue } from "../lib/formatDisplay";
 import {
   sliceBarsForWindow,
@@ -103,6 +103,16 @@ type CorrOrderMode = "code" | "cluster";
 
 function barsTailByWindow(bars: EtfDefinition["bars"], win: WindowKey) {
   return sliceBarsForWindow(bars, win);
+}
+
+function overviewSegment(
+  row: SeriesOverviewRow,
+  key: WindowKey,
+): SeriesMetricBlock {
+  if (key === "all") return row.all;
+  if (key === "y1") return row.y1;
+  if (key === "y3") return row.y3;
+  return row.y5;
 }
 
 /** 贪心聚类序：尽量把高正相关标的排在相邻位置 */
@@ -280,14 +290,14 @@ export function EtfCompareWorkbench() {
   }, [compareDefsOrdered, windowKey]);
 
   const compareResult = useMemo(() => {
-    if (compareDefsInWindow.length < 2) return null;
-    return compareDefinitions(compareDefsInWindow);
-  }, [compareDefsInWindow]);
-
-  const fullCompareResult = useMemo(() => {
     if (compareDefsOrdered.length < 2) return null;
     return compareDefinitions(compareDefsOrdered);
   }, [compareDefsOrdered]);
+
+  const corrResult = useMemo(() => {
+    if (compareDefsInWindow.length < 2) return null;
+    return compareDefinitions(compareDefsInWindow);
+  }, [compareDefsInWindow]);
 
   const currentWindowLabel =
     WINDOW_OPTIONS.find((w) => w.key === windowKey)?.label ?? "全样本";
@@ -303,7 +313,7 @@ export function EtfCompareWorkbench() {
     const rows = compareResult.overview.map((r) => ({
       code: r.code,
       name: r.name,
-      seg: r.all,
+      seg: overviewSegment(r, windowKey),
     }));
     const valueOf = (row: (typeof rows)[number]): number | string => {
       if (sortState.key === "code") return row.code;
@@ -327,7 +337,7 @@ export function EtfCompareWorkbench() {
       return ((Number(va) || 0) - (Number(vb) || 0)) * mul;
     });
     return rows;
-  }, [compareResult, sortState]);
+  }, [compareResult, sortState, windowKey]);
 
   const toggleSort = (key: SortKey) => {
     setSortState((prev) => {
@@ -367,16 +377,16 @@ export function EtfCompareWorkbench() {
   }
 
   const corrOrderedIndices = useMemo(() => {
-    if (!compareResult?.correlation) return [] as number[];
+    if (!corrResult?.correlation) return [] as number[];
     if (corrOrderMode === "code")
-      return compareResult.corrLabels.map((_, i) => i);
-    return buildCorrelationClusterOrder(compareResult.correlation);
-  }, [compareResult, corrOrderMode]);
+      return corrResult.corrLabels.map((_, i) => i);
+    return buildCorrelationClusterOrder(corrResult.correlation);
+  }, [corrResult, corrOrderMode]);
 
   const corrOrderedLabels = useMemo(() => {
-    if (!compareResult?.correlation) return [] as string[];
-    return corrOrderedIndices.map((i) => compareResult.corrLabels[i]);
-  }, [compareResult, corrOrderedIndices]);
+    if (!corrResult?.correlation) return [] as string[];
+    return corrOrderedIndices.map((i) => corrResult.corrLabels[i]);
+  }, [corrResult, corrOrderedIndices]);
 
   const poolComparableCount = pool.all.filter((i) => i.comparable).length;
   const summaryCards = useMemo<SummaryCard[]>(() => {
@@ -392,7 +402,7 @@ export function EtfCompareWorkbench() {
         tone: compareCodes.length >= 2 ? "good" : "warn",
       },
     ];
-    if (!fullCompareResult) {
+    if (!compareResult) {
       cards.push(
         {
           title: "近5年优选",
@@ -418,7 +428,7 @@ export function EtfCompareWorkbench() {
       );
       return cards;
     }
-    const y5Rows = fullCompareResult.overview
+    const y5Rows = compareResult.overview
       .filter((r) => r.y5)
       .map((r) => ({ code: r.code, name: r.name, block: r.y5! }));
     if (y5Rows.length > 0) {
@@ -469,25 +479,25 @@ export function EtfCompareWorkbench() {
       );
     }
     if (
-      !compareResult ||
-      !compareResult.overlapOk ||
-      !compareResult.correlation
+      !corrResult ||
+      !corrResult.overlapOk ||
+      !corrResult.correlation
     ) {
       cards.push({
         title: "相关性状态",
         value: "不可比",
         note:
-          compareResult && compareResult.overlapDates.length > 0
-            ? `重合仅 ${compareResult.overlapDates.length} 日`
+          corrResult && corrResult.overlapDates.length > 0
+            ? `重合仅 ${corrResult.overlapDates.length} 日`
             : "所选标的无重合交易日",
         href: "#overview-correlation",
         tone: "warn",
       });
     } else {
       let maxCorr = -1;
-      for (let i = 0; i < compareResult.correlation.length; i += 1) {
-        for (let j = i + 1; j < compareResult.correlation.length; j += 1) {
-          maxCorr = Math.max(maxCorr, compareResult.correlation[i][j]);
+      for (let i = 0; i < corrResult.correlation.length; i += 1) {
+        for (let j = i + 1; j < corrResult.correlation.length; j += 1) {
+          maxCorr = Math.max(maxCorr, corrResult.correlation[i][j]);
         }
       }
       cards.push({
@@ -499,7 +509,7 @@ export function EtfCompareWorkbench() {
       });
     }
     return cards;
-  }, [compareCodes.length, compareResult, fullCompareResult]);
+  }, [compareCodes.length, compareResult, corrResult]);
 
   return (
     <div className="space-y-6">
@@ -699,7 +709,7 @@ export function EtfCompareWorkbench() {
                               colSpan={8}
                               className="px-3 py-2 text-xs fin-muted-text"
                             >
-                              有效样本不足（需约 ≥20 个交易日）
+                              该时间窗历史不足
                             </td>
                           </tr>
                         );
@@ -780,24 +790,24 @@ export function EtfCompareWorkbench() {
                 <strong>共同交易日</strong>的每日涨跌计算；共同交易日不足 30
                 天时不展示。
               </p>
-              {!compareResult.overlapOk || !compareResult.correlation ? (
+              {!corrResult?.overlapOk || !corrResult?.correlation ? (
                 <p className="mt-3 text-sm fin-muted-text">
-                  {compareResult.overlapDates.length > 0
-                    ? `当前重合 ${compareResult.overlapDates.length} 日，需 ≥30 日。`
+                  {corrResult && corrResult.overlapDates.length > 0
+                    ? `当前重合 ${corrResult.overlapDates.length} 日，需 ≥30 日。`
                     : "所选标的无重合交易日。"}
                 </p>
               ) : (
                 <p className="mt-2 text-xs font-mono fin-muted-text">
-                  重合区间 {compareResult.overlapDates[0]} ~{" "}
+                  重合区间 {corrResult.overlapDates[0]} ~{" "}
                   {
-                    compareResult.overlapDates[
-                      compareResult.overlapDates.length - 1
+                    corrResult.overlapDates[
+                      corrResult.overlapDates.length - 1
                     ]
                   }{" "}
-                  · {compareResult.overlapDates.length} 日
+                  · {corrResult.overlapDates.length} 日
                 </p>
               )}
-              {compareResult.correlation && (
+              {corrResult?.correlation && (
                 <div className="mt-3 overflow-x-auto">
                   <table className="w-full min-w-[240px] text-sm">
                     <thead>
@@ -816,18 +826,18 @@ export function EtfCompareWorkbench() {
                     <tbody className="divide-y divide-fin-border">
                       {corrOrderedIndices.map((rowIdx) => (
                         <tr
-                          key={compareResult.corrLabels[rowIdx]}
+                          key={corrResult.corrLabels[rowIdx]}
                           className="fin-row-hover"
                         >
                           <th
                             scope="row"
                             className="px-3 py-2 text-left font-mono text-xs font-normal text-[var(--fin-muted)]"
                           >
-                            {compareResult.corrLabels[rowIdx]}
+                            {corrResult.corrLabels[rowIdx]}
                           </th>
                           {corrOrderedIndices.map((colIdx) => {
                             const v =
-                              compareResult.correlation![rowIdx][colIdx];
+                              corrResult.correlation![rowIdx][colIdx];
                             const isDiagonal = rowIdx === colIdx;
                             return (
                               <td
@@ -837,7 +847,7 @@ export function EtfCompareWorkbench() {
                                     ? "font-semibold text-[var(--fin-text)]"
                                     : "fin-muted-text"
                                 }`}
-                                title={`${compareResult.corrLabels[rowIdx]} vs ${compareResult.corrLabels[colIdx]}: ${v.toFixed(4)}`}
+                                title={`${corrResult.corrLabels[rowIdx]} vs ${corrResult.corrLabels[colIdx]}: ${v.toFixed(4)}`}
                               >
                                 {v.toFixed(2)}
                               </td>

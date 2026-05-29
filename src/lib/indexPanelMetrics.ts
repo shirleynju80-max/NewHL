@@ -72,15 +72,15 @@ const EMPTY_METRIC_BLOCK: MetricBlock = {
   points: 0,
 };
 
+const TRADING_DAYS = 252;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 export function metricWindowBlock(
   row: MetricRow,
   id: MetricWindowId,
 ): MetricBlock {
   return row.windows[id] ?? EMPTY_METRIC_BLOCK;
 }
-
-const TRADING_DAYS = 252;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function isValidPoint(p: DateValuePoint): boolean {
   return Boolean(p.date) && Number.isFinite(p.value) && p.value > 0;
@@ -125,6 +125,77 @@ export function windowStartDate(
   if (id === "y5") return shiftYears(d, -5).toISOString().slice(0, 10);
   if (id === "y10") return shiftYears(d, -10).toISOString().slice(0, 10);
   return null;
+}
+
+function daysBetween(later: string, earlier: string): number {
+  const end = Date.parse(`${later}T00:00:00`);
+  const start = Date.parse(`${earlier}T00:00:00`);
+  if (!Number.isFinite(end) || !Number.isFinite(start)) return 0;
+  return Math.max(0, (end - start) / MS_PER_DAY);
+}
+
+/** 统计窗口所需最短日历跨度（年）；ytd/mtd 走单独规则。 */
+function requiredMetricWindowSpanYears(id: MetricWindowId): number | null {
+  if (id === "mtd") return 0;
+  if (id === "m1") return 31 / 365.25;
+  if (id === "m3") return 89 / 365.25;
+  if (id === "ytd") return null;
+  if (id === "y1") return 1;
+  if (id === "y3") return 3;
+  if (id === "y5") return 5;
+  if (id === "y10") return 10;
+  if (id === "all") return 0;
+  return null;
+}
+
+/**
+ * 所选时间窗是否有足够历史：窗口内有效起点至最新日须覆盖该窗最短跨度。
+ * 成立/可得样本不足时，列表与详情应展示「/」而非截断样本的伪指标。
+ */
+export function isMetricWindowSatisfied(
+  series: DateValuePoint[],
+  id: MetricWindowId,
+): boolean {
+  const clean = cleanDateValueSeries(series);
+  if (!clean.length) return false;
+  if (id === "all") return clean.length >= 2;
+
+  const latest = clean.at(-1)!.date;
+  const first = clean[0]!.date;
+  const idealStart = windowStartDate(id, latest);
+  if (!idealStart) return false;
+
+  if (id === "ytd") {
+    return first <= idealStart || daysBetween(first, idealStart) <= 31;
+  }
+  if (id === "mtd") {
+    return first.slice(0, 7) === latest.slice(0, 7) || first <= idealStart;
+  }
+
+  const requiredYears = requiredMetricWindowSpanYears(id);
+  if (requiredYears == null) return false;
+  if (requiredYears <= 0) return clean.length >= 2;
+
+  const effectiveStart = first > idealStart ? first : idealStart;
+  const spanYears = daysBetween(latest, effectiveStart) / 365.25;
+  return spanYears >= requiredYears - 0.02;
+}
+
+export function calcMetricBlockForWindow(
+  series: DateValuePoint[],
+  id: MetricWindowId,
+): MetricBlock {
+  if (!isMetricWindowSatisfied(series, id)) {
+    return { ...EMPTY_METRIC_BLOCK };
+  }
+  return calcMetricBlock(sliceSeriesForWindow(series, id));
+}
+
+export function satisfiedMetricWindowIds(
+  series: DateValuePoint[],
+  ids: readonly MetricWindowId[],
+): MetricWindowId[] {
+  return ids.filter((id) => isMetricWindowSatisfied(series, id));
 }
 
 export function metricWindowDateRange(
@@ -269,7 +340,7 @@ export function buildMetricRow(
 ): MetricRow {
   const windows = {} as Record<MetricWindowId, MetricBlock>;
   for (const win of METRIC_WINDOWS) {
-    windows[win.id] = calcMetricBlock(sliceSeriesForWindow(series, win.id));
+    windows[win.id] = calcMetricBlockForWindow(series, win.id);
   }
   return { id, label, windows };
 }
@@ -317,8 +388,12 @@ export function buildIndexOverviewFromSeries(
 ): SeriesOverviewRow | null {
   const clean = cleanDateValueSeries(series);
   if (clean.length < MIN_OVERVIEW_POINTS) return null;
-  const block = (id: MetricWindowId) =>
-    metricBlockToSeriesBlock(calcMetricBlock(sliceSeriesForWindow(clean, id)));
+  const block = (id: MetricWindowId) => {
+    if (!isMetricWindowSatisfied(clean, id)) return null;
+    return metricBlockToSeriesBlock(
+      calcMetricBlock(sliceSeriesForWindow(clean, id)),
+    );
+  };
   return {
     code,
     name,

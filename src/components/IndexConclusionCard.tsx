@@ -92,22 +92,12 @@ export function IndexConclusionCard({
             <dd className="mt-1 font-mono text-xl font-semibold text-[var(--fin-text)]">
               {formatPct(divSnap.latestYieldPct)}
             </dd>
-            {divSnap.latestYieldPct == null && divSnap.missingReason ? (
-              <p className="mt-0.5 text-[10px] leading-snug fin-muted-text">
-                {divSnap.missingReason}
-              </p>
-            ) : null}
           </div>
           <div>
             <dt className="text-xs fin-muted-text">股息率历史分位</dt>
             <dd className="mt-1 font-mono text-xl font-semibold text-[var(--fin-text)]">
               {formatPct(divSnap.yieldPercentilePct)}
             </dd>
-            {divSnap.yieldPercentilePct == null && divSnap.missingReason ? (
-              <p className="mt-0.5 text-[10px] leading-snug fin-muted-text">
-                {divSnap.missingReason}
-              </p>
-            ) : null}
           </div>
           <div>
             <dt className="text-xs fin-muted-text">
@@ -116,11 +106,6 @@ export function IndexConclusionCard({
             <dd className="mt-1 font-mono text-xl font-semibold text-[var(--fin-text)]">
               {formatPct(latest?.spreadPct)}
             </dd>
-            {latest?.spreadPct == null ? (
-              <p className="mt-0.5 text-[10px] leading-snug fin-muted-text">
-                需同日国债收益率
-              </p>
-            ) : null}
           </div>
           <div>
             <dt className="text-xs fin-muted-text">利差历史分位</dt>
@@ -129,7 +114,9 @@ export function IndexConclusionCard({
             </dd>
           </div>
         </dl>
-        <p className="mt-3 text-sm fin-muted-text">{obs.body}</p>
+        {obs.body ? (
+          <p className="mt-3 text-sm fin-muted-text">{obs.body}</p>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-3 text-sm">
           {primaryProduct ? (
             <>
@@ -168,7 +155,14 @@ export function IndexConclusionCard({
     def.meta.index_code,
     def.meta.name,
   );
-  const y5 = overview?.y5 ?? overview?.all;
+  const y5 = overview?.y5 ?? null;
+  const allFallback = !y5 ? (overview?.all ?? null) : null;
+  const perfBlock = y5 ?? allFallback;
+  const perfLabel = y5
+    ? "近5年年化（全收益）"
+    : allFallback
+      ? "全样本年化（近5年不足）"
+      : "近5年年化（全收益）";
 
   return (
     <section className="fin-panel border-l-[3px] border-l-[var(--fin-up)] p-5">
@@ -194,21 +188,21 @@ export function IndexConclusionCard({
       <dl className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
           <dt className="text-xs fin-muted-text">
-            近5年年化（全收益）
-            {y5?.from && y5?.to ? (
+            {perfLabel}
+            {perfBlock?.from && perfBlock?.to ? (
               <span className="mt-0.5 block font-mono text-[10px] font-normal fin-muted-text">
-                {y5.from} → {y5.to}
+                {perfBlock.from} → {perfBlock.to}
               </span>
             ) : null}
           </dt>
           <dd className="mt-1 font-mono text-xl font-semibold text-[var(--fin-text)]">
-            {formatPct(y5?.annualReturnPct)}
+            {formatPct(perfBlock?.annualReturnPct)}
           </dd>
         </div>
         <div>
           <dt className="text-xs fin-muted-text">最大回撤</dt>
           <dd className="mt-1 font-mono text-xl font-semibold text-[var(--fin-text)]">
-            {formatPct(y5?.maxDrawdownPct)}
+            {formatPct(perfBlock?.maxDrawdownPct)}
           </dd>
         </div>
       </dl>

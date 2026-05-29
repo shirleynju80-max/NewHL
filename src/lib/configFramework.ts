@@ -221,7 +221,7 @@ export function dividendAllocationObservation(
       zone: "insufficient",
       title: "数据不足",
       tone: "border-fin-border bg-transparent text-[var(--fin-muted)]",
-      body: "当前缺少可对齐的股息率或国债收益率。",
+      body: "",
     };
   }
   if (spread >= 2.5 || (hasDivYield && divYield >= 5.5 && spread >= 1.5)) {
