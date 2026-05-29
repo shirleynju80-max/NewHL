@@ -9,6 +9,7 @@
 - [docs/project-status.md](docs/project-status.md) — 状态、口径、命令
 - [docs/current-handoff.md](docs/current-handoff.md) — 当前交接与未完成项
 - [docs/csv-schema.md](docs/csv-schema.md) — CSV 字段口径
+- [docs/ui-spec.md](docs/ui-spec.md) — UI 设计规范 + 文案术语表（改视觉/文案必读）
 - [scripts/index_data_sync/README.md](scripts/index_data_sync/README.md) — 指数数据同步
 - [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md) — 部署
 
