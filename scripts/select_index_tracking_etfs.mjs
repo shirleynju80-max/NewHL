@@ -372,6 +372,18 @@ for (const index of indices) {
   );
 }
 
+const preservedOtcRows = existingTrackingRows.filter(
+  (row) => (row.product_type || "").trim().toLowerCase() === "otc_fund",
+);
+const outputKeys = new Set(outputRows.map((row) => `${row.index_code}:${row.etf_code}`));
+for (const row of preservedOtcRows) {
+  const key = `${row.index_code}:${row.etf_code}`;
+  if (!outputKeys.has(key)) {
+    outputRows.push(row);
+    outputKeys.add(key);
+  }
+}
+
 const headers = ["index_code", "etf_code", "note", "fee_pct", "product_type"];
 const output =
   [headers.join(","), ...outputRows.map((row) => headers.map((field) => escapeCsv(row[field])).join(","))].join("\n") +

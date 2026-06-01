@@ -19,6 +19,13 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install wrangler
+        run: npm install -g wrangler@4.95.0
+
+      - name: Pull latest git data (after upstream sync workflows)
+        if: github.event_name == 'workflow_run'
+        run: git pull --ff-only origin main
+
       - name: Verify Node for wrangler
         run: |
           node -v

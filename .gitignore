@@ -14,9 +14,16 @@ static-page-exports.zip
 .agents/
 .claude/
 
-# 真实行情/参数 CSV 勿提交（保留 public/data/README.txt 即可）
+# 生产数据 CSV：默认 ignore，下列文件纳入 git（CI 与本地共用同一套）
 public/data/*.csv
 !public/data/bars.csv
+!public/data/barsmore.csv
+!public/data/index_bars.csv
+!public/data/fund_bars.csv
+!public/data/etf_dividends.csv
+!public/data/indices.csv
+!public/data/index_tracking_etfs.csv
+!public/data/etfsmore.csv
 
 # 本地 Python
 scripts/.venv/

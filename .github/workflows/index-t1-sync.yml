@@ -31,8 +31,22 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install wrangler
+        run: npm install -g wrangler@4.95.0
+
+      - name: Pull optional data artifacts from R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_BIN: wrangler
+        run: bash scripts/cloudflare/download_public_data_from_r2.sh
+
       - name: Install deps
-        run: pip install requests
+        run: pip install requests akshare
 
       - name: Sync index price / total return series
         run: python scripts/index_data_sync/sync_a_share_dividend_indices.py
@@ -79,6 +93,12 @@ jobs:
 
       - name: Sync H30269 RedRocket DID
         run: python scripts/index_data_sync/sync_h30269_dividend_yield_redrocket.py
+
+      - name: Sync OTC fund NAV (fund_bars.csv)
+        run: python scripts/index_data_sync/sync_otc_fund_bars_em.py
+
+      - name: Verify index tracking / product mapping
+        run: node scripts/verify_etf_products.mjs
 
       - name: Check HSI recency guardrail
         id: check_hsi_freshness
@@ -137,7 +157,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/index_bars.csv public/data/indices.csv public/data/index_tracking_etfs.csv public/data/redrocket_div_yield_meta.json
+          git add -f public/data/index_bars.csv public/data/indices.csv public/data/index_tracking_etfs.csv public/data/redrocket_div_yield_meta.json public/data/fund_bars.csv
           if git diff --staged --quiet; then
             echo "No changes to index data"
           else

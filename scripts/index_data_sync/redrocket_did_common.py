@@ -34,6 +34,13 @@ REDROCKET_SECURITY_CODES = {
     "HSSCSOY.HI": "HSSCSOY.HI",
 }
 
+# 观察池指数在红色火箭无 DID 序列（API 200 但 items 为空）；勿静默伪造映射。
+REDROCKET_UNSUPPORTED_NOTES: dict[str, str] = {
+    "SPCLLHCP.SPI": "S&P 指数；红色火箭 API 无 DID。指数层暂无 index_bars，研究口径可参照主跟踪 ETF。",
+    "SPAHLVCP.SPI": "S&P 指数；红色火箭 API 无 DID。指数层暂无 index_bars，研究口径可参照主跟踪 ETF。",
+    "FCFQCD": "富时现金流指数；红色火箭 API 无 DID。股息率非现金流板块主口径。",
+}
+
 CST = timezone(timedelta(hours=8))
 
 
@@ -117,14 +124,35 @@ def latest_dates_from_api(
     return out
 
 
+def redrocket_unsupported_indices(
+    per_index_latest: dict[str, str] | None = None,
+) -> list[dict[str, str]]:
+    """红利/现金流观察池内、红色火箭无法提供 DID 的指数及原因。"""
+    latest = per_index_latest or {}
+    out: list[dict[str, str]] = []
+    for code in sorted(redrocket_target_index_codes()):
+        if code in REDROCKET_SECURITY_CODES and code in latest:
+            continue
+        reason = REDROCKET_UNSUPPORTED_NOTES.get(code)
+        if not reason:
+            if code not in REDROCKET_SECURITY_CODES:
+                reason = "红色火箭 API 无该 index_code 的 securityCode 映射。"
+            else:
+                reason = "已映射 securityCode，但 API 未返回 DID 序列。"
+        out.append({"index_code": code, "reason": reason})
+    return out
+
+
 def write_div_yield_meta(per_index_latest: dict[str, str]) -> Path:
     source_latest = max(per_index_latest.values()) if per_index_latest else ""
+    unsupported = redrocket_unsupported_indices(per_index_latest)
     payload = {
         "source": "红色火箭",
         "metric": "股息率(DID)",
         "update_frequency": "周频，不定期",
         "source_latest_date": source_latest,
         "per_index_latest_date": dict(sorted(per_index_latest.items())),
+        "unsupported_indices": unsupported,
         "fetched_at": datetime.now(CST).isoformat(timespec="seconds"),
     }
     META_PATH.parent.mkdir(parents=True, exist_ok=True)

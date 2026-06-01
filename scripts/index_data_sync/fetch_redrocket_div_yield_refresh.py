@@ -13,6 +13,7 @@ from __future__ import annotations
 from redrocket_did_common import (
     latest_dates_from_api,
     redrocket_target_index_codes,
+    redrocket_unsupported_indices,
     write_div_yield_meta,
 )
 
@@ -27,6 +28,11 @@ def main() -> None:
     print(f"indices queried: {len(per_index)}/{len(targets)}")
     for code in sorted(per_index):
         print(f"  {code}: {per_index[code]}")
+    unsupported = redrocket_unsupported_indices(per_index)
+    if unsupported:
+        print(f"unsupported on RedRocket ({len(unsupported)}):")
+        for row in unsupported:
+            print(f"  {row['index_code']}: {row['reason']}")
 
 
 if __name__ == "__main__":

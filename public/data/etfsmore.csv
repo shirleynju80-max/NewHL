@@ -19,4 +19,3 @@ code,name,strategy_id,param_version,product_kind,dividend_market_scope,div_yield
 562080,华宝沪深300自由现金流ETF,rsi_mean_reversion,v20260520,现金流类,,0,估算
 560120,华夏中证500自由现金流ETF,rsi_mean_reversion,v20260520,现金流类,,0,估算
 563990,富国中证800自由现金流ETF,rsi_mean_reversion,v20260520,现金流类,,0,估算
-007751,景顺长城沪港深红利成长低波A,rsi_mean_reversion,v20260526_rsi_21_35_70,ETF,A股红利,4.5,估算

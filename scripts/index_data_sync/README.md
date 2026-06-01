@@ -199,7 +199,16 @@ python3 scripts/realtime_crawler/sync_etf_adjusted_bars.py --codes 510880 --dry-
 python3 scripts/index_data_sync/sync_otc_fund_bars_em.py
 ```
 
-工作日 `index-t1-sync` CI 会在指数同步后自动运行上式并提交 `fund_bars.csv`（依赖 `akshare`）。
+工作日 `index-t1-sync` CI 会在指数同步后自动运行上式并提交 `fund_bars.csv`（依赖 `akshare`）。**CI 跑前会从 R2 bootstrap** 已有 `index_bars.csv` / `fund_bars.csv`，避免冷启动丢历史。
+
+本地与线上一致：
+
+```bash
+npm run data:sync-market   # git pull + 可选 R2 bootstrap + 指数/007751 同步
+npm run r2:upload          # 推送到 R2，Worker /api/bundle 读取
+```
+
+数据链路：**外部源 → `public/data/*.csv` → git push → R2 upload → 线上 Worker**。
 
 `007751`（931157 主跟踪）需在 `etfsmore.csv` 有元数据行；`DataSourceContext` 会自动 fetch `fund_bars.csv`。
 

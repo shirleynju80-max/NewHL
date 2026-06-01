@@ -9,12 +9,17 @@ WRANGLER="${WRANGLER_BIN:-wrangler}"
 REMOTE_FLAG="${R2_REMOTE_FLAG:---remote}"
 
 OPTIONAL_OBJECTS=(
+  bars.csv
+  barsmore.csv
+  index_bars.csv
+  indices.csv
+  index_tracking_etfs.csv
+  fund_bars.csv
   etfs.csv
   etf_products.csv
-  fund_bars.csv
-  barsmore.csv
   etf_dividends.csv
   etf_adjusted_bars_meta.json
+  redrocket_div_yield_meta.json
 )
 
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then

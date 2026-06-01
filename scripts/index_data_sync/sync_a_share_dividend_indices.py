@@ -70,7 +70,13 @@ TRACKING_NOTES = {
 }
 
 EXTRA_TRACKING_ROWS = [
-    # 931157/007751 已写入 index_tracking_etfs.csv（otc_fund 主产品），勿在此重复。
+    {
+        "index_code": "931157",
+        "etf_code": "007751",
+        "note": "景顺长城沪港深红利成长低波A",
+        "fee_pct": "",
+        "product_type": "otc_fund",
+    },
     {"index_code": "932366", "etf_code": "563900", "note": "摩根沪深300自由现金流ETF；产品落地参考，不作为盘中默认监控", "fee_pct": ""},
     {"index_code": "932368", "etf_code": "563580", "note": "万家中证800自由现金流ETF；产品落地参考，不作为盘中默认监控", "fee_pct": ""},
 ]
@@ -353,16 +359,44 @@ def sync_tracking() -> None:
     fieldnames = ["index_code", "etf_code", "note", "fee_pct", "product_type"] + [
         x for x in fields if x not in {"index_code", "etf_code", "note", "fee_pct", "product_type"}
     ]
-    replace_codes = {t.code for t in CSI_TARGETS} | {"000926", "931374", "SPCLLHCP.SPI"}
+    # 仅覆盖有 CSI 场内主产品的指数；931157 等 OTC 主产品须保留/由 EXTRA 写入。
+    replace_codes = {t.code for t in CSI_TARGETS if t.tracking_etf} | {
+        "000926",
+        "931374",
+        "SPCLLHCP.SPI",
+    }
     kept = [row for row in rows if row.get("index_code") not in replace_codes]
     new_rows = [
-        {"index_code": t.code, "etf_code": t.tracking_etf, "note": TRACKING_NOTES.get(t.code, ""), "fee_pct": ""}
+        {
+            "index_code": t.code,
+            "etf_code": t.tracking_etf,
+            "note": TRACKING_NOTES.get(t.code, ""),
+            "fee_pct": "",
+            "product_type": "",
+        }
         for t in CSI_TARGETS
         if t.tracking_etf
     ]
-    new_rows.insert(3, {"index_code": "SPCLLHCP.SPI", "etf_code": "515450", "note": "待接入 S&P 历史行情", "fee_pct": ""})
-    new_rows.extend(EXTRA_TRACKING_ROWS)
-    write_csv(TRACKING, fieldnames, new_rows + kept)
+    new_rows.insert(
+        3,
+        {
+            "index_code": "SPCLLHCP.SPI",
+            "etf_code": "515450",
+            "note": "待接入 S&P 历史行情",
+            "fee_pct": "",
+            "product_type": "",
+        },
+    )
+    new_rows.extend(
+        row for row in EXTRA_TRACKING_ROWS if row.get("product_type") != "otc_fund"
+    )
+    merged = new_rows + kept
+    for otc in EXTRA_TRACKING_ROWS:
+        if otc.get("product_type") != "otc_fund":
+            continue
+        if not any(r.get("index_code") == otc["index_code"] for r in merged):
+            merged.append(otc)
+    write_csv(TRACKING, fieldnames, merged)
 
 
 def main() -> None:
