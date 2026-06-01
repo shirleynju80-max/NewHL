@@ -63,6 +63,7 @@ npm run format                   # Prettier 全量格式化
 | 现象 | 处理 |
 |------|------|
 | Safari / 微信内浏览器刷新后白屏 | `index.html` 与 `public/_headers` 的 no-cache；强刷仍白屏则关标签重开或无痕；线上以 Actions **Verify production site** 为准 |
+| 境内手机长时间白屏或「打不开」 | 勿依赖 Google Fonts；数据 API 需超时并并行回退同域 `/data/*.csv`（`dataBundle.ts` / `DataSourceContext`） |
 | 线上“没数据”但本地有 | push 即部署下数据走 Worker/R2（前端不打包 CSV）：查 Pages 是否注入 `VITE_DATA_API_BASE_URL`、Worker 是否在线、R2 是否被 `cloudflare-r2-upload` 刷新过 |
 | 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 首屏会先失败再回退；发布前确认 Worker 与 R2 **remote** 上传 |
 | `wrangler r2` 上传后生产仍旧数据 | 必须 `--remote`；本地 `.wrangler/` 勿提交（已 gitignore） |

@@ -221,9 +221,15 @@ async function tryFetchApiData(): Promise<ApiDataLoadResult> {
         : "数据 API",
     };
   } catch (e) {
+    const message =
+      e instanceof DOMException && e.name === "AbortError"
+        ? "数据 API 请求超时，已尝试使用站点静态数据"
+        : e instanceof Error
+          ? e.message
+          : String(e);
     return {
       status: "error",
-      message: e instanceof Error ? e.message : String(e),
+      message,
     };
   }
 }
@@ -396,7 +402,10 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setIndexCsvError(null);
     try {
       let apiError: string | null = null;
-      const api = await tryFetchApiData();
+      const [api, pub] = await Promise.all([
+        tryFetchApiData(),
+        tryFetchPublicCsv(),
+      ]);
       if (api.status === "ok") {
         userTouchedRef.current = false;
         setDefinitions(api.bundle.definitions);
@@ -414,7 +423,6 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       if (api.status === "error") {
         apiError = api.message;
       }
-      const pub = await tryFetchPublicCsv();
       if (pub.status === "missing") {
         setLoadError(
           `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
@@ -448,7 +456,10 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     (async () => {
       setPublicCsvAutoLoading(true);
       let apiError: string | null = null;
-      const api = await tryFetchApiData();
+      const [api, pub] = await Promise.all([
+        tryFetchApiData(),
+        tryFetchPublicCsv(),
+      ]);
       if (cancelled) return;
       if (userTouchedRef.current) {
         setPublicCsvAutoLoading(false);
@@ -471,12 +482,6 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       }
       if (api.status === "error") {
         apiError = api.message;
-      }
-      const pub = await tryFetchPublicCsv();
-      if (cancelled) return;
-      if (userTouchedRef.current) {
-        setPublicCsvAutoLoading(false);
-        return;
       }
       if (pub.status === "missing") {
         if (apiError) {
