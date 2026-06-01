@@ -40,14 +40,17 @@ npm run build
 
 ## 部署
 
-- Docker：`docker build -t dividend-dashboard . && docker run -p 8080:80 dividend-dashboard`
-- Cloudflare Pages + R2 + Worker：见 [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md)
+**常规**：`git push origin main` → GitHub Actions **Cloudflare Pages deploy** 三步 ✓ 即生产已更新（见 [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md)）。
+
+**应急 / 本地**（非常规）：
 
 ```bash
+npm run release:worker-pages   # R2 + Worker + Pages 一键
 npm run r2:upload
 npm run worker:deploy
-npx wrangler pages deploy dist --project-name=newhl-dashboard
 ```
+
+Docker 本地预览：`docker build -t dividend-dashboard . && docker run -p 8080:80 dividend-dashboard`
 
 ## 目录
 

@@ -23,7 +23,7 @@ npm run lint                     # ESLint（react-hooks + ts）
 npm run format                   # Prettier 全量格式化
 ```
 
-**发布唯一链路 = push 即部署**：推 `main` → Cloudflare Pages 直连 Git 自动构建前端；数据由 `cloudflare-r2-upload` Action（在行情/指数同步成功后）刷新 R2，Worker `/api/bundle` 实时读取。`npm run release:worker-pages` 仅作**本地/应急回退**，不是常规发布手段。细节见 `docs/cloudflare-deploy.md`，数据同步脚本见 `docs/project-status.md`。
+**发布**：`push main` → GitHub Actions 构建并部署 Pages（Direct Upload）；数据 sync 成功后刷新 R2。验收：Actions **Cloudflare Pages deploy** 三步 ✓（含 **Verify production site**）。`npm run release:worker-pages` 仅应急。见 [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md)。
 
 ## Agent 行为准则（Karpathy 四条 + 开源惯例）
 
@@ -62,7 +62,7 @@ npm run format                   # Prettier 全量格式化
 
 | 现象 | 处理 |
 |------|------|
-| Safari / 微信内浏览器刷新后白屏 | `index.html` 与 `public/_headers` 的 no-cache；部署后清缓存或强刷验证 |
+| Safari / 微信内浏览器刷新后白屏 | `index.html` 与 `public/_headers` 的 no-cache；强刷仍白屏则关标签重开或无痕；线上以 Actions **Verify production site** 为准 |
 | 线上“没数据”但本地有 | push 即部署下数据走 Worker/R2（前端不打包 CSV）：查 Pages 是否注入 `VITE_DATA_API_BASE_URL`、Worker 是否在线、R2 是否被 `cloudflare-r2-upload` 刷新过 |
 | 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 首屏会先失败再回退；发布前确认 Worker 与 R2 **remote** 上传 |
 | `wrangler r2` 上传后生产仍旧数据 | 必须 `--remote`；本地 `.wrangler/` 勿提交（已 gitignore） |
