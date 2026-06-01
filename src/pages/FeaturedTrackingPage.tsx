@@ -7,8 +7,8 @@ import { buildTrades } from "../lib/backtest";
 import {
   attachNavToRounds,
   buildRoundTrips,
+  canComputeAvgHoldFlatDays,
   computeBacktestSummary,
-  formatAvgHoldFlatPairDisplay,
   type BacktestSummary,
 } from "../lib/backtestSummary";
 import type { EtfProductRecord } from "../lib/etfProducts";
@@ -27,7 +27,7 @@ import { getProductParamVariants } from "../lib/paramVariants";
 import {
   computeSignals,
   mergeIntraday1345,
-  usesBollStrategy,
+  type Signal,
 } from "../lib/strategy";
 import {
   strategyKindLabel,
@@ -130,8 +130,7 @@ type StrategyRow = {
   quoteSource: LiveQuote["source"] | null;
   signalPct: number | null;
   zoneLabel: string;
-  metricLine: string;
-  isBollinger: boolean;
+  recentSignalsText: string;
 };
 
 function metricToSortValue(v: number | null | undefined): number {
@@ -188,12 +187,55 @@ function zoneClass(label: string): string {
   return "fin-zone-chip fin-zone-chip--neutral";
 }
 
+function formatFeaturedAvgHoldFlatDays(
+  roundCount: number,
+  avgHoldDays: number,
+  avgFlatDays: number,
+): string {
+  if (!canComputeAvgHoldFlatDays(roundCount)) return "/ /";
+  return `${avgHoldDays.toFixed(1)} / ${avgFlatDays.toFixed(1)}`;
+}
+
 function strategyStyle(summary: BacktestSummary): string {
   if (summary.roundCount < 2 || summary.excessReturnPct <= 3) return "长期持有";
   if (summary.excessReturnPct >= 20 && summary.roundCount >= 3)
     return "择时高超额";
   if (summary.avgHoldDays > 0 && summary.avgHoldDays <= 30) return "短波段";
   return "长波段";
+}
+
+const RECENT_SIGNAL_CALENDAR_DAYS = 30;
+
+function formatRecentSignalDates(buy: string[], sell: string[]): string {
+  if (!buy.length && !sell.length) return "—";
+  const short = (d: string) => d.slice(5);
+  const parts: string[] = [];
+  if (buy.length) parts.push(`买 ${buy.map(short).join("、")}`);
+  if (sell.length) parts.push(`卖 ${sell.map(short).join("、")}`);
+  return parts.join(" · ");
+}
+
+/** 近 N 个自然日内 computeSignals 触发的 BUY/SELL（非临近区、非 HOLD）。 */
+function recentTriggeredSignals(
+  bars: OhlcBar[],
+  signals: Signal[],
+  calendarDays = RECENT_SIGNAL_CALENDAR_DAYS,
+): string {
+  if (!bars.length) return "—";
+  const endDate = bars[bars.length - 1]!.date;
+  const end = new Date(`${endDate}T12:00:00`);
+  const start = new Date(end);
+  start.setDate(start.getDate() - calendarDays);
+  const startDate = start.toISOString().slice(0, 10);
+  const buy: string[] = [];
+  const sell: string[] = [];
+  for (let i = 0; i < bars.length; i++) {
+    const d = bars[i]!.date;
+    if (d < startDate || d > endDate) continue;
+    if (signals[i] === "BUY") buy.push(d);
+    if (signals[i] === "SELL") sell.push(d);
+  }
+  return formatRecentSignalDates(buy, sell);
 }
 
 function strategyRowsForEtf(
@@ -235,7 +277,7 @@ function strategyRowsForEtf(
         variant.strategyId,
         merged,
       );
-      const isBollinger = usesBollStrategy(variant.strategyId);
+      const recentSignalsText = recentTriggeredSignals(etf.bars, signals);
       return {
         etf,
         product,
@@ -247,11 +289,7 @@ function strategyRowsForEtf(
         quoteSource: quote?.source ?? null,
         signalPct: intradayCtx?.percentile ?? null,
         zoneLabel: zoneLabelFromPercentile(intradayCtx?.percentile),
-        metricLine:
-          intradayCtx != null
-            ? `${intradayCtx.metricName}=${intradayCtx.metricValue}`
-            : "—",
-        isBollinger,
+        recentSignalsText,
       };
     })
     .sort((a, b) => b.summary.excessReturnPct - a.summary.excessReturnPct);
@@ -700,11 +738,11 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
               <th className="px-3 py-3 text-left font-normal">策略</th>
               <th className="px-3 py-3 text-right font-normal">策略收益</th>
               <th className="px-3 py-3 text-right font-normal">策略年化</th>
-              <th className="px-3 py-3 text-right font-normal">买入持有</th>
               <th className="px-3 py-3 text-right font-normal">超额</th>
               <th className="px-3 py-3 text-right font-normal">胜率/轮次</th>
-              <th className="px-3 py-3 text-left font-normal">均持/空仓</th>
+              <th className="px-3 py-3 text-left font-normal">均持/空仓(天)</th>
               <th className="px-3 py-3 text-left font-normal">今日盘中信号</th>
+              <th className="px-3 py-3 text-left font-normal">近30天信号</th>
             </tr>
           </thead>
           <tbody>
@@ -762,9 +800,6 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                   <td className="px-3 py-3 text-right align-top font-mono">
                     {formatPct(strategy.strategyAnnualPct)}
                   </td>
-                  <td className="px-3 py-3 text-right align-top font-mono">
-                    {formatPct(strategy.summary.buyHoldReturnPct)}
-                  </td>
                   <td
                     className={`px-3 py-3 text-right align-top font-mono ${
                       strategy.summary.excessReturnPct >= 0
@@ -779,7 +814,7 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                     {strategy.summary.roundCount}
                   </td>
                   <td className="px-3 py-3 align-top font-mono">
-                    {formatAvgHoldFlatPairDisplay(
+                    {formatFeaturedAvgHoldFlatDays(
                       strategy.summary.roundCount,
                       strategy.summary.avgHoldDays,
                       strategy.summary.avgFlatDays,
@@ -792,11 +827,11 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
                       </span>
                       <span className="font-mono text-[10px] fin-muted-text">
                         分位 {formatPct(strategy.signalPct, 1)}
-                        {!strategy.isBollinger
-                          ? ` · ${strategy.metricLine}`
-                          : ""}
                       </span>
                     </div>
+                  </td>
+                  <td className="px-3 py-3 align-top font-mono text-[11px] leading-relaxed">
+                    {strategy.recentSignalsText}
                   </td>
                 </tr>
               ));

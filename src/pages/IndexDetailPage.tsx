@@ -1411,8 +1411,10 @@ export function IndexDetailPage() {
                         paddingBottom: 8,
                       }}
                       onClick={(item) => toggleSpreadLine(item.dataKey)}
-                      formatter={(value) => {
-                        const key = String(value) as SpreadLineKey;
+                      formatter={(value, entry) => {
+                        const key = String(
+                          entry?.dataKey ?? value,
+                        ) as SpreadLineKey;
                         const active = visibleSpreadLineKeys.has(key);
                         return (
                           <span
@@ -1489,6 +1491,9 @@ export function IndexDetailPage() {
                   percentile={spreadHistogram.percentile}
                 />
               </div>
+              <p className="text-[11px] fin-muted-text">
+                国债收益率数据月末更新。
+              </p>
             </>
           ) : (
             <div className="fin-alert-warn--compact mt-4 p-4 text-sm">

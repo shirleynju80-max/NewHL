@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EtfProductCodeLink } from "../components/EtfProductDetailLink";
 import { IndexOfficialIntroLink } from "../components/IndexOfficialIntroLink";
@@ -33,11 +33,6 @@ import {
   indexOfficialIntroUrl,
   indicesMissingOfficialIntro,
 } from "../lib/indexOfficialLinks";
-import {
-  fetchRedrocketDivYieldMeta,
-  indexDivYieldFootnote,
-  type RedrocketDivYieldMeta,
-} from "../lib/redrocketDivYieldMeta";
 import {
   calcMetricBlockForWindow,
   isMetricWindowSatisfied,
@@ -268,7 +263,6 @@ export function IndicesListPage() {
     etfProducts,
     bondByDate,
     publicCsvAutoLoading,
-    reloadingPublicCsv,
     getEtf,
   } = useDataSource();
   const [hkBondAnchor] = useHkBondAnchorPreference();
@@ -285,25 +279,6 @@ export function IndicesListPage() {
   const [market, setMarket] = useState<MarketFilter>("all");
   const [inceptionFilter, setInceptionFilter] =
     useState<InceptionFilter>("all");
-
-  const [divYieldMeta, setDivYieldMeta] =
-    useState<RedrocketDivYieldMeta | null>(null);
-
-  useEffect(() => {
-    if (publicCsvAutoLoading) return;
-    let cancelled = false;
-    void fetchRedrocketDivYieldMeta(Date.now()).then((meta) => {
-      if (!cancelled) setDivYieldMeta(meta);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [publicCsvAutoLoading, reloadingPublicCsv]);
-
-  const divYieldFootnote = useMemo(
-    () => indexDivYieldFootnote(divYieldMeta),
-    [divYieldMeta],
-  );
 
   const missingIntroLabels = useMemo(
     () =>
@@ -847,7 +822,6 @@ export function IndicesListPage() {
           </table>
           <p className="space-y-1 border-t border-fin-border px-3 py-2 text-xs fin-muted-text">
             <span className="block">{INDEX_META_DATE_FOOTNOTE}</span>
-            <span className="block">{divYieldFootnote}</span>
             <span className="block">
               标普港股通红利低波指数、标普中国A股大盘红利低波50指数暂未获取数据，用跟踪的
               ETF 行情数据替代。

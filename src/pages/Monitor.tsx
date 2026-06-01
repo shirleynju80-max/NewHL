@@ -119,22 +119,18 @@ function DividendRegisteredParamsPanel({
   pool: DividendRepresentativePool | null;
 }) {
   if (!pool) return null;
-  const gen = pool.generatedAt.slice(0, 10);
   return (
     <details className="fin-panel group/registered overflow-hidden">
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm [&::-webkit-details-marker]:hidden">
         <span className="font-semibold text-[var(--fin-text)]">
           <span className="mr-1.5 inline-block text-[var(--fin-dim)] transition group-open/registered:rotate-90">
             ▸
           </span>
-          监控策略评估
+          监控策略优选
           <span className="ml-2 font-mono text-xs font-normal fin-muted-text">
             强超额 {pool.strongDualExcess.length} · 波段{" "}
             {pool.swingCandidates.length}
           </span>
-        </span>
-        <span className="text-xs fin-muted-text">
-          基于 {gen} 全样本回测；入选要求前段与后段均跑赢买入持有
         </span>
       </summary>
       <div className="grid gap-4 border-t border-fin-border px-4 py-4 lg:grid-cols-2">
@@ -143,18 +139,18 @@ function DividendRegisteredParamsPanel({
             前段 + 后段均显著超额
           </p>
           <p className="mt-1 text-[11px] fin-muted-text">
-            下方仅展示全样本超额，即策略收益相对买入持有基准的差值。
+            对已注册参数逐条回测（RSI / 布林带各自独立）；训练集、验证集相对买入持有超额均 ≥8%。下方仅展示全样本超额。
           </p>
           <ul className="mt-3 grid gap-1.5 text-xs sm:grid-cols-2">
             {pool.strongDualExcess.map((row) => (
               <li key={`${row.etf}-${row.strategy}-${row.version}`}>
                 <Link
-                  to={`/registry?etf=${encodeURIComponent(row.etf)}`}
+                  to={`/etf/${encodeURIComponent(row.etf)}`}
                   className="fin-link font-mono"
                 >
                   {row.etf}
                 </Link>{" "}
-                · {strategyKindLabel(row.strategy)}                 · 全样本超额{" "}
+                · {strategyKindLabel(row.strategy)} · 全样本超额{" "}
                 <span className="font-mono font-semibold text-[var(--fin-text)]">
                   {formatSignedPct(row.excessReturn)}
                 </span>
@@ -171,7 +167,7 @@ function DividendRegisteredParamsPanel({
             {pool.swingCandidates.map((row) => (
               <li key={`swing-${row.etf}-${row.strategy}`}>
                 <Link
-                  to={`/registry?etf=${encodeURIComponent(row.etf)}`}
+                  to={`/etf/${encodeURIComponent(row.etf)}`}
                   className="fin-link font-mono"
                 >
                   {row.etf}
