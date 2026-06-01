@@ -18,48 +18,35 @@
 
 ## 怎么确认对外网页已更新
 
-Direct Upload 项目在 Cloudflare Deployments **通常没有 Assets 文件浏览器**，请用下面方式验收。
+**日常只需看 GitHub Actions**：push `main` 后打开 [cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml) 对应 run，三步都绿即可：
 
-### 1. 部署是否成功
-
-| 步骤 | 检查 |
+| 步骤 | 含义 |
 |------|------|
-| GitHub Actions | [cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml) 对应 commit 为绿色 ✓ |
-| Cloudflare | Workers & Pages → `newhl-dashboard` → **Production** 区块 = 目标 commit / SHA |
-| Actions 日志 | **Verify build artifacts** 步骤列出 `index-*.js`、`Home-*.js` |
+| Verify build artifacts | 本地 `dist/` 产物正常 |
+| Deploy to Cloudflare Pages | 已上传到 Production |
+| **Verify production site** | 生产站 CDN 已能访问**本次构建的 `Home-*.js`**（自动验收，无需手查 hash） |
 
-### 2. UI 是否真的换新（常见误判）
+若 **Verify production site** 失败，再按下方排查；平时不必打开 Network、查 `index-*.js` hash。
 
-Vite 按**文件内容** hash 命名 chunk。改配置总览等页面时，文案往往在懒加载的 **`Home-*.js`** 里，**`index-*.js` 文件名可能不变**，不能单靠 `index.html` 里的主包 hash 判断失败。
+### 为何不用看 `index-*.js` 文件名
 
-推荐验收：
+Vite 按文件内容 hash。页面文案多在懒加载的 **`Home-*.js`** 里，主包 `index-*.js` 可能不变。CI 的 **Verify production site** 直接校验本次 `Home-*.js` 是否已在 CDN 上线。
 
-1. 打开 <https://newhl-dashboard.pages.dev/>（无痕窗口或 Disable cache 后刷新）
-2. 开发者工具 → **Network**，筛选 `Home-`，确认已加载新的 `Home-xxxxx.js`
-3. 或直接看页面：配置总览小字、页底两行免责声明是否为新文案
+### 仅当 CI 生产验收失败时
 
-可选命令（将 `Home-xxxxx.js` 换为 Network 里看到的文件名）：
+1. Cloudflare → `newhl-dashboard` → **Production** 是否为目标 commit
+2. 无痕窗口打开 <https://newhl-dashboard.pages.dev/>（排除浏览器缓存旧 `Home-*.js`）
+3. Deployments 是否误在 Preview → **Promote to production**
 
-```bash
-curl -sL "https://newhl-dashboard.pages.dev/assets/index-B-fOP-wd.js" | grep -o 'Home-[^"]*\.js' | head -1
-curl -sL "https://newhl-dashboard.pages.dev/assets/Home-xxxxx.js" | grep '近5年窗口'
-```
-
-### 3. 数据是否为新（与 UI 分开）
+### 数据更新（与 UI 分开）
 
 | 改了什么 | 需要什么 |
 |----------|----------|
-| React 组件 / 文案 | push `main`（Pages deploy） |
-| sync 脚本产出的 CSV | 等 sync workflow → R2 upload；**不必** redeploy Pages |
+| React 组件 / 文案 | push `main`（Pages deploy + 上表三步） |
+| sync 脚本产出的 CSV | sync workflow → R2 upload；**不必** redeploy Pages |
 | Worker 逻辑 | 手动 `wrangler deploy` |
 
-站内若长期显示「示例数据」或明显旧日期，查 Worker / R2，而不是 Pages 部署。
-
-### 4. 仍像旧版时
-
-- Safari / 微信：关标签重开，或清缓存后再访问（`/assets/*` 缓存 1 年 immutable）
-- Cloudflare Production 已是新 commit 但页面旧：看 Network 是否仍命中旧 `Home-*.js`
-- Actions 绿但 Production 未变：Deployments 是否误在 Preview → **Promote to production**（`--branch=main` 已配置时较少见）
+站内若长期显示「示例数据」，查 Worker / R2，不是 Pages 部署问题。
 
 ---
 

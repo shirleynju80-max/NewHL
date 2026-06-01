@@ -71,3 +71,23 @@ jobs:
           wranglerVersion: "4.95.0"
           # --branch 须与 Pages 项目 Settings → Production branch 一致（通常 main），否则只进 Preview
           command: pages deploy dist --project-name=newhl-dashboard --branch=main --commit-hash=${{ github.sha }} --commit-message=Deploy-${{ github.sha }}
+
+      - name: Verify production site
+        run: |
+          set -euo pipefail
+          SITE="https://newhl-dashboard.pages.dev"
+          HOME_FILE="$(basename dist/assets/Home-*.js)"
+          echo "Expect Home chunk on CDN: ${HOME_FILE}"
+          sleep 20
+          for i in 1 2 3 4 5; do
+            BODY="$(curl -fsSL "${SITE}/assets/${HOME_FILE}")"
+            BYTES="$(printf '%s' "$BODY" | wc -c | tr -d ' ')"
+            if [[ "$BYTES" -gt 10000 ]] && printf '%s' "$BODY" | grep -q '不构成投资建议'; then
+              echo "Production OK: ${SITE}/assets/${HOME_FILE} (${BYTES} bytes)"
+              exit 0
+            fi
+            echo "Attempt ${i}/5: not ready yet (${BYTES} bytes), retry in 15s…"
+            sleep 15
+          done
+          echo "::error::Production did not serve the new Home chunk within timeout."
+          exit 1
