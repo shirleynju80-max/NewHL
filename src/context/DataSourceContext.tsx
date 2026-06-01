@@ -77,14 +77,28 @@ function sourceLabelForPublic(apiError?: string): string {
   return apiError ? "站点数据（实时更新暂不可用）" : "站点数据";
 }
 
+function isHtmlFallback(text: string, contentType: string | null): boolean {
+  const normalizedType = (contentType ?? "").toLowerCase();
+  if (normalizedType.includes("text/html")) return true;
+  const start = text.trimStart().slice(0, 32).toLowerCase();
+  return start.startsWith("<!doctype html") || start.startsWith("<html");
+}
+
 async function fetchTextIfOk(url: string): Promise<string | null> {
   try {
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) return null;
-    return await r.text();
+    const text = await r.text();
+    return isHtmlFallback(text, r.headers.get("content-type")) ? null : text;
   } catch {
     return null;
   }
+}
+
+async function responseTextIfData(r: Response): Promise<string> {
+  if (!r.ok) return "";
+  const text = await r.text();
+  return isHtmlFallback(text, r.headers.get("content-type")) ? "" : text;
 }
 
 type PublicCsvLoadResult =
@@ -246,10 +260,10 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
       fetch(u("etf_params.csv"), { cache: "no-store" }),
       fetch(u("bonds.csv"), { cache: "no-store" }),
     ]);
-    const etfs = re.ok ? await re.text() : "";
-    const bars = rb.ok ? await rb.text() : "";
-    const params = rp.ok ? await rp.text() : "";
-    const bonds = rbd.ok ? await rbd.text() : "";
+    const etfs = await responseTextIfData(re);
+    const bars = await responseTextIfData(rb);
+    const params = await responseTextIfData(rp);
+    const bonds = await responseTextIfData(rbd);
     if (!rb.ok || !bars.trim()) return { status: "missing" };
     const merge: CsvMergeOptions = {};
     const em = await fetchTextIfOk(`${prefix}data/etfsmore.csv?${bust}`);
@@ -396,126 +410,126 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
   }, []);
 
+  const applyApiData = useCallback(
+    (api: Extract<ApiDataLoadResult, { status: "ok" }>) => {
+      userTouchedRef.current = false;
+      setLoadError(null);
+      setDefinitions(api.bundle.definitions);
+      setBondMap(api.bundle.bondByDate);
+      setIndices(api.bundle.indices);
+      setIndexTracking(api.bundle.indexTracking);
+      setEtfProductsCsv(api.etfProductsCsv);
+      setDividendRepresentativePool(api.dividendRepresentativePool);
+      setEtfAdjustedBarsMeta(api.etfAdjustedBarsMeta);
+      setIndexCsvError(api.indexCsvError);
+      setSourceKind("api");
+      setSourceLabel(api.label);
+    },
+    [],
+  );
+
+  const applyPublicData = useCallback(
+    (
+      pub: Extract<PublicCsvLoadResult, { status: "ok" }>,
+      apiError?: string | null,
+    ) => {
+      userTouchedRef.current = false;
+      setLoadError(null);
+      setDefinitions(pub.bundle.definitions);
+      setBondMap(pub.bundle.bondByDate);
+      setIndices(pub.bundle.indices);
+      setIndexTracking(pub.bundle.indexTracking);
+      setEtfProductsCsv(pub.etfProductsCsv);
+      setDividendRepresentativePool(pub.dividendRepresentativePool);
+      setEtfAdjustedBarsMeta(pub.etfAdjustedBarsMeta);
+      setIndexCsvError(pub.indexCsvError);
+      setSourceKind("csv_public");
+      setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
+    },
+    [],
+  );
+
   const reloadPublicCsv = useCallback(async () => {
     setReloadingPublicCsv(true);
     setLoadError(null);
     setIndexCsvError(null);
     try {
       let apiError: string | null = null;
-      const [api, pub] = await Promise.all([
-        tryFetchApiData(),
-        tryFetchPublicCsv(),
-      ]);
-      if (api.status === "ok") {
-        userTouchedRef.current = false;
-        setDefinitions(api.bundle.definitions);
-        setBondMap(api.bundle.bondByDate);
-        setIndices(api.bundle.indices);
-        setIndexTracking(api.bundle.indexTracking);
-        setEtfProductsCsv(api.etfProductsCsv);
-        setDividendRepresentativePool(api.dividendRepresentativePool);
-        setEtfAdjustedBarsMeta(api.etfAdjustedBarsMeta);
-        setIndexCsvError(api.indexCsvError);
-        setSourceKind("api");
-        setSourceLabel(api.label);
-        return;
-      }
-      if (api.status === "error") {
-        apiError = api.message;
-      }
+      const apiPromise = tryFetchApiData();
+      const pub = await tryFetchPublicCsv();
       if (pub.status === "missing") {
+        const api = await apiPromise;
+        if (api.status === "ok") {
+          applyApiData(api);
+          return;
+        }
+        if (api.status === "error") apiError = api.message;
         setLoadError(
           `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
         );
         return;
       }
       if (pub.status === "error") {
+        const api = await apiPromise;
+        if (api.status === "ok") {
+          applyApiData(api);
+          return;
+        }
+        if (api.status === "error") apiError = api.message;
         setLoadError(
           `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
         );
         return;
       }
-      userTouchedRef.current = false;
-      setDefinitions(pub.bundle.definitions);
-      setBondMap(pub.bundle.bondByDate);
-      setIndices(pub.bundle.indices);
-      setIndexTracking(pub.bundle.indexTracking);
-      setEtfProductsCsv(pub.etfProductsCsv);
-      setDividendRepresentativePool(pub.dividendRepresentativePool);
-      setEtfAdjustedBarsMeta(pub.etfAdjustedBarsMeta);
-      setIndexCsvError(pub.indexCsvError);
-      setSourceKind("csv_public");
-      setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
+      applyPublicData(pub);
+      const api = await apiPromise;
+      if (api.status === "ok") applyApiData(api);
+      if (api.status === "error") apiError = api.message;
+      if (apiError) setSourceLabel(sourceLabelForPublic(apiError));
     } finally {
       setReloadingPublicCsv(false);
     }
-  }, []);
+  }, [applyApiData, applyPublicData]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setPublicCsvAutoLoading(true);
-      let apiError: string | null = null;
-      const [api, pub] = await Promise.all([
-        tryFetchApiData(),
-        tryFetchPublicCsv(),
-      ]);
+      const apiPromise = tryFetchApiData();
+      const pub = await tryFetchPublicCsv();
       if (cancelled) return;
       if (userTouchedRef.current) {
         setPublicCsvAutoLoading(false);
         return;
       }
+      if (pub.status === "ok") {
+        applyPublicData(pub);
+        setPublicCsvAutoLoading(false);
+        const api = await apiPromise;
+        if (cancelled || userTouchedRef.current) return;
+        if (api.status === "ok") applyApiData(api);
+        if (api.status === "error")
+          setSourceLabel(sourceLabelForPublic(api.message));
+        return;
+      }
+      const api = await apiPromise;
+      if (cancelled || userTouchedRef.current) {
+        setPublicCsvAutoLoading(false);
+        return;
+      }
       if (api.status === "ok") {
-        setLoadError(null);
-        setIndexCsvError(api.indexCsvError);
-        setDefinitions(api.bundle.definitions);
-        setBondMap(api.bundle.bondByDate);
-        setIndices(api.bundle.indices);
-        setIndexTracking(api.bundle.indexTracking);
-        setEtfProductsCsv(api.etfProductsCsv);
-        setDividendRepresentativePool(api.dividendRepresentativePool);
-        setEtfAdjustedBarsMeta(api.etfAdjustedBarsMeta);
-        setSourceKind("api");
-        setSourceLabel(api.label);
-        setPublicCsvAutoLoading(false);
-        return;
-      }
-      if (api.status === "error") {
-        apiError = api.message;
-      }
-      if (pub.status === "missing") {
-        if (apiError) {
-          setLoadError(
-            `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
-          );
-        }
-        setPublicCsvAutoLoading(false);
-        return;
-      }
-      if (pub.status === "error") {
+        applyApiData(api);
+      } else {
         setLoadError(
           `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
         );
-        setPublicCsvAutoLoading(false);
-        return;
       }
-      setLoadError(null);
-      setIndexCsvError(pub.indexCsvError);
-      setDefinitions(pub.bundle.definitions);
-      setBondMap(pub.bundle.bondByDate);
-      setIndices(pub.bundle.indices);
-      setIndexTracking(pub.bundle.indexTracking);
-      setEtfProductsCsv(pub.etfProductsCsv);
-      setDividendRepresentativePool(pub.dividendRepresentativePool);
-      setEtfAdjustedBarsMeta(pub.etfAdjustedBarsMeta);
-      setSourceKind("csv_public");
-      setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
       setPublicCsvAutoLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [applyApiData, applyPublicData]);
 
   const value = useMemo<Ctx>(
     () => ({

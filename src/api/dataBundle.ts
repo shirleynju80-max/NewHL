@@ -21,14 +21,7 @@ export type ApiCsvBundleResponse = {
 };
 
 export function configuredDataApiBaseUrl(): string {
-  const sameOrigin =
-    import.meta.env.PROD &&
-    typeof window !== "undefined" &&
-    window.location.protocol !== "file:"
-      ? window.location.origin
-      : "";
   return (
-    sameOrigin ||
     import.meta.env.VITE_DATA_API_BASE_URL ||
     import.meta.env.VITE_API_BASE_URL ||
     ""
@@ -41,7 +34,10 @@ export function configuredDataApiBaseUrl(): string {
 export const DATA_API_FETCH_TIMEOUT_MS = 12_000;
 
 function abortSignalWithTimeout(ms: number): AbortSignal {
-  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+  if (
+    typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+  ) {
     return AbortSignal.timeout(ms);
   }
   const ac = new AbortController();
@@ -65,6 +61,10 @@ export async function fetchApiCsvBundle(
   });
   if (!r.ok) {
     throw new Error(`数据 API 返回 ${r.status}`);
+  }
+  const contentType = r.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(`数据 API 响应不是 JSON：${contentType || "unknown"}`);
   }
   const payload = (await r.json()) as ApiCsvBundleResponse;
   if (
