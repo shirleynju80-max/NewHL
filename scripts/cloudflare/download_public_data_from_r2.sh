@@ -20,6 +20,7 @@ OPTIONAL_OBJECTS=(
   etf_dividends.csv
   etf_adjusted_bars_meta.json
   redrocket_div_yield_meta.json
+  bonds.csv
 )
 
 if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then

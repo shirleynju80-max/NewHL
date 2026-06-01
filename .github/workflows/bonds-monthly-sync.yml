@@ -1,0 +1,42 @@
+# 每月更新 public/data/bonds.csv（中债/美债 10Y 月末收益率）
+name: Bonds monthly sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 北京时间每月 1 日 09:00；上月最后一个交易日数据通常已发布。
+    - cron: "0 1 1 * *"
+
+concurrency:
+  group: bonds-monthly-sync
+  cancel-in-progress: true
+
+jobs:
+  sync-bonds:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests pandas lxml
+
+      - name: Sync bonds.csv (month-end CN/US 10Y)
+        run: python scripts/index_data_sync/sync_bonds_monthly.py
+
+      - name: Commit bonds data if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f public/data/bonds.csv
+          if git diff --staged --quiet; then
+            echo "No changes to bonds.csv"
+          else
+            git commit -m "chore(data): sync month-end bond yields"
+            git push
+          fi

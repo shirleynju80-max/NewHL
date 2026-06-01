@@ -13,12 +13,15 @@ git pull --ff-only origin main
 echo "== 2/4 R2 bootstrap (optional) =="
 bash scripts/cloudflare/download_public_data_from_r2.sh
 
-echo "== 3/4 index T-1 + OTC fund =="
-python3 -m pip install -q requests akshare
+echo "== 3/5 index T-1 + OTC fund =="
+python3 -m pip install -q requests akshare pandas lxml
 python3 scripts/index_data_sync/sync_a_share_dividend_indices.py
 python3 scripts/index_data_sync/sync_otc_fund_bars_em.py
 
-echo "== 4/4 数据日期摘要 =="
+echo "== 4/5 bonds month-end (CN/US 10Y) =="
+python3 scripts/index_data_sync/sync_bonds_monthly.py
+
+echo "== 5/5 数据日期摘要 =="
 python3 - <<'PY'
 import csv
 from collections import defaultdict
@@ -41,6 +44,15 @@ ix = max_date(DATA / "index_bars.csv", "index_code")
 fb = max_date(DATA / "fund_bars.csv", "fund_code")
 print(f"index_bars: {len(ix)} indices, max={max(ix.values()) if ix else '-'}")
 print(f"007751 fund_bars last: {fb.get('007751', '-')}")
+
+bonds_last = ""
+bp = DATA / "bonds.csv"
+if bp.exists():
+    for r in csv.DictReader(bp.open(encoding="utf-8-sig")):
+        d = (r.get("日期") or r.get("date") or "").strip()
+        if d > bonds_last:
+            bonds_last = d
+print(f"bonds.csv last: {bonds_last or '-'}")
 
 b, m = {}, {}
 for p, acc in [(DATA / "bars.csv", b), (DATA / "barsmore.csv", m)]:

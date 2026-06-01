@@ -16,6 +16,7 @@
     "r2:upload": "bash scripts/cloudflare/upload_public_data_to_r2.sh",
     "data:pull": "bash scripts/cloudflare/download_public_data_from_r2.sh",
     "data:sync-market": "bash scripts/sync_local_market_data.sh",
+    "data:bonds-sync": "python3 scripts/index_data_sync/sync_bonds_monthly.py",
     "release:worker-pages": "bash scripts/cloudflare/release_worker_pages.sh",
     "etf-products:generate": "node scripts/generate_etf_products.mjs",
     "etf-products:select": "node scripts/select_index_tracking_etfs.mjs",

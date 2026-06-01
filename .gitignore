@@ -24,6 +24,7 @@ public/data/*.csv
 !public/data/indices.csv
 !public/data/index_tracking_etfs.csv
 !public/data/etfsmore.csv
+!public/data/bonds.csv
 
 # 本地 Python
 scripts/.venv/

@@ -155,10 +155,25 @@ export function IndexTrackingProductsTable({
             return (
               <tr key={p.code} className="fin-row-hover">
                 <td className="px-3 py-2.5">
-                  <span className="font-mono font-semibold">{p.code}</span>
-                  <p className="mt-0.5 line-clamp-1 text-xs text-fin-muted">
-                    {p.name}
-                  </p>
+                  {p.isPrimary ? (
+                    <>
+                      <EtfProductCodeLink
+                        product={p}
+                        etf={etf}
+                        className="font-mono font-semibold fin-link"
+                      />
+                      <p className="mt-0.5 line-clamp-1 text-xs text-fin-muted">
+                        {p.name}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-mono font-semibold">{p.code}</span>
+                      <p className="mt-0.5 line-clamp-1 text-xs text-fin-muted">
+                        {p.name}
+                      </p>
+                    </>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 text-xs">
                   {p.isPrimary ? (
@@ -186,12 +201,20 @@ export function IndexTrackingProductsTable({
                     : "—"}
                 </td>
                 <td className="px-3 py-2.5">
-                  <span className={trackingStatusClass(tone)}>
-                    {productDataStatusHint(p.dataStatus)}
-                  </span>
+                  {p.isPrimary ? (
+                    <span className={trackingStatusClass(tone)}>
+                      {productDataStatusHint(p.dataStatus)}
+                    </span>
+                  ) : (
+                    <span className="fin-status-neutral">未接入</span>
+                  )}
                 </td>
                 <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                  <EtfProductDetailLink product={p} etf={etf} />
+                  {p.isPrimary ? (
+                    <EtfProductDetailLink product={p} etf={etf} />
+                  ) : (
+                    <span className="text-[var(--fin-dim)]">暂无</span>
+                  )}
                 </td>
               </tr>
             );

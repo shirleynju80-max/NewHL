@@ -14,6 +14,27 @@ python3 scripts/index_data_sync/sync_a_share_dividend_indices.py
 - `public/data/indices.csv`
 - `public/data/index_tracking_etfs.csv`
 
+## 国债收益率（月末）
+
+中债 10Y、美债 10Y 写入 `public/data/bonds.csv`，供股息率 − 国债利差对齐 K 线。
+
+```bash
+pip install requests pandas lxml
+python3 scripts/index_data_sync/sync_bonds_monthly.py
+# 或 npm run data:bonds-sync
+```
+
+数据源（官网）：
+
+- **中国**：中债国债收益率曲线 10 年 — `yield.chinabond.com.cn/cbweb-pbc-web/pbc/historyQuery`
+- **美国**：Daily Treasury Par Yield Curve 10 Yr — `home.treasury.gov` CSV
+
+口径：每月取该月**最后一个有数据的交易日**观测，日期键为**自然月末**（与历史 `bonds.csv` 一致）。
+
+- 默认增量：自文件最新月起回溯 2 个月刷新；**不写未完结的当月**（可用 `--include-current-month` 覆盖）。
+- 全量补数：`--start-month 2000-01 --end-month 2026-04`
+- GitHub Actions：`Bonds monthly sync`，北京时间**每月 1 日 09:00**；成功后触发 R2 上传。
+
 ## 中证/上证系列口径
 
 数据源为中证官网公开接口：
