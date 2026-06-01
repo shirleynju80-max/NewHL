@@ -253,35 +253,48 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
   const base = import.meta.env.BASE_URL || "/";
   const prefix = base.endsWith("/") ? base : `${base}/`;
   const u = (f: string) => `${prefix}data/${f}?${bust}`;
+  const getData = async (f: string): Promise<string> =>
+    responseTextIfData(await fetch(u(f), { cache: "no-store" }));
   try {
-    const [re, rb, rp, rbd] = await Promise.all([
-      fetch(u("etfs.csv"), { cache: "no-store" }),
-      fetch(u("bars.csv"), { cache: "no-store" }),
-      fetch(u("etf_params.csv"), { cache: "no-store" }),
-      fetch(u("bonds.csv"), { cache: "no-store" }),
+    // 同域静态数据全部并行拉取，避免逐个 await 造成的串行瀑布流。
+    const [
+      etfs,
+      bars,
+      params,
+      bonds,
+      em,
+      bm,
+      bom,
+      fb,
+      ep,
+      dividendPoolText,
+      adjustedMetaText,
+      ix,
+      ib,
+      it,
+    ] = await Promise.all([
+      getData("etfs.csv"),
+      getData("bars.csv"),
+      getData("etf_params.csv"),
+      getData("bonds.csv"),
+      fetchTextIfOk(u("etfsmore.csv")),
+      fetchTextIfOk(u("barsmore.csv")),
+      fetchTextIfOk(u("bondsmore.csv")),
+      fetchTextIfOk(u("fund_bars.csv")),
+      fetchTextIfOk(u("etf_products.csv")),
+      fetchTextIfOk(u("dividend_representative_pool.json")),
+      fetchTextIfOk(u("etf_adjusted_bars_meta.json")),
+      fetchTextIfOk(u("indices.csv")),
+      fetchTextIfOk(u("index_bars.csv")),
+      fetchTextIfOk(u("index_tracking_etfs.csv")),
     ]);
-    const etfs = await responseTextIfData(re);
-    const bars = await responseTextIfData(rb);
-    const params = await responseTextIfData(rp);
-    const bonds = await responseTextIfData(rbd);
-    if (!rb.ok || !bars.trim()) return { status: "missing" };
+    if (!bars.trim()) return { status: "missing" };
     const merge: CsvMergeOptions = {};
-    const em = await fetchTextIfOk(`${prefix}data/etfsmore.csv?${bust}`);
-    const bm = await fetchTextIfOk(`${prefix}data/barsmore.csv?${bust}`);
-    const bom = await fetchTextIfOk(`${prefix}data/bondsmore.csv?${bust}`);
-    const fb = await fetchTextIfOk(`${prefix}data/fund_bars.csv?${bust}`);
     if (em?.trim()) merge.etfsMore = em;
     if (bm?.trim()) merge.barsMore = bm;
     if (bom?.trim()) merge.bondsMore = bom;
     if (fb?.trim()) merge.fundBars = fb;
-    const ep = await fetchTextIfOk(`${prefix}data/etf_products.csv?${bust}`);
     if (ep?.trim()) merge.etfProducts = ep;
-    const dividendPoolText = await fetchTextIfOk(
-      `${prefix}data/dividend_representative_pool.json?${bust}`,
-    );
-    const adjustedMetaText = await fetchTextIfOk(
-      `${prefix}data/etf_adjusted_bars_meta.json?${bust}`,
-    );
     const hasMerge = Boolean(
       merge.etfsMore ||
       merge.barsMore ||
@@ -295,11 +308,6 @@ async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
       bonds,
       params,
       hasMerge ? merge : undefined,
-    );
-    const ix = await fetchTextIfOk(`${prefix}data/indices.csv?${bust}`);
-    const ib = await fetchTextIfOk(`${prefix}data/index_bars.csv?${bust}`);
-    const it = await fetchTextIfOk(
-      `${prefix}data/index_tracking_etfs.csv?${bust}`,
     );
     const { bundle: parsed, indexCsvError } = withIndexCsvSafe(
       bundle,
@@ -429,10 +437,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
   );
 
   const applyPublicData = useCallback(
-    (
-      pub: Extract<PublicCsvLoadResult, { status: "ok" }>,
-      apiError?: string | null,
-    ) => {
+    (pub: Extract<PublicCsvLoadResult, { status: "ok" }>) => {
       userTouchedRef.current = false;
       setLoadError(null);
       setDefinitions(pub.bundle.definitions);
@@ -444,7 +449,7 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
       setEtfAdjustedBarsMeta(pub.etfAdjustedBarsMeta);
       setIndexCsvError(pub.indexCsvError);
       setSourceKind("csv_public");
-      setSourceLabel(sourceLabelForPublic(apiError ?? undefined));
+      setSourceLabel(sourceLabelForPublic());
     },
     [],
   );
@@ -454,38 +459,21 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
     setIndexCsvError(null);
     try {
-      let apiError: string | null = null;
-      const apiPromise = tryFetchApiData();
+      // 同域 CSV 与部署/ R2 同源同新，优先使用；成功即停，不再叠加 API 全量下载。
       const pub = await tryFetchPublicCsv();
-      if (pub.status === "missing") {
-        const api = await apiPromise;
-        if (api.status === "ok") {
-          applyApiData(api);
-          return;
-        }
-        if (api.status === "error") apiError = api.message;
-        setLoadError(
-          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
-        );
+      if (pub.status === "ok") {
+        applyPublicData(pub);
         return;
       }
-      if (pub.status === "error") {
-        const api = await apiPromise;
-        if (api.status === "ok") {
-          applyApiData(api);
-          return;
-        }
-        if (api.status === "error") apiError = api.message;
-        setLoadError(
-          `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
-        );
+      // 仅当同域静态数据缺失/失败时，回退到 Worker /api/bundle（R2）。
+      const api = await tryFetchApiData();
+      if (api.status === "ok") {
+        applyApiData(api);
         return;
       }
-      applyPublicData(pub);
-      const api = await apiPromise;
-      if (api.status === "ok") applyApiData(api);
-      if (api.status === "error") apiError = api.message;
-      if (apiError) setSourceLabel(sourceLabelForPublic(apiError));
+      setLoadError(
+        `最新行情数据加载失败，当前显示示例数据（非真实行情），请勿作为投资参考。`,
+      );
     } finally {
       setReloadingPublicCsv(false);
     }
@@ -495,24 +483,19 @@ export function DataSourceProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setPublicCsvAutoLoading(true);
-      const apiPromise = tryFetchApiData();
+      // 首屏只走同域 /data/*.csv（与部署/ R2 同源同新，且境内移动网络更快更稳）。
       const pub = await tryFetchPublicCsv();
-      if (cancelled) return;
-      if (userTouchedRef.current) {
+      if (cancelled || userTouchedRef.current) {
         setPublicCsvAutoLoading(false);
         return;
       }
       if (pub.status === "ok") {
         applyPublicData(pub);
         setPublicCsvAutoLoading(false);
-        const api = await apiPromise;
-        if (cancelled || userTouchedRef.current) return;
-        if (api.status === "ok") applyApiData(api);
-        if (api.status === "error")
-          setSourceLabel(sourceLabelForPublic(api.message));
         return;
       }
-      const api = await apiPromise;
+      // 同域静态数据缺失/失败时，才回退到 Worker /api/bundle（R2）。
+      const api = await tryFetchApiData();
       if (cancelled || userTouchedRef.current) {
         setPublicCsvAutoLoading(false);
         return;
