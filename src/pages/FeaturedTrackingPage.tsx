@@ -43,6 +43,12 @@ import {
   ohlcBarsToSeries,
   type MetricWindowId,
 } from "../lib/indexPanelMetrics";
+import {
+  dimensionLabel,
+  FEATURED_FOCUS_ITEMS,
+  compareFeaturedFocusIndexCodes,
+  type FeaturedFocusItem,
+} from "../lib/featuredTrackingFocus";
 import type {
   EtfDefinition,
   IndexDefinition,
@@ -50,44 +56,8 @@ import type {
   ParamStrategyVariant,
 } from "../types";
 
-type FocusItem = {
-  dimension: "cash" | "dividend";
-  indexCode: string;
-  reason: string;
-};
-
-const FOCUS_ITEMS: FocusItem[] = [
-  {
-    dimension: "cash",
-    indexCode: "980092",
-    reason: "现金创造代表，适合作为长期定投观察与质量底仓候选。",
-  },
-  {
-    dimension: "dividend",
-    indexCode: "HSSCSOY.HI",
-    reason: "港股通中国央企红利代表，补充港股央企现金回报敞口。",
-  },
-  {
-    dimension: "dividend",
-    indexCode: "HSI114",
-    reason: "恒生港股通高股息低波动代表，偏防御与现金回报。",
-  },
-  {
-    dimension: "dividend",
-    indexCode: "930955",
-    reason: "A 股红利低波 100 代表，替代高度相关的中证红利/上证红利观察位。",
-  },
-  {
-    dimension: "dividend",
-    indexCode: "SPCLLHCP.SPI",
-    reason: "标普中国 A 股大盘红利低波 50，保留不同编制商与大盘风格口径。",
-  },
-  {
-    dimension: "dividend",
-    indexCode: "931157",
-    reason: "沪港深红利成长低波动，兼顾红利释放与成长质量。",
-  },
-];
+const FOCUS_ITEMS = FEATURED_FOCUS_ITEMS;
+type FocusItem = FeaturedFocusItem;
 
 const WINDOWS = [
   { id: "y1", label: "近1年" },
@@ -144,10 +114,6 @@ function compareSortValues(a: number, b: number, dir: "asc" | "desc"): number {
   if (aMissing) return 1;
   if (bMissing) return -1;
   return dir === "asc" ? a - b : b - a;
-}
-
-function dimensionLabel(dimension: FocusItem["dimension"]): string {
-  return dimension === "cash" ? "现金创造" : "股东回报";
 }
 
 function metricForWindow(bars: OhlcBar[], windowId: MetricWindowId): WindowMetric {
@@ -315,7 +281,13 @@ function buildStrategyGroups(
         focusRow.product ? quotes[focusRow.product.code] : undefined,
       ),
     }))
-    .filter((g) => g.strategies.length > 0);
+    .filter((g) => g.strategies.length > 0)
+    .sort((a, b) =>
+      compareFeaturedFocusIndexCodes(
+        a.focusRow.item.indexCode,
+        b.focusRow.item.indexCode,
+      ),
+    );
 }
 
 type FocusRow = {

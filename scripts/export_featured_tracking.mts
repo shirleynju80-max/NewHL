@@ -17,6 +17,7 @@ import {
   computeBacktestSummary,
 } from "../src/lib/backtestSummary";
 import { buildTrades } from "../src/lib/backtest";
+import { FEATURED_FOCUS_ITEMS } from "../src/lib/featuredTrackingFocus";
 import { parseEtfProductRecordsCsv } from "../src/lib/etfProducts";
 import { etfProductStrategyEligible } from "../src/lib/etfListingAge";
 import { csvParamVariants } from "../src/lib/paramVariants";
@@ -34,18 +35,7 @@ const REPO = join(__dirname, "..");
 const DATA = join(REPO, "public/data");
 const OUT_DIR = join(REPO, "exports");
 
-/** 与 FeaturedTrackingPage FOCUS_ITEMS 保持一致 */
-const FOCUS_INDEX_CODES = [
-  "980092",
-  "HSSCSOY.HI",
-  "HSI114",
-  "931233",
-  "H30269",
-  "931468",
-  "930955",
-  "SPCLLHCP.SPI",
-  "931157",
-] as const;
+const FOCUS_INDEX_CODES = FEATURED_FOCUS_ITEMS.map((i) => i.indexCode);
 
 function readData(name: string): string {
   return readFileSync(join(DATA, name), "utf8");
