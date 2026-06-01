@@ -36,12 +36,19 @@ export type CashBenchmarkMetricRow = {
   showCompareBar: boolean;
 };
 
+export type DeskIndexDataNote = {
+  indexCode: string;
+  indexName: string;
+  /** 紧挨「数据」后的后缀，如「，近5年窗口」 */
+  afterDataSuffix?: string;
+};
+
 export type CashBenchmarkComparison = {
   periodLabel: string;
   fcfColumnLabel: string;
   hs300ColumnLabel: string;
   metrics: CashBenchmarkMetricRow[];
-  footnote: string;
+  dataNote: DeskIndexDataNote;
 };
 
 export type DeskProductCard = {
@@ -136,8 +143,11 @@ export function buildCashBenchmarkComparison(
         showCompareBar: true,
       },
     ],
-    footnote:
-      "与指数研究「近5年」口径一致：自各指数最新交易日回溯约5个日历年，全收益序列；展示国证自由现金流指数数据。",
+    dataNote: {
+      indexCode: CASH_BENCHMARK_FCF,
+      indexName: fcfColumnLabel,
+      afterDataSuffix: "，近5年窗口",
+    },
   };
 }
 
@@ -304,34 +314,18 @@ export function spreadPercentileDeskLabel(pct: number | null): string | null {
   return "（性价偏低）";
 }
 
-function formatTradeDateLabel(ymd: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
-  if (!m) return ymd;
-  return `${m[1]}年${Number(m[2])}月${Number(m[3])}日`;
-}
-
-/** 股东回报利差区脚注：锚定指数名 + 数据截止交易日 */
+/** 股东回报利差区脚注：锚定指数名（链至指数详情） */
 export function buildDividendSpreadDeskNote(
   indices: IndexDefinition[],
-  bondByDate: Record<string, BondSeriesPoint>,
-): string {
+): DeskIndexDataNote | null {
   const anchor =
     indices.find((d) => d.meta.index_code === "H30269") ??
     indices.find((d) => d.meta.index_code === "000922");
-  if (!anchor) {
-    return "注：待红利指数与国债序列加载后显示数据口径。";
-  }
-  const rows = buildIndexSpreadRows(
-    anchor,
-    bondByDate,
-    resolveBondAnchorForIndex(anchor),
-  );
-  const latestDate = rows.at(-1)?.date;
-  const indexName = anchor.meta.name;
-  if (!latestDate) {
-    return `注：展示${indexName}数据，更新日期待确认。`;
-  }
-  return `注：展示${indexName}数据，更新时间 ${formatTradeDateLabel(latestDate)}。`;
+  if (!anchor) return null;
+  return {
+    indexCode: anchor.meta.index_code,
+    indexName: anchor.meta.name,
+  };
 }
 
 export function spreadPercentileForDesk(

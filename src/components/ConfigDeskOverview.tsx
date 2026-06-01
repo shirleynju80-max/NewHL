@@ -12,6 +12,7 @@ import {
   buildDividendSpreadDeskNote,
   spreadPercentileForDesk,
   type CashBenchmarkMetricRow,
+  type DeskIndexDataNote,
 } from "../lib/deskHomeData";
 
 type ConfigDeskOverviewProps = {
@@ -39,6 +40,27 @@ const CONFIG_PRINCIPLES = [
 ] as const;
 
 const DESK_FOOTNOTE = "历史表现不代表未来，不构成投资建议";
+
+function DeskIndexDataNoteLine({
+  note,
+  className = "ft-small-note",
+}: {
+  note: DeskIndexDataNote;
+  className?: string;
+}) {
+  return (
+    <p className={className}>
+      展示
+      <Link
+        to={`/indices/${encodeURIComponent(note.indexCode)}`}
+        className="fin-link"
+      >
+        {note.indexName}
+      </Link>
+      数据{note.afterDataSuffix ?? ""}
+    </p>
+  );
+}
 
 function shareholderStatusBadgeClass(
   tone: DimensionCardSnapshot["tone"],
@@ -143,7 +165,7 @@ export function ConfigDeskOverview({
     pctStat?.value && pctStat.value !== "—"
       ? parseFloat(pctStat.value.replace(/[^\d.]/g, ""))
       : spreadPercentileForDesk(indices, bondByDate);
-  const spreadDataNote = buildDividendSpreadDeskNote(indices, bondByDate);
+  const spreadDataNote = buildDividendSpreadDeskNote(indices);
 
   return (
     <div className="ft-dashboard-body space-y-8">
@@ -218,9 +240,7 @@ export function ConfigDeskOverview({
                       ))}
                     </tbody>
                   </table>
-                  {comparison.footnote ? (
-                    <p className="ft-small-note">{comparison.footnote}</p>
-                  ) : null}
+                  <DeskIndexDataNoteLine note={comparison.dataNote} />
                 </>
               ) : publicCsvAutoLoading || reloadingPublicCsv ? (
                 <p className="ft-small-note">现金流与沪深300对比数据加载中…</p>
@@ -337,9 +357,20 @@ export function ConfigDeskOverview({
                 </tbody>
               </table>
 
-              <p className="ft-small-note ft-spread-data-note">
-                {spreadDataNote}
-              </p>
+              {spreadDataNote ? (
+                <DeskIndexDataNoteLine
+                  note={spreadDataNote}
+                  className="ft-small-note ft-spread-data-note"
+                />
+              ) : publicCsvAutoLoading || reloadingPublicCsv ? (
+                <p className="ft-small-note ft-spread-data-note">
+                  红利指数与国债序列加载中…
+                </p>
+              ) : (
+                <p className="ft-small-note ft-spread-data-note">
+                  待红利指数与国债序列加载后显示数据口径。
+                </p>
+              )}
             </div>
 
             {divProducts.length > 0 ? (
