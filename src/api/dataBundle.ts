@@ -21,7 +21,14 @@ export type ApiCsvBundleResponse = {
 };
 
 export function configuredDataApiBaseUrl(): string {
+  const sameOrigin =
+    import.meta.env.PROD &&
+    typeof window !== "undefined" &&
+    window.location.protocol !== "file:"
+      ? window.location.origin
+      : "";
   return (
+    sameOrigin ||
     import.meta.env.VITE_DATA_API_BASE_URL ||
     import.meta.env.VITE_API_BASE_URL ||
     ""

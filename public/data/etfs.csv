@@ -1,0 +1,2 @@
+code,name,strategy_id,param_version,product_kind,dividend_market_scope,div_yield_nominal_pct,div_yield_source
+515100,景顺长城红利低波100ETF,rsi_mean_reversion,v20260526_rsi_14_35_80,ETF,A股红利,5.5,估算
