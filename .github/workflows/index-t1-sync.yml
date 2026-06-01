@@ -97,6 +97,9 @@ jobs:
       - name: Sync OTC fund NAV (fund_bars.csv)
         run: python scripts/index_data_sync/sync_otc_fund_bars_em.py
 
+      - name: Rebuild ETF product mapping snapshot for verification
+        run: node scripts/generate_etf_products.mjs
+
       - name: Verify index tracking / product mapping
         run: node scripts/verify_etf_products.mjs
 
