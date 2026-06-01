@@ -63,9 +63,13 @@ npm run format                   # Prettier 全量格式化
 | 现象 | 处理 |
 |------|------|
 | Safari / 微信内浏览器刷新后白屏 | `index.html` 与 `public/_headers` 的 no-cache；强刷仍白屏则关标签重开或无痕；线上以 Actions **Verify production site** 为准 |
-| 境内手机长时间白屏或「打不开」 | 勿依赖 Google Fonts；数据 API 需超时并并行回退同域 `/data/*.csv`（`dataBundle.ts` / `DataSourceContext`） |
-| 线上“没数据”但本地有 | push 即部署下数据走 Worker/R2（前端不打包 CSV）：查 Pages 是否注入 `VITE_DATA_API_BASE_URL`、Worker 是否在线、R2 是否被 `cloudflare-r2-upload` 刷新过 |
-| 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 首屏会先失败再回退；发布前确认 Worker 与 R2 **remote** 上传 |
+| Safari（手机/电脑）感觉特别慢、别的浏览器正常 | 多半是 Safari 旧缓存/BFCache 残留：清缓存（`⌥⌘E`）/无痕/`?v=` 干净加载即恢复。iOS 上 Safari 与微信同用 WebKit，引擎/CPU 一致，差异基本来自缓存状态 |
+| 对外网页加载慢（尤其手机/微信） | 两个主因：① `text/csv` 不在 Cloudflare 默认压缩名单，CSV 原样下发；② 前端 `no-store`+`?_t` 绕过缓存。已分别用 `_headers` content-type 改写 + 前端去时间戳解决，见下两行 |
+| `/data/*.csv` 传输未压缩（`index_bars.csv` 3MB+） | Cloudflare 不压缩 `text/csv`；`public/_headers` 把 `/data/*.csv` 的 `Content-Type` 改 `text/plain` 触发边缘 br/gzip（前端按纯文本解析不受影响）。验证：`curl -sI -H 'Accept-Encoding: br' .../data/index_bars.csv` 看 `content-encoding` |
+| 数据每次打开都重下、缓存不生效 | 前端勿对 `/data/*` 用 `cache:"no-store"` 或 `?_t=` 时间戳——会废掉 `_headers` 的 `max-age=300`。URL 保持稳定，靠 `must-revalidate` 兜新鲜度（`DataSourceContext`） |
+| 境内手机长时间白屏或「打不开」 | 勿依赖 Google Fonts；前端**优先同域 `/data/*.csv`**（与部署/R2 同源同新），仅缺失/失败才回退 Worker `/api/bundle`（workers.dev 境内可能慢，12s 超时）。不要再首屏并行叠加 API 全量下载 |
+| 线上“没数据”但本地有 | sync 脚本 commit CSV 后**同时**触发 Pages 部署（刷 `dist/data/`）和 `cloudflare-r2-upload`（刷 R2），二者同源。排查：Pages 是否注入 `VITE_DATA_API_BASE_URL`、Worker 是否在线、R2 是否被刷新过 |
+| 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 同域 CSV 为主源不受影响；API 仅兜底。发布前确认 Worker 与 R2 **remote** 上传 |
 | `wrangler r2` 上传后生产仍旧数据 | 必须 `--remote`；本地 `.wrangler/` 勿提交（已 gitignore） |
 | 布林带/触发与分位数矛盾 | “当前状态”以**当前 K 线信号**为准，不要用历史最后一次非 HOLD |
 | ETF 当指数展示 | 仅允许代理场景，且页面**显式注释** |
@@ -83,6 +87,8 @@ npm run format                   # Prettier 全量格式化
 
 - 标普港股通红利低波指数、标普中国 A 股大盘红利低波 50 指数如无指数行情，可用主跟踪 ETF 行情做代理展示，但页面必须显式注释。
 - `index_bars.csv` 为指数层主数据；`barsmore.csv`/ETF bars 为产品层数据。不要静默把 ETF 数据写成指数原始数据。
+- `bars`/`barsmore` 按 `(code, date)` 合并成同一条完整序列，**不是**「近期/历史」切片。
+- **头条数字按全历史计算**（回测超额/胜率/轮次=全 `etf.bars`；股债利差分位=整段历史排名），「默认近 5 年」只是图表显示窗口。**不要按近 N 年切片做首屏**，否则分位/回测会先算错再跳变（误导性金融数字）。首屏要降载得走「构建期预计算快照 JSON + 按需补全 bars」，不能简单截断 CSV。
 - 股息率只使用显式观测值；非观测日保持空。
 - ETF 前复权历史行情会因分红除权变化，补数脚本应支持全量刷新，不只拼接 T-1。
 
