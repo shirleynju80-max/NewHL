@@ -6,3 +6,8 @@
 
 /data/*
   Cache-Control: public, max-age=300, must-revalidate
+
+# text/csv 不在 Cloudflare 默认压缩名单内，会被原样下发（index_bars.csv 达 3MB+）。
+# 改用 text/plain 触发边缘 br/gzip 压缩；前端按纯文本解析，不受 content-type 影响。
+/data/*.csv
+  Content-Type: text/plain; charset=utf-8

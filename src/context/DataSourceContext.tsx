@@ -86,7 +86,8 @@ function isHtmlFallback(text: string, contentType: string | null): boolean {
 
 async function fetchTextIfOk(url: string): Promise<string | null> {
   try {
-    const r = await fetch(url, { cache: "no-store" });
+    // 走浏览器默认缓存（配合 _headers 的 max-age）；URL 已稳定，无需 no-store。
+    const r = await fetch(url);
     if (!r.ok) return null;
     const text = await r.text();
     return isHtmlFallback(text, r.headers.get("content-type")) ? null : text;
@@ -249,12 +250,13 @@ async function tryFetchApiData(): Promise<ApiDataLoadResult> {
 }
 
 async function tryFetchPublicCsv(): Promise<PublicCsvLoadResult> {
-  const bust = `_t=${Date.now()}`;
   const base = import.meta.env.BASE_URL || "/";
   const prefix = base.endsWith("/") ? base : `${base}/`;
-  const u = (f: string) => `${prefix}data/${f}?${bust}`;
+  // 不再附加 ?_t 时间戳：稳定 URL 才能命中 _headers 的 max-age=300 缓存；
+  // 数据新鲜度由 must-revalidate + 5 分钟 max-age 兜底（数据每日仅同步数次）。
+  const u = (f: string) => `${prefix}data/${f}`;
   const getData = async (f: string): Promise<string> =>
-    responseTextIfData(await fetch(u(f), { cache: "no-store" }));
+    responseTextIfData(await fetch(u(f)));
   try {
     // 同域静态数据全部并行拉取，避免逐个 await 造成的串行瀑布流。
     const [
