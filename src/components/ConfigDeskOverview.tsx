@@ -39,7 +39,10 @@ const CONFIG_PRINCIPLES = [
   },
 ] as const;
 
-const DESK_FOOTNOTE = "历史表现不代表未来，不构成投资建议";
+const DESK_FOOTNOTES = [
+  "历史表现不代表未来，不构成投资建议",
+  "行情来自东方财富、腾讯财经等公开接口。数据仅用于个人记录和估算，不构成投资建议。",
+] as const;
 
 function DeskIndexDataNoteLine({
   note,
@@ -450,7 +453,11 @@ export function ConfigDeskOverview({
         </section>
       ) : null}
 
-      <p className="ft-footer-note">{DESK_FOOTNOTE}</p>
+      <footer className="ft-footer-note space-y-1">
+        {DESK_FOOTNOTES.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </footer>
     </div>
   );
 }
