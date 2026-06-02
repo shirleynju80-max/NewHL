@@ -11,7 +11,8 @@
 - [docs/csv-schema.md](docs/csv-schema.md) — CSV 字段口径
 - [docs/ui-spec.md](docs/ui-spec.md) — UI 设计规范 + 文案术语表（改视觉/文案必读）
 - [scripts/index_data_sync/README.md](scripts/index_data_sync/README.md) — 指数数据同步
-- [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md) — 部署
+- [docs/cloudflare-deploy.md](docs/cloudflare-deploy.md) — 部署（Cloudflare，海外/备份）
+- [docs/domestic-deploy.md](docs/domestic-deploy.md) — 境内托管部署（境内无 VPN 可达，治本 CF 限速）
 
 ## 常用命令
 
@@ -68,6 +69,7 @@ npm run format                   # Prettier 全量格式化
 | `/data/*.csv` 传输未压缩（`index_bars.csv` 3MB+） | Cloudflare 不压缩 `text/csv`；`public/_headers` 把 `/data/*.csv` 的 `Content-Type` 改 `text/plain` 触发边缘 br/gzip（前端按纯文本解析不受影响）。验证：`curl -sI -H 'Accept-Encoding: br' .../data/index_bars.csv` 看 `content-encoding` |
 | 数据每次打开都重下、缓存不生效 | 前端勿对 `/data/*` 用 `cache:"no-store"` 或 `?_t=` 时间戳——会废掉 `_headers` 的 `max-age=300`。URL 保持稳定，靠 `must-revalidate` 兜新鲜度（`DataSourceContext`） |
 | 境内手机长时间白屏或「打不开」 | 勿依赖 Google Fonts；前端**优先同域 `/data/*.csv`**（与部署/R2 同源同新），仅缺失/失败才回退 Worker `/api/bundle`（workers.dev 境内可能慢，12s 超时）。不要再首屏并行叠加 API 全量下载 |
+| 境内无 VPN 整站慢/无数据、开代理才正常 | Cloudflare（`pages.dev`/`workers.dev`/anycast）被 GFW 限速，1MB 级 `index_bars.csv` 拉不动。代码改不动 CF 境内可达性；治本是境内托管，见 [docs/domestic-deploy.md](docs/domestic-deploy.md)（Nginx + Node `/api/quote`，构建不注入 `VITE_DATA_API_BASE_URL` 走全同源） |
 | 线上“没数据”但本地有 | sync 脚本 commit CSV 后**同时**触发 Pages 部署（刷 `dist/data/`）和 `cloudflare-r2-upload`（刷 R2），二者同源。排查：Pages 是否注入 `VITE_DATA_API_BASE_URL`、Worker 是否在线、R2 是否被刷新过 |
 | 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 同域 CSV 为主源不受影响；API 仅兜底。发布前确认 Worker 与 R2 **remote** 上传 |
 | `wrangler r2` 上传后生产仍旧数据 | 必须 `--remote`；本地 `.wrangler/` 勿提交（已 gitignore） |
