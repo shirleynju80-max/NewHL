@@ -1,6 +1,7 @@
 name = "newhl-data-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-20"
+account_id = "bdf88311cc44da48ffb9785c3b89b26a"
 
 # Set after creating the bucket:
 # wrangler r2 bucket create newhl-data
