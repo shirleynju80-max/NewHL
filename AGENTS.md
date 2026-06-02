@@ -74,6 +74,8 @@ npm run format                   # Prettier 全量格式化
 | 布林带/触发与分位数矛盾 | “当前状态”以**当前 K 线信号**为准，不要用历史最后一次非 HOLD |
 | ETF 当指数展示 | 仅允许代理场景，且页面**显式注释** |
 | 策略层文案 | 标明回测/监控，不构成投资建议 |
+| 改了 workflow 的 `schedule`/`cron` 但调度没变 | GitHub Actions 定时只认**默认分支（main）**上的 workflow 文件；feature 分支上的 cron 改动合并进 main 前完全不生效。`workflow_dispatch` 可在任意分支手动触发用于验证 |
+| 跨分支挪未提交 WIP 时丢改动 | 工作区有大量 WIP 时**优先 `git worktree`**（独立工作区做 rebase/cherry-pick，不碰主工作区）；多次 `git stash push/pop` 叠加易漏抓文件。万一 pop 后发现某文件 WIP 没回来：dropped stash 的 commit 对象仍在，`git show --stat <sha>` 定位、`git checkout <sha> -- <file>` 精确恢复 |
 
 ## 分层边界
 
