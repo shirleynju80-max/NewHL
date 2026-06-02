@@ -1,12 +1,13 @@
-# 工作日定点运行 ETF 实时爬虫，补齐 public/data/barsmore.csv 并提交
+# 工作日盘后运行 ETF 行情爬虫，补齐 public/data/barsmore.csv 当日真实收盘并提交。
+# 收盘价 15:00 锁定，故改为盘后单跑（不再写盘中临时 OHLC）；盘中价由前端打开时实时拉取。
 name: Realtime crawler
 
 on:
   workflow_dispatch:
   schedule:
-    # 北京时间 11:00、14:00；GitHub Actions 使用 UTC。
-    - cron: "0 3 * * 1-5"
-    - cron: "0 6 * * 1-5"
+    # 北京时间 15:30 主跑（盘后收盘价已定）；18:30 备份补跑。GitHub Actions 使用 UTC。
+    - cron: "30 7 * * 1-5"
+    - cron: "30 10 * * 1-5"
 
 concurrency:
   group: realtime-crawler

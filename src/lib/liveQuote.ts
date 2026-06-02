@@ -10,7 +10,7 @@ export type LiveQuoteSource =
   | "api"
   | "local";
 
-/** 工作日 ETF 行情定点同步（Realtime crawler，见 .github/workflows/realtime-crawler.yml） */
+/** 前端盘中重新拉取实时价的时点（仅用于刷新显示价；收盘价由盘后 Realtime crawler 落库） */
 export const INTRADAY_BATCH_UPDATE_TIMES = ["11:00", "14:00"] as const;
 
 /** 指数 T-1 盘后同步（Index T-1 sync），不用于 ETF 盘中价文案 */
@@ -189,8 +189,7 @@ export function formatQuoteSourceLabel(source: LiveQuoteSource): string {
 }
 
 export function formatQuoteDataUpdateLine(tradeDate: string): string {
-  const slots = INTRADAY_BATCH_UPDATE_TIMES.join(" / ");
-  return `数据更新：盘中实时（${slots} 定点更新），交易日 ${tradeDate}`;
+  return `数据更新：盘中显示实时价，收盘价盘后回填，交易日 ${tradeDate}`;
 }
 
 /** 表格底部统一注释：交易日取当前北京时间会话日 */

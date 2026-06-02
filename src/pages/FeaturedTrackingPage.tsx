@@ -698,7 +698,7 @@ function EtfStrategySection({ groups }: { groups: EtfStrategyGroup[] }) {
         </h2>
         <p className="mt-1 text-xs fin-muted-text">
           按 ETF 分组展示监控策略；组内按超额收益降序。回测口径与 ETF
-          详情页一致；盘中优先实时价，工作日 11:00、14:00 定点同步兜底。现金流类产品满
+          详情页一致；盘中显示实时价，收盘价盘后回填。现金流类产品满
           2 年并配置策略后会自动纳入。
         </p>
       </header>
