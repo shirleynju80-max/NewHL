@@ -51,7 +51,7 @@ async function readText(bucket: R2Bucket, key: string): Promise<string> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const configuredOrigin = env.ALLOWED_ORIGIN || "*";
     const origin = configuredOrigin === "*" ? "*" : request.headers.get("Origin") || configuredOrigin;
 
@@ -64,20 +64,38 @@ export default {
     if (request.method === "GET" && url.pathname === "/api/quote") {
       const code = url.searchParams.get("code")?.trim() ?? "";
       if (!code) return json({ ok: false, detail: "missing code" }, 400, origin);
+
+      // 同一 code 在边缘缓存 30s，所有用户共享一份，避免上游 quote 接口被聚合 QPS 限速。
+      // 缓存键只按 code（与请求 Origin/CORS 解耦），命中后用当前 Origin 重新封装。
+      const cache = caches.default;
+      const cacheKey = new Request(new URL(`/__quote/${encodeURIComponent(code)}`, url.origin).toString());
+      const cached = await cache.match(cacheKey);
+      if (cached) {
+        return json(await cached.json(), 200, origin);
+      }
+
       const q = await fetchRealtimeQuote(code);
       if (!q.ok) return json({ ok: false, detail: q.detail ?? "quote failed" }, 502, origin);
-      return json(
-        {
-          ok: true,
-          price: q.price,
-          prevClose: q.prevClose,
-          tradeDate: q.tradeDate,
-          quoteTime: q.quoteTime,
-          source: q.source,
-        },
-        200,
-        origin
+      const payload = {
+        ok: true,
+        price: q.price,
+        prevClose: q.prevClose,
+        tradeDate: q.tradeDate,
+        quoteTime: q.quoteTime,
+        source: q.source,
+      };
+      ctx.waitUntil(
+        cache.put(
+          cacheKey,
+          new Response(JSON.stringify(payload), {
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Cache-Control": "public, max-age=30",
+            },
+          }),
+        ),
       );
+      return json(payload, 200, origin);
     }
 
     if (request.method !== "GET" || url.pathname !== "/api/bundle") {
