@@ -59,11 +59,19 @@ export function quoteFromLocalBars(bars: OhlcBar[]): LiveQuote | null {
   };
 }
 
-async function fetchQuoteFromApiUrl(url: string): Promise<LiveQuote | null> {
+async function fetchQuoteFromApiUrl(
+  url: string,
+  timeoutMs = 8000,
+): Promise<LiveQuote | null> {
+  // 实时价网关在境内手机网络可能很慢/被卡；必须超时，否则会一直挂着导致页面「加载中…」。
+  // 超时返回 null，由 fetchLiveQuote 回退到本地 bars（昨收）。
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const r = await fetch(url, {
       cache: "no-store",
       headers: { Accept: "application/json" },
+      signal: controller.signal,
     });
     if (!r.ok) return null;
     const j = (await r.json()) as QuoteApiPayload;
@@ -100,18 +108,23 @@ async function fetchQuoteFromApiUrl(url: string): Promise<LiveQuote | null> {
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 async function fetchSiteQuoteApi(code: string): Promise<LiveQuote | null> {
+  // 同域优先（多数部署 Pages 无 /api/quote，会快速失败）；再走 Worker，限 8s 超时。
   const sameOrigin = await fetchQuoteFromApiUrl(
     `/api/quote?code=${encodeURIComponent(code)}`,
+    4000,
   );
   if (sameOrigin) return sameOrigin;
   const base = configuredDataApiBaseUrl();
   if (!base) return null;
   return fetchQuoteFromApiUrl(
     `${base}/api/quote?code=${encodeURIComponent(code)}`,
+    8000,
   );
 }
 
