@@ -652,11 +652,8 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-[var(--fin-text)]">
-            今日可操作摘要
+            今日摘要
           </h2>
-          <p className="mt-1 text-xs fin-muted-text">
-            按监控策略的盘中分位归类；先看区间，再看下方明细。
-          </p>
         </div>
         <Link
           to="/monitor"
@@ -674,7 +671,7 @@ function FeaturedActionSummary({ groups }: { groups: EtfStrategyGroup[] }) {
             <div className="flex items-center justify-between gap-2">
               <span className={zoneClass(item.label)}>{item.label}</span>
               <span className="font-mono text-lg font-semibold text-[var(--fin-text)]">
-                {item.etfCount}
+                {item.strategyCount}
               </span>
             </div>
             <p className="mt-2 text-[11px] fin-muted-text">

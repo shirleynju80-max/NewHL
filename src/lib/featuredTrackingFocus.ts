@@ -58,6 +58,12 @@ export const FEATURED_FOCUS_ITEMS: FeaturedFocusItem[] = [
     reason: "恒生港股通高股息低波动代表，偏防御与现金回报。",
   },
   {
+    dimension: "dividend",
+    marketGroup: "hk_dividend",
+    indexCode: "SPAHLVCP.SPI",
+    reason: "标普港股通低波红利代表，补充港股红利的编制商与风格口径。",
+  },
+  {
     dimension: "cash",
     marketGroup: "cash",
     indexCode: "980092",

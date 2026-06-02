@@ -185,9 +185,6 @@ export function ConfigDeskOverview({
             <p className="text-sm font-semibold text-[var(--ft-text)]">
               日常跟踪入口
             </p>
-            <p className="mt-1 text-xs leading-relaxed text-[var(--ft-muted)]">
-              先看精选主 ETF 的收益风险与今日区间，再进入盘中监控确认执行状态。
-            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link to="/featured-tracking" className="ft-btn">
