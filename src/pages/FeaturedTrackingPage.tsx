@@ -603,6 +603,10 @@ export function FeaturedTrackingPage() {
     () => buildStrategyGroups(focusRows, entries, quotes),
     [focusRows, entries, quotes],
   );
+  const hasOtc007751 = useMemo(
+    () => focusRows.some((row) => row.product?.code === "007751"),
+    [focusRows],
+  );
 
   return (
     <div className="ft-page space-y-6">
@@ -622,6 +626,11 @@ export function FeaturedTrackingPage() {
       <p className="text-xs leading-relaxed fin-muted-text">
         {SP_INDEX_ETF_PROXY_FOOTNOTE}
       </p>
+      {hasOtc007751 ? (
+        <p className="text-xs leading-relaxed fin-muted-text">
+          场外etf用累计净值数据
+        </p>
+      ) : null}
     </div>
   );
 }

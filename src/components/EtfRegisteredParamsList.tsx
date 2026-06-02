@@ -18,6 +18,7 @@ type EtfRegisteredParamsListProps = {
   compact?: boolean;
   className?: string;
   linkToMonitor?: boolean;
+  showHeader?: boolean;
 };
 
 export function EtfRegisteredParamsList({
@@ -27,6 +28,7 @@ export function EtfRegisteredParamsList({
   compact = false,
   className = "",
   linkToMonitor = false,
+  showHeader = true,
 }: EtfRegisteredParamsListProps) {
   const { entries } = useStrategyRegistry();
   const variants = includeRegistry
@@ -45,27 +47,29 @@ export function EtfRegisteredParamsList({
 
   return (
     <div className={className}>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--fin-dim)]">
-          监控策略
-        </span>
-        {linkToMonitor ? (
-          <Link
-            to={`/monitor`}
-            className="text-[10px] fin-link"
-            title="在盘中监控查看全部策略分位"
-          >
-            盘中监控 →
-          </Link>
-        ) : (
-          <Link
-            to={`/etf/${encodeURIComponent(etf.meta.code)}?tab=intraday`}
-            className="text-[10px] fin-link"
-          >
-            盘中信号 →
-          </Link>
-        )}
-      </div>
+      {showHeader ? (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--fin-dim)]">
+            监控策略
+          </span>
+          {linkToMonitor ? (
+            <Link
+              to={`/monitor`}
+              className="text-[10px] fin-link"
+              title="在盘中监控查看全部策略分位"
+            >
+              盘中监控 →
+            </Link>
+          ) : (
+            <Link
+              to={`/etf/${encodeURIComponent(etf.meta.code)}?tab=intraday`}
+              className="text-[10px] fin-link"
+            >
+              盘中信号 →
+            </Link>
+          )}
+        </div>
+      ) : null}
       <ul className={`mt-1.5 flex flex-wrap gap-1.5 ${compact ? "" : "mt-2"}`}>
         {variants.map((v) => {
           const reg = isUserRegisteredVariantKey(v.key);

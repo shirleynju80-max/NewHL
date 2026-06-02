@@ -288,6 +288,7 @@ function EtfDashboardPageInner() {
     () => (etf ? etfProductStrategyEligible(etf, productRecord) : false),
     [etf, productRecord],
   );
+  const hasOtc007751 = etf?.meta.code === "007751";
   const strategyIneligibleReason = useMemo(
     () =>
       etf && !strategyEligible
@@ -690,7 +691,7 @@ function EtfDashboardPageInner() {
               </span>
             )}
             {strategyEligible
-              ? "盘中信号与策略回测基于本产品行情；指数股息率、利差与绩效请点下方链接。"
+              ? "指数股息率、利差与绩效请点下方链接。"
               : "此处为产品信息；策略回测与盘中信号因上市年限或产品类型暂未开放。"}
           </p>
           {trackingIndexCode ? (
@@ -762,8 +763,11 @@ function EtfDashboardPageInner() {
                   <p className="text-xs text-[var(--fin-dim)]">
                     监控策略 · 买卖区间趋势
                   </p>
-                  <Link to="/monitor" className="text-[10px] fin-link">
-                    盘中监控 →
+                  <Link
+                    to={`/etf/${encodeURIComponent(etf.meta.code)}?tab=intraday`}
+                    className="text-[10px] fin-link"
+                  >
+                    盘中信号 →
                   </Link>
                 </div>
                 {variantZoneRows.length === 0 ? (
@@ -902,9 +906,6 @@ function EtfDashboardPageInner() {
                   </option>
                 ))}
               </select>
-              <p className="mt-1.5 text-xs fin-muted-text">
-                切换后回测与下图按该方案更新；汇总统计随下方所选时间段变化。
-              </p>
             </div>
           )}
 
@@ -1517,9 +1518,6 @@ function EtfDashboardPageInner() {
               <h3 className="text-sm font-semibold text-[var(--fin-text)]">
                 盘中信号
               </h3>
-              <p className="mt-1 text-xs text-fin-muted leading-relaxed">
-                用最新价格更新当日收盘估算，对下表各监控策略重算信号与分位（非历史经验分位）。
-              </p>
             </div>
             <IntradayQuoteBar
               quote={liveQuote.quote}
@@ -1527,7 +1525,12 @@ function EtfDashboardPageInner() {
               lastClose={lastClose}
               bars={etf.bars}
             />
-            <EtfRegisteredParamsList etf={etf} compact className="pb-1" />
+            <EtfRegisteredParamsList
+              etf={etf}
+              compact
+              className="pb-1"
+              showHeader={false}
+            />
             {!variants.length ? (
               <p className="text-xs fin-muted-text">无可用策略参数。</p>
             ) : (
@@ -1629,6 +1632,11 @@ function EtfDashboardPageInner() {
           </p>
         </section>
       )}
+      {hasOtc007751 ? (
+        <p className="text-xs leading-relaxed fin-muted-text">
+          场外etf用累计净值数据
+        </p>
+      ) : null}
     </div>
   );
 }

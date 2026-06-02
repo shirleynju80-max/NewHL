@@ -791,13 +791,6 @@ export function RegistryPage() {
           { label: "配置总览", to: "/" },
           { label: "策略研究工具" },
         ]}
-        description={
-          <>
-            策略层 · 在底仓之上验证交易规则（可含择时），
-            <strong>不构成投资建议</strong>
-            。首屏一键回测；参数范围与监控列表在下方高级区。
-          </>
-        }
       />
 
       <section className="fin-panel p-5">
@@ -1463,30 +1456,36 @@ export function RegistryPage() {
             )}
 
             {(gridResult.globalRobustBest || gridResult.globalFullBest) && (
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 space-y-2 rounded-lg border border-fin-border px-3 py-2 text-[11px]">
                 {gridResult.globalRobustBest && (
-                  <p className="fin-alert-info--compact text-[11px]">
+                  <p>
                     <span className="fin-best-badge-robust">后段最优</span> —{" "}
-                    {gridResult.globalRobustBest.label} · 后段超额{" "}
+                    {gridResult.globalRobustBest.label} · 策略{" "}
+                    {formatPct(gridResult.globalRobustBest.cumReturnPct)} · 后段超额{" "}
                     {gridResult.globalRobustBest.excessValPct != null
-                      ? formatSignedPct(
-                          gridResult.globalRobustBest.excessValPct,
-                        )
+                      ? formatSignedPct(gridResult.globalRobustBest.excessValPct)
                       : "—"}{" "}
                     · 全样本超额{" "}
-                    {gridResult.globalRobustBest.excessReturnPct > 0 ? "+" : ""}
-                    {formatPct(gridResult.globalRobustBest.excessReturnPct)}
+                    {formatSignedPct(gridResult.globalRobustBest.excessReturnPct)}{" "}
+                    · 回撤{" "}
+                    {formatPct(gridResult.globalRobustBest.maxDrawdownPct)} · 胜率{" "}
+                    {formatPct(gridResult.globalRobustBest.winRate * 100)} ·{" "}
+                    {gridResult.globalRobustBest.roundCount} 轮
                   </p>
                 )}
                 {gridResult.globalFullBest && (
-                  <p className="fin-panel border border-fin-border px-3 py-2 text-[11px]">
+                  <p>
                     <span className="fin-best-badge-full">全样本最优</span> —{" "}
                     {gridResult.globalFullBest.label} · 策略{" "}
-                    {formatPct(gridResult.globalFullBest.cumReturnPct)} · 超额{" "}
-                    {formatSignedPct(gridResult.globalFullBest.excessReturnPct)}{" "}
-                    · 回撤 {formatPct(gridResult.globalFullBest.maxDrawdownPct)}{" "}
-                    · 胜率 {formatPct(gridResult.globalFullBest.winRate * 100)}{" "}
-                    · {gridResult.globalFullBest.roundCount} 轮
+                    {formatPct(gridResult.globalFullBest.cumReturnPct)} · 后段超额{" "}
+                    {gridResult.globalFullBest.excessValPct != null
+                      ? formatSignedPct(gridResult.globalFullBest.excessValPct)
+                      : "—"}{" "}
+                    · 全样本超额{" "}
+                    {formatSignedPct(gridResult.globalFullBest.excessReturnPct)} ·
+                    回撤 {formatPct(gridResult.globalFullBest.maxDrawdownPct)} · 胜率{" "}
+                    {formatPct(gridResult.globalFullBest.winRate * 100)} ·{" "}
+                    {gridResult.globalFullBest.roundCount} 轮
                   </p>
                 )}
               </div>

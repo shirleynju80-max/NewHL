@@ -62,11 +62,6 @@ export function EtfMonitorStrategyPanel({
           <h3 className="text-sm font-semibold text-[var(--fin-text)]">
             当前监控策略
           </h3>
-          <p className="mt-1 text-xs fin-muted-text">
-            控制本页回测、图表与右侧买卖区间列表；删除后不再展示。恢复默认仅保留
-            <span className="text-[var(--fin-text)]"> 系统内置 </span>
-            策略（{builtinVariants.length} 套），自定义监控策略将移出列表。
-          </p>
         </div>
         <button
           type="button"

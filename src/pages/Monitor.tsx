@@ -519,6 +519,7 @@ export function MonitorPage() {
       ? pref.codes.slice(0, 6).join("、") +
         (pref.codes.length > 6 ? ` 等 ${pref.codes.length} 只` : "")
       : "未选择";
+  const hasOtc007751 = rowGroups.some((group) => group.code === "007751");
 
   return (
     <div className="ft-page space-y-4">
@@ -691,6 +692,7 @@ export function MonitorPage() {
                 分位数按照策略买卖点拉到 0–100%，计算当前价格所处的分位数。
               </p>
               <p>{formatQuoteDataUpdateFootnote()}</p>
+              {hasOtc007751 ? <p>场外etf用累计净值数据</p> : null}
             </div>
           </div>
         )}

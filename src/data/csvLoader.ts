@@ -248,6 +248,7 @@ export function parseFundBarsCsv(text: string): Map<string, OhlcBar[]> {
       r.nav_forward_adjusted?.trim() ||
       r.nav_adjusted_front?.trim() ||
       r.adj_close?.trim() ||
+      r.nav_accum?.trim() ||
       r.nav_unit?.trim() ||
       r.close?.trim();
     if (!navRaw) continue;

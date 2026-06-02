@@ -24,6 +24,9 @@ export function IntradayQuoteBar({
   const display = quote?.price ?? lastClose;
   const priceLabel = formatQuotePriceLabel(quote?.source ?? null);
   const tradeDate = resolveQuoteTradeDate(quote, bars);
+  const changePct =
+    lastClose > 0 ? ((display - lastClose) / lastClose) * 100 : 0;
+  const signedChangePct = `${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`;
 
   return (
     <div className={compact ? "space-y-1.5" : "space-y-2"}>
@@ -34,12 +37,18 @@ export function IntradayQuoteBar({
             {loading && !quote ? "加载中…" : display.toFixed(4)}
           </p>
         </div>
-        <p className="text-xs text-fin-muted">
-          昨收{" "}
-          <span className="font-mono fin-muted-text">
+        <div>
+          <p className="text-xs text-fin-muted">昨收</p>
+          <p className="font-mono text-lg font-semibold text-[var(--fin-text)]">
             {lastClose.toFixed(4)}
-          </span>
-        </p>
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-fin-muted">涨幅</p>
+          <p className="font-mono text-lg font-semibold text-[var(--fin-text)]">
+            {signedChangePct}
+          </p>
+        </div>
       </div>
       <p className="text-[10px] leading-relaxed text-fin-muted">
         {formatQuoteDataUpdateLine(tradeDate)}
