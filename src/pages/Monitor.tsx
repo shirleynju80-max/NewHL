@@ -529,8 +529,7 @@ export function MonitorPage() {
         description={
           <>
             用 ETF <strong>最新价格</strong>
-            更新各监控策略的买卖分位；盘中优先实时价，工作日 11:00、14:00
-            定点同步兜底。
+            更新各监控策略的买卖分位。
           </>
         }
       />
