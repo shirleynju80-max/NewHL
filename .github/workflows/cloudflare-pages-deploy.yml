@@ -1,17 +1,39 @@
 # newhl-dashboard 为 Direct Upload 项目（Settings 无 Builds / Connect to Git）时，
 # push main 由本 workflow 构建并 wrangler pages deploy 到 Production。
+#
+# 数据 sync workflow 用 GITHUB_TOKEN git push，不会触发 on:push（GitHub 防循环机制）。
+# 故与 cloudflare-r2-upload.yml 一样，在 sync 完成后用 workflow_run 补触发，刷新 dist/data/。
 name: Cloudflare Pages deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - "Realtime crawler"
+      - "Index T-1 sync"
+      - "ETF adjusted bars refresh"
+      - "ETF products monthly sync"
+      - "Bonds monthly sync"
+    types: [completed]
+
+concurrency:
+  group: cloudflare-pages-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Pull latest main (after data sync push)
+        if: github.event_name == 'workflow_run'
+        run: git pull --ff-only origin main
 
       - name: Verify Cloudflare secrets
         env:
@@ -50,10 +72,14 @@ jobs:
           npm ci
           npm run build
 
+      - name: Resolve deploy SHA
+        id: sha
+        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Verify build artifacts
         run: |
           set -euo pipefail
-          echo "Git SHA: ${{ github.sha }}"
+          echo "Git SHA: ${{ steps.sha.outputs.value }}"
           test -f dist/index.html
           echo "=== index.html script tags ==="
           grep -oE 'src="/assets/[^"]+"' dist/index.html || true
@@ -70,7 +96,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.95.0"
           # --branch 须与 Pages 项目 Settings → Production branch 一致（通常 main），否则只进 Preview
-          command: pages deploy dist --project-name=newhl-dashboard --branch=main --commit-hash=${{ github.sha }} --commit-message=Deploy-${{ github.sha }}
+          command: pages deploy dist --project-name=newhl-dashboard --branch=main --commit-hash=${{ steps.sha.outputs.value }} --commit-message=Deploy-${{ steps.sha.outputs.value }}
 
       - name: Verify production site
         run: |

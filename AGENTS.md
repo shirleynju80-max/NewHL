@@ -71,6 +71,7 @@ npm run format                   # Prettier 全量格式化
 | 境内手机长时间白屏或「打不开」 | 勿依赖 Google Fonts；前端**优先同域 `/data/*.csv`**（与部署/R2 同源同新），仅缺失/失败才回退 Worker `/api/bundle`（workers.dev 境内可能慢，12s 超时）。不要再首屏并行叠加 API 全量下载 |
 | 境内无 VPN 整站慢/无数据、开代理才正常 | Cloudflare（`pages.dev`/`workers.dev`/anycast）被 GFW 限速，1MB 级 `index_bars.csv` 拉不动。代码改不动 CF 境内可达性；治本是境内托管，见 [docs/domestic-deploy.md](docs/domestic-deploy.md)（Nginx + Node `/api/quote`，构建不注入 `VITE_DATA_API_BASE_URL` 走全同源） |
 | 线上“没数据”但本地有 | sync 脚本 commit CSV 后**同时**触发 Pages 部署（刷 `dist/data/`）和 `cloudflare-r2-upload`（刷 R2），二者同源。排查：Pages 是否注入 `VITE_DATA_API_BASE_URL`、Worker 是否在线、R2 是否被刷新过 |
+| 数据 cron 已 push main 但 Pages 好几天没部署 | sync workflow 用 `GITHUB_TOKEN` push **不会**触发 `on:push` 的 Pages deploy（GitHub 防 workflow 循环）。R2 已用 `workflow_run` 补触发；Pages 亦同。临时：Actions 手动 **Run workflow** → Cloudflare Pages deploy |
 | 配置了 `VITE_DATA_API_BASE_URL` 但 Worker/R2 不可用 | 同域 CSV 为主源不受影响；API 仅兜底。发布前确认 Worker 与 R2 **remote** 上传 |
 | `wrangler r2` 上传后生产仍旧数据 | 必须 `--remote`；本地 `.wrangler/` 勿提交（已 gitignore） |
 | 布林带/触发与分位数矛盾 | “当前状态”以**当前 K 线信号**为准，不要用历史最后一次非 HOLD |

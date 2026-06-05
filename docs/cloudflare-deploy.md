@@ -7,7 +7,7 @@
 **本项目实际形态（2026-06）**：`newhl-dashboard` 为 **Direct Upload** 项目——Cloudflare Dashboard 里**没有** Builds / Connect to Git，由 GitHub Actions [cloudflare-pages-deploy.yml](../.github/workflows/cloudflare-pages-deploy.yml) 在 push `main` 时 `npm run build` + `wrangler pages deploy`。
 
 1. **前端 UI / 文案**：push `main` → Actions 构建 `dist/` → Pages Production（<https://newhl-dashboard.pages.dev/>）。
-2. **行情 / 指数数据**：各 sync workflow 成功 → [cloudflare-r2-upload.yml](../.github/workflows/cloudflare-r2-upload.yml) 上传 R2 → Worker `/api/bundle` 读取。**通常不需要**为数据单独 redeploy Pages。
+2. **行情 / 指数数据**：各 sync workflow 成功 → 并行触发 [cloudflare-r2-upload.yml](../.github/workflows/cloudflare-r2-upload.yml)（R2）与 **本 workflow 的 `workflow_run`**（刷新 `dist/data/`）。sync 用 `GITHUB_TOKEN` push 不会触发 `on:push`，故 Pages 靠 `workflow_run` 补部署。
 3. **Worker 代码**：仅在 `workers/data-api` 改动时手动 `wrangler deploy`。
 
 生产环境数据加载顺序：配置了 `VITE_DATA_API_BASE_URL` 时**先请求 Worker（R2）**；失败则回退到构建时打进 `dist/data/` 的静态 CSV（仅作兜底，可能与 R2 不同步）。
