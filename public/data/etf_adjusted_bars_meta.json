@@ -141,11 +141,11 @@
     },
     "513630": {
       "bars_rows": 0,
-      "dividend_events": 0,
+      "dividend_events": 6,
       "dividend_signature": "b408801d79d3cf7a387af5533aa969ac116d758cf48313f30a55971fedee6ce7",
       "last_checked_at": "2026-06-05",
       "last_refreshed_at": "2026-05-29",
-      "latest_ex_dividend_date": "",
+      "latest_ex_dividend_date": "2026-05-21",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
