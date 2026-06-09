@@ -117,3 +117,11 @@ jobs:
           done
           echo "::error::Production did not serve the new Home chunk within timeout."
           exit 1
+
+      - name: Verify production quote API
+        run: |
+          set -euo pipefail
+          SITE="https://newhl-dashboard.pages.dev"
+          BODY="$(curl -fsSL "${SITE}/api/quote?code=513920")"
+          echo "${BODY}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') and d.get('price',0)>0, d"
+          echo "Production quote API OK (same-origin JSON, not SPA HTML)"

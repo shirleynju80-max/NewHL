@@ -74,6 +74,9 @@ async function fetchQuoteFromApiUrl(
       signal: controller.signal,
     });
     if (!r.ok) return null;
+    const ct = r.headers.get("content-type") ?? "";
+    // Pages 静态站无 /api 时 SPA 回退会返回 text/html，勿当作行情 JSON 解析。
+    if (!ct.includes("application/json")) return null;
     const j = (await r.json()) as QuoteApiPayload;
     if (
       !j.ok ||
