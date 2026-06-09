@@ -1,21 +1,15 @@
-// Cloudflare Pages Function：同源 /api/quote，避免静态站 SPA 回退把 HTML 当行情。
-// 境内 users.dev 可能不可达，但 pages.dev 同域小 JSON 请求通常可达。
+// Cloudflare Pages Function：同源 /api/quote（静态 Pages 无此路由时会 SPA 回退成 HTML）。
 import { fetchRealtimeQuote } from "../../workers/data-api/src/eastmoneyQuote";
-
-type PagesContext = {
-  request: Request;
-  waitUntil: (promise: Promise<unknown>) => void;
-  caches: { default: Cache };
-};
 
 const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "public, max-age=30",
 };
 
-export const onRequestGet = async (
-  context: PagesContext,
-): Promise<Response> => {
+export const onRequestGet = async (context: {
+  request: Request;
+  waitUntil: (promise: Promise<unknown>) => void;
+}): Promise<Response> => {
   const url = new URL(context.request.url);
   const code = url.searchParams.get("code")?.trim() ?? "";
   if (!code) {
@@ -25,16 +19,19 @@ export const onRequestGet = async (
     });
   }
 
-  const cache = context.caches.default;
+  // pages.dev 上 caches.default 可能不可用；有则用，无则直拉上游。
+  const cache = typeof caches !== "undefined" ? caches.default : undefined;
   const cacheKey = new Request(
     new URL(`/__quote/${encodeURIComponent(code)}`, url.origin).toString(),
   );
-  const cached = await cache.match(cacheKey);
-  if (cached) {
-    return new Response(cached.body, {
-      status: 200,
-      headers: JSON_HEADERS,
-    });
+  if (cache) {
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      return new Response(cached.body, {
+        status: 200,
+        headers: JSON_HEADERS,
+      });
+    }
   }
 
   const q = await fetchRealtimeQuote(code);
@@ -53,8 +50,10 @@ export const onRequestGet = async (
     source: q.source,
   };
   const body = JSON.stringify(payload);
-  context.waitUntil(
-    cache.put(cacheKey, new Response(body, { headers: JSON_HEADERS })),
-  );
+  if (cache) {
+    context.waitUntil(
+      cache.put(cacheKey, new Response(body, { headers: JSON_HEADERS })),
+    );
+  }
   return new Response(body, { status: 200, headers: JSON_HEADERS });
 };
