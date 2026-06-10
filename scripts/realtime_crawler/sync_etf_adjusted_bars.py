@@ -195,16 +195,27 @@ def years_between(earlier: date, later: date) -> float:
 
 
 def load_product_listing_dates() -> dict[str, str]:
-    """etf_products：优先 first_trade_date（K 线首根），否则 listed_date。"""
+    """
+    etf_products：K 线起点 = listed_date 与 first_trade_date 中较早者。
+    若 first_trade_date 晚于 listed_date 超过 60 天，视为爬虫误写（常见 2026-05-28），用 listed_date。
+    """
     _, rows = read_csv(ETF_PRODUCTS)
     out: dict[str, str] = {}
     for row in rows:
         code = (row.get("code") or "").strip()
         if not code:
             continue
-        ref = (row.get("first_trade_date") or row.get("listed_date") or "").strip()
-        if ref:
-            out[code] = ref
+        listed_d = parse_ymd((row.get("listed_date") or "").strip())
+        first_d = parse_ymd((row.get("first_trade_date") or "").strip())
+        if listed_d and first_d:
+            if (first_d - listed_d).days > MATURITY_FIRST_BAR_SLACK_DAYS:
+                out[code] = listed_d.isoformat()
+            else:
+                out[code] = min(listed_d, first_d).isoformat()
+        elif first_d:
+            out[code] = first_d.isoformat()
+        elif listed_d:
+            out[code] = listed_d.isoformat()
     return out
 
 
@@ -391,11 +402,18 @@ def history_beg_for_code(
     existing: dict[str, dict[str, Bar]],
 ) -> str:
     listing = listing_dates.get(code)
-    if listing:
-        return listing.replace("-", "")
     _, first_bar, _ = local_bar_summary(code, existing)
+    candidates: list[date] = []
+    if listing:
+        ld = parse_ymd(listing)
+        if ld:
+            candidates.append(ld)
     if first_bar:
-        return first_bar.replace("-", "")
+        fb = parse_ymd(first_bar)
+        if fb:
+            candidates.append(fb)
+    if candidates:
+        return min(candidates).isoformat().replace("-", "")
     return "20000101"
 
 
@@ -763,6 +781,7 @@ def main() -> None:
                 end_s = as_of.isoformat().replace("-", "")
                 old_by_date = existing.get(code) or {}
                 guard_ok, guard_note = (True, "skipped")
+                prev_src = (prev_meta.get("refresh_source") or "").strip()
                 if full_rows and not args.skip_return_guard:
                     guard_ok, guard_note = assess_refresh_guard(
                         old_by_date,
@@ -770,6 +789,9 @@ def main() -> None:
                         beg,
                         end_s,
                         max_return_drift_pp=args.max_return_drift,
+                        skip_return_drift=(
+                            prev_src == "tencent_qfq" or args.force
+                        ),
                     )
                 elif full_rows:
                     guard_ok = history_covers_range(full_rows, beg, end_s)
@@ -882,12 +904,11 @@ def main() -> None:
     print(f"written {BARS_MORE}")
     print(f"written {META}")
     if errors:
-        fatal = [e for e in errors if "kline refresh failed" not in e]
-        if fatal:
-            sys.exit(1)
-        print("warnings (kline refresh skipped, dividend meta kept):")
+        print("warnings:")
         for item in errors:
             print("  " + item)
+        if not refreshed:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

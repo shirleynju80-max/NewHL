@@ -119,6 +119,21 @@ def old_history_trusted(
     return history_covers_range(old_rows, beg, end)
 
 
+def return_drift_within_limit(
+    drift_pp: float,
+    baseline_tr_pct: float | None,
+    *,
+    max_pp: float,
+    max_relative: float = 0.015,
+) -> bool:
+    """绝对漂移 ≤ max_pp，或相对基准全段收益 ≤ max_relative（默认 1.5%）。"""
+    if drift_pp <= max_pp:
+        return True
+    if baseline_tr_pct is not None and abs(baseline_tr_pct) >= 50:
+        return drift_pp / abs(baseline_tr_pct) <= max_relative
+    return False
+
+
 def assess_refresh_guard(
     old_by_date: dict[str, BarLike],
     new_rows: Sequence[BarLike],
@@ -126,6 +141,7 @@ def assess_refresh_guard(
     end: str,
     *,
     max_return_drift_pp: float = DEFAULT_MAX_RETURN_DRIFT_PP,
+    skip_return_drift: bool = False,
 ) -> tuple[bool, str]:
     """
     大幅更新写入前校验：
@@ -145,8 +161,11 @@ def assess_refresh_guard(
         )
 
     old_sorted = [old_by_date[d] for d in sorted(old_by_date)]
-    if not old_history_trusted(old_sorted, beg, end):
-        return True, "ok (no trusted baseline, skip return drift check)"
+    if skip_return_drift or not old_history_trusted(old_sorted, beg, end):
+        reason = "ok (skip return drift)"
+        if not skip_return_drift:
+            reason = "ok (no trusted baseline, skip return drift check)"
+        return True, reason
 
     new_by = {b.date: b for b in new_sorted}
     min_bars = min_expected_trading_bars(beg, end)
@@ -157,7 +176,9 @@ def assess_refresh_guard(
     new_tr = total_return_pct(new_sorted)
     if old_tr is not None and new_tr is not None:
         drift = abs(new_tr - old_tr)
-        if drift > max_return_drift_pp:
+        if not return_drift_within_limit(
+            drift, old_tr, max_pp=max_return_drift_pp
+        ):
             return (
                 False,
                 f"total return drift {drift:.2f}pp exceeds {max_return_drift_pp}pp "
@@ -165,7 +186,11 @@ def assess_refresh_guard(
             )
 
     overlap_drift = overlap_total_return_drift_pp(old_by_date, new_by)
-    if overlap_drift is not None and overlap_drift > max_return_drift_pp:
+    if overlap_drift is not None and not return_drift_within_limit(
+        overlap_drift,
+        total_return_pct(old_sorted),
+        max_pp=max_return_drift_pp,
+    ):
         return (
             False,
             f"overlap return drift {overlap_drift:.2f}pp exceeds {max_return_drift_pp}pp",

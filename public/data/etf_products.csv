@@ -7,7 +7,7 @@ code,name,product_group,index_code,index_name,exchange,issuer,listed_date,first_
 159549,红利低波ETF天弘,shareholder_return_cn,930955,中证红利低波动100指数,SZ,天弘,2023-11-23,2026-05-28,5315000000,0.50,0.10,0.60,,,,false,https://fundf10.eastmoney.com/jbgk_159549.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
 560720,红利低波100ETF工银,shareholder_return_cn,930955,中证红利低波动100指数,SH,工银瑞信,2026-05-21,,280000000,0.30,0.10,0.40,,,,false,https://fundf10.eastmoney.com/jbgk_560720.html,2026-06-05,missing,候选维度：规模补位；产品落地参考，不作为盘中默认监控
 159307,红利低波100ETF博时,shareholder_return_cn,930955,中证红利低波动100指数,SZ,博时,2024-04-16,2026-05-28,4837000000,0.15,0.05,0.20,,,,false,https://fundf10.eastmoney.com/jbgk_159307.html,2026-06-05,ok,候选维度：费率最低/规模补位；产品落地参考，不作为盘中默认监控
-515180,红利ETF易方达,shareholder_return_cn,000922,中证红利指数,SH,易方达,2019-11-26,2026-05-28,12460000000,0.15,0.05,0.20,,,,true,https://fundf10.eastmoney.com/jbgk_515180.html,2026-06-05,ok,
+515180,红利ETF易方达,shareholder_return_cn,000922,中证红利指数,SH,易方达,2019-11-26,2019-12-20,12460000000,0.15,0.05,0.20,,,,true,https://fundf10.eastmoney.com/jbgk_515180.html,2026-06-05,ok,
 515080,招商中证红利ETF,shareholder_return_cn,000922,中证红利指数,SH,招商,2019-11-28,2019-12-27,8868000000,0.20,0.10,0.30,,,,false,https://fundf10.eastmoney.com/jbgk_515080.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
 159581,红利ETF万家,shareholder_return_cn,000922,中证红利指数,SZ,万家,2024-03-06,2026-05-28,1375000000,0.50,0.10,0.60,,,,false,https://fundf10.eastmoney.com/jbgk_159581.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
 515890,红利ETF博时,shareholder_return_cn,000922,中证红利指数,SH,博时,2020-03-20,2026-05-28,450000000,0.15,0.05,0.20,,,,false,https://fundf10.eastmoney.com/jbgk_515890.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
@@ -27,10 +27,10 @@ code,name,product_group,index_code,index_name,exchange,issuer,listed_date,first_
 159232,南方中证全指自由现金流ETF,cash_creation,932365,中证全指自由现金流指数,SZ,南方,2025-04-23,2025-04-30,4050000000,0.15,0.05,0.20,,,,true,https://fundf10.eastmoney.com/jbgk_159232.html,2026-06-05,ok,
 159233,自由现金流ETF平安,cash_creation,932365,中证全指自由现金流指数,SZ,平安,2025-05-21,2026-05-28,556000000,0.50,0.10,0.60,,,,false,https://fundf10.eastmoney.com/jbgk_159233.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
 159236,自由现金流ETF工银,cash_creation,932365,中证全指自由现金流指数,SZ,工银瑞信,2025-04-30,2026-05-28,103000000,0.15,0.05,0.20,,,,false,https://fundf10.eastmoney.com/jbgk_159236.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
-562080,华宝沪深300自由现金流ETF,cash_creation,932366,沪深300自由现金流指数,SH,华宝,2025-04-07,2026-05-21,609000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_562080.html,2026-06-05,ok,
+562080,华宝沪深300自由现金流ETF,cash_creation,932366,沪深300自由现金流指数,SH,华宝,2025-04-07,2025-04-15,609000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_562080.html,2026-06-05,ok,
 563900,300自由现金流ETF摩根,cash_creation,932366,沪深300自由现金流指数,SH,摩根基金(中国),2025-04-24,2026-05-21,606000000,0.50,0.10,0.60,,,,false,https://fundf10.eastmoney.com/jbgk_563900.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
-560120,华夏中证500自由现金流ETF,cash_creation,932367,中证500自由现金流指数,SH,华夏,2025-07-23,2026-05-21,1059000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_560120.html,2026-06-05,ok,
-563990,富国中证800自由现金流ETF,cash_creation,932368,中证800自由现金流指数,SH,富国,2025-04-16,2026-05-21,661000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_563990.html,2026-06-05,ok,
+560120,华夏中证500自由现金流ETF,cash_creation,932367,中证500自由现金流指数,SH,华夏,2025-07-23,2025-08-05,1059000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_560120.html,2026-06-05,ok,
+563990,富国中证800自由现金流ETF,cash_creation,932368,中证800自由现金流指数,SH,富国,2025-04-16,2025-04-24,661000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_563990.html,2026-06-05,ok,
 563580,自由现金流800ETF万家,cash_creation,932368,中证800自由现金流指数,SH,万家,2025-07-16,2026-05-21,501000000,0.50,0.10,0.60,,,,false,https://fundf10.eastmoney.com/jbgk_563580.html,2026-06-05,ok,候选维度：规模补位；产品落地参考，不作为盘中默认监控
 159229,自由现金流ETF广发,cash_creation,932368,中证800自由现金流指数,SZ,广发,2025-05-06,2026-05-21,155000000,0.15,0.05,0.20,,,,false,https://fundf10.eastmoney.com/jbgk_159229.html,2026-06-05,ok,候选维度：费率最低；产品落地参考，不作为盘中默认监控
 513950,富国国证港股通红利低波ETF,shareholder_return_hk,HSI114,恒生港股通高股息低波动指数,SH,富国,2023-04-19,2023-04-28,3059000000,0.50,0.10,0.60,,,,true,https://fundf10.eastmoney.com/jbgk_513950.html,2026-06-05,ok,
