@@ -21,8 +21,8 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 from etf_bars_refresh_guard import (
-    FIRST_BAR_SLACK_DAYS,
     history_covers_range_for_verify,
+    history_start_for_product_row,
     min_expected_trading_bars,
 )
 
@@ -43,30 +43,6 @@ class CsvBar:
     close: str
 
 
-def parse_ymd(raw: str) -> date | None:
-    s = (raw or "").strip()
-    if not s or len(s) != 10:
-        return None
-    try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-def history_start_for_row(row: dict[str, str]) -> str:
-    listed_d = parse_ymd(row.get("listed_date") or "")
-    first_d = parse_ymd(row.get("first_trade_date") or "")
-    if listed_d and first_d:
-        if (first_d - listed_d).days > FIRST_BAR_SLACK_DAYS:
-            return listed_d.isoformat()
-        return min(listed_d, first_d).isoformat()
-    if first_d:
-        return first_d.isoformat()
-    if listed_d:
-        return listed_d.isoformat()
-    return ""
-
-
 def read_primary_on_exchange() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     with PRODUCTS.open(newline="", encoding="utf-8-sig") as f:
@@ -78,7 +54,7 @@ def read_primary_on_exchange() -> list[tuple[str, str]]:
                 continue
             if code.startswith("00"):
                 continue
-            ref = history_start_for_row(row)
+            ref = history_start_for_product_row(row)
             out.append((code, ref))
     return out
 
@@ -146,10 +122,10 @@ def main() -> None:
 
     # 场外主跟踪 007751
     with PRODUCTS.open(newline="", encoding="utf-8-sig") as f:
-            otc = [
+        otc = [
             (
                 r["code"].strip(),
-                (r.get("first_trade_date") or r.get("listed_date") or "").strip(),
+                history_start_for_product_row(r),
             )
             for r in csv.DictReader(f)
             if (r.get("is_primary") or "").lower() == "true"

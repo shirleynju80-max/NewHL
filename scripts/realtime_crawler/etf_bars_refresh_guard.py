@@ -2,7 +2,7 @@
 """ETF 前复权 bars 大幅更新前的数据量 / 对齐区间收益率漂移校验。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Protocol, Sequence
 
 # 与 sync_etf_adjusted_bars.MATURITY_FIRST_BAR_SLACK_DAYS 一致
@@ -14,6 +14,42 @@ DEFAULT_MIN_ALIGNED_SPAN_DAYS = 60
 class BarLike(Protocol):
     date: str
     close: str
+
+
+def parse_ymd(raw: str | None) -> date | None:
+    s = (raw or "").strip()
+    if not s or len(s) < 10:
+        return None
+    try:
+        return datetime.strptime(s[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def history_start_for_product_row(
+    row: dict[str, str],
+    *,
+    as_of: date | None = None,
+) -> str:
+    """
+    K 线历史起点（写入/验收共用）：
+    - 正常：first_trade_date（可晚于 listed 数周/数月）
+    - 异常：first_trade 被写成最近日期而上市已久 → 用 listed_date
+    """
+    listed_d = parse_ymd(row.get("listed_date"))
+    first_d = parse_ymd(row.get("first_trade_date"))
+    today = as_of or date.today()
+    if not listed_d and not first_d:
+        return ""
+    if not first_d:
+        return listed_d.isoformat() if listed_d else ""
+    if not listed_d:
+        return first_d.isoformat()
+    if (today - first_d).days < 120 and (today - listed_d).days > 365:
+        return listed_d.isoformat()
+    if first_d >= listed_d:
+        return first_d.isoformat()
+    return listed_d.isoformat()
 
 
 def beg_to_iso(beg: str) -> str:

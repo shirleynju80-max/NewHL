@@ -8,9 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from datetime import date
+
 from etf_bars_refresh_guard import (
     aligned_return_drift_pp,
     assess_refresh_guard,
+    history_start_for_product_row,
 )
 
 
@@ -53,8 +56,28 @@ def test_extra_tail_ignored() -> None:
     assert window == "2019-12-01..2026-05-30"
 
 
+def test_history_start_corrupt_recent_first_trade() -> None:
+    as_of = date(2026, 6, 5)
+    row = {
+        "listed_date": "2019-11-26",
+        "first_trade_date": "2026-05-28",
+    }
+    assert history_start_for_product_row(row, as_of=as_of) == "2019-11-26"
+
+
+def test_history_start_first_trade_after_listed_ok() -> None:
+    as_of = date(2026, 6, 5)
+    row = {
+        "listed_date": "2006-11-17",
+        "first_trade_date": "2007-01-18",
+    }
+    assert history_start_for_product_row(row, as_of=as_of) == "2007-01-18"
+
+
 if __name__ == "__main__":
     test_truncated_new_rejected()
     test_return_drift_rejected()
     test_extra_tail_ignored()
+    test_history_start_corrupt_recent_first_trade()
+    test_history_start_first_trade_after_listed_ok()
     print("etf_bars_refresh_guard: ok")

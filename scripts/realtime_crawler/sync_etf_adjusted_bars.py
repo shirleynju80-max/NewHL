@@ -42,6 +42,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 from etf_bars_refresh_guard import (
     assess_refresh_guard,
     history_covers_range,
+    history_start_for_product_row,
     min_expected_trading_bars,
 )
 
@@ -195,27 +196,16 @@ def years_between(earlier: date, later: date) -> float:
 
 
 def load_product_listing_dates() -> dict[str, str]:
-    """
-    etf_products：K 线起点 = listed_date 与 first_trade_date 中较早者。
-    若 first_trade_date 晚于 listed_date 超过 60 天，视为爬虫误写（常见 2026-05-28），用 listed_date。
-    """
+    """etf_products：K 线起点，与 verify_primary_etf_bars 共用 history_start_for_product_row。"""
     _, rows = read_csv(ETF_PRODUCTS)
     out: dict[str, str] = {}
     for row in rows:
         code = (row.get("code") or "").strip()
         if not code:
             continue
-        listed_d = parse_ymd((row.get("listed_date") or "").strip())
-        first_d = parse_ymd((row.get("first_trade_date") or "").strip())
-        if listed_d and first_d:
-            if (first_d - listed_d).days > MATURITY_FIRST_BAR_SLACK_DAYS:
-                out[code] = listed_d.isoformat()
-            else:
-                out[code] = min(listed_d, first_d).isoformat()
-        elif first_d:
-            out[code] = first_d.isoformat()
-        elif listed_d:
-            out[code] = listed_d.isoformat()
+        ref = history_start_for_product_row(row)
+        if ref:
+            out[code] = ref
     return out
 
 
