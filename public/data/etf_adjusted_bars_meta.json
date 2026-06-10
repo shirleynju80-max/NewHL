@@ -26,16 +26,17 @@
       "overlap_mismatches": 0
     },
     "159201": {
-      "bars_rows": 0,
+      "bars_rows": 312,
       "dividend_events": 0,
       "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "last_checked_at": "2026-06-09",
-      "last_refreshed_at": "",
+      "last_checked_at": "2026-06-10",
+      "last_refreshed_at": "2026-06-10",
       "latest_ex_dividend_date": "",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
-      "overlap_mismatches": 0
+      "overlap_mismatches": 0,
+      "refresh_source": "tencent_qfq"
     },
     "159221": {
       "bars_rows": 0,
@@ -213,16 +214,17 @@
       "overlap_mismatches": 0
     },
     "515180": {
-      "bars_rows": 0,
+      "bars_rows": 1565,
       "dividend_events": 6,
       "dividend_signature": "0b750c720f0958c781176f7d45f0b146b5009ed64d68d7210b30e9c44913aea3",
-      "last_checked_at": "2026-06-09",
-      "last_refreshed_at": "",
+      "last_checked_at": "2026-06-10",
+      "last_refreshed_at": "2026-06-10",
       "latest_ex_dividend_date": "2025-10-21",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
-      "overlap_mismatches": 0
+      "overlap_mismatches": 0,
+      "refresh_source": "tencent_qfq"
     },
     "515450": {
       "bars_rows": 1524,
@@ -256,16 +258,17 @@
       "overlap_mismatches": 0
     },
     "560120": {
-      "bars_rows": 0,
+      "bars_rows": 204,
       "dividend_events": 0,
       "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "last_checked_at": "2026-06-09",
-      "last_refreshed_at": "",
+      "last_checked_at": "2026-06-10",
+      "last_refreshed_at": "2026-06-10",
       "latest_ex_dividend_date": "",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "2025-07-23",
       "maturity_status": "maturity: pending (0.88y / 2y, listed 2025-07-23)",
-      "overlap_mismatches": 0
+      "overlap_mismatches": 0,
+      "refresh_source": "tencent_qfq"
     },
     "561580": {
       "bars_rows": 0,
@@ -280,16 +283,17 @@
       "overlap_mismatches": 0
     },
     "562080": {
-      "bars_rows": 0,
+      "bars_rows": 279,
       "dividend_events": 0,
       "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "last_checked_at": "2026-06-09",
-      "last_refreshed_at": "",
+      "last_checked_at": "2026-06-10",
+      "last_refreshed_at": "2026-06-10",
       "latest_ex_dividend_date": "",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "2025-04-07",
       "maturity_status": "maturity: pending (1.17y / 2y, listed 2025-04-07)",
-      "overlap_mismatches": 0
+      "overlap_mismatches": 0,
+      "refresh_source": "tencent_qfq"
     },
     "563580": {
       "bars_rows": 0,
@@ -310,16 +314,17 @@
       "overlap_mismatches": 0
     },
     "563990": {
-      "bars_rows": 0,
+      "bars_rows": 273,
       "dividend_events": 0,
       "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "last_checked_at": "2026-06-09",
-      "last_refreshed_at": "",
+      "last_checked_at": "2026-06-10",
+      "last_refreshed_at": "2026-06-10",
       "latest_ex_dividend_date": "",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "2025-04-16",
       "maturity_status": "maturity: pending (1.15y / 2y, listed 2025-04-16)",
-      "overlap_mismatches": 0
+      "overlap_mismatches": 0,
+      "refresh_source": "tencent_qfq"
     }
   },
   "updated_at": "2026-06-10"
