@@ -105,8 +105,11 @@ describe("computeSignals dispatch", () => {
 
 describe("mergeIntraday1345", () => {
   it("rewrites the last bar's close and stretches high/low to include it", () => {
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Shanghai",
+    });
     const bars: OhlcBar[] = [
-      { date: "2024-01-01", open: 10, high: 11, low: 9, close: 10.5 },
+      { date: today, open: 10, high: 11, low: 9, close: 10.5 },
     ];
     const merged = mergeIntraday1345(bars, 12);
     expect(merged[0].close).toBe(12);
@@ -118,6 +121,25 @@ describe("mergeIntraday1345", () => {
 
   it("returns the input unchanged for an empty series", () => {
     expect(mergeIntraday1345([], 12)).toEqual([]);
+  });
+
+  it("appends a today bar when the last stored bar is before today", () => {
+    const bars: OhlcBar[] = [
+      { date: "2022-12-30", open: 0.8, high: 0.83, low: 0.79, close: 0.823 },
+    ];
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Shanghai",
+    });
+    const merged = mergeIntraday1345(bars, 1.413);
+    expect(merged).toHaveLength(2);
+    expect(merged[0].close).toBe(0.823);
+    expect(merged[1]).toMatchObject({
+      date: today,
+      open: 1.413,
+      high: 1.413,
+      low: 1.413,
+      close: 1.413,
+    });
   });
 });
 

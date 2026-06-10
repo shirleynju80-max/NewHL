@@ -395,6 +395,45 @@ def fetch_kline_range(secid: str, beg: str, end: str) -> list[Bar]:
     return parse_klines(klines)
 
 
+def history_span_calendar_days(beg: str, end: str) -> int:
+    bd = datetime.strptime(beg[:8], "%Y%m%d").date()
+    ed = datetime.strptime(end[:8], "%Y%m%d").date()
+    return max(0, (ed - bd).days)
+
+
+def min_expected_trading_bars(beg: str, end: str) -> int:
+    """粗略下限：约 240 交易日 / 365 自然日；短于 3 个月则至少 40 根。"""
+    days = history_span_calendar_days(beg, end)
+    return max(40, int(days * 240 / 365))
+
+
+def history_covers_range(rows: list[Bar], beg: str, end: str) -> bool:
+    """
+    东方财富单次大区间请求可能只返回一段（如仅 2022 年 242 根）。
+    写入 barsmore 前必须首尾日期与根数均合理，否则 RSI/布林会算错。
+    """
+    if not rows:
+        return False
+    min_bars = min_expected_trading_bars(beg, end)
+    if len(rows) < min_bars:
+        return False
+    first = rows[0].date.replace("-", "")
+    last = rows[-1].date.replace("-", "")
+    beg8 = beg[:8]
+    end8 = end[:8]
+    first_d = datetime.strptime(first, "%Y%m%d").date()
+    beg_d = datetime.strptime(beg8, "%Y%m%d").date()
+    last_d = datetime.strptime(last, "%Y%m%d").date()
+    end_d = datetime.strptime(end8, "%Y%m%d").date()
+    # 首根不应晚于 beg 太多（上市日/首交易日口径）
+    if (first_d - beg_d).days > MATURITY_FIRST_BAR_SLACK_DAYS:
+        return False
+    # 末根应接近 end（允许周末/节假日与 T-1）
+    if (end_d - last_d).days > 12:
+        return False
+    return True
+
+
 def fetch_kline_range_with_retry(secid: str, beg: str, end: str, *, retries: int = KLINE_CHUNK_RETRIES) -> list[Bar]:
     last_error: Exception | None = None
     for attempt in range(retries):
@@ -428,7 +467,7 @@ def fetch_adjusted_history(
 
     try:
         rows = fetch_kline_range_with_retry(secid, beg, end_s)
-        if rows:
+        if rows and history_covers_range(rows, beg, end_s):
             return rows
     except Exception:
         pass
@@ -459,7 +498,13 @@ def fetch_adjusted_history(
         if chunk_errors:
             raise RuntimeError(f"kline chunks failed ({chunk_errors} errors)")
         return []
-    return [by_date[d] for d in sorted(by_date)]
+    rows = [by_date[d] for d in sorted(by_date)]
+    if not history_covers_range(rows, beg, end_s):
+        raise RuntimeError(
+            f"incomplete kline history ({len(rows)} bars {rows[0].date}..{rows[-1].date}, "
+            f"expected >= {min_expected_trading_bars(beg, end_s)} from {beg[:8]})"
+        )
+    return rows
 
 
 def parse_cash_per_unit(text: str) -> str:
@@ -732,9 +777,17 @@ def main() -> None:
 
             div_rows_kept.extend(events)
             if needs_refresh:
-                if full_rows:
+                beg = history_beg_for_code(code, listing_dates, existing)
+                end_s = as_of.isoformat().replace("-", "")
+                if full_rows and history_covers_range(full_rows, beg, end_s):
                     barsmore[code] = {b.date: b for b in full_rows}
                     refreshed.append(code)
+                elif full_rows:
+                    errors.append(
+                        f"{code}: incomplete history ({len(full_rows)} bars "
+                        f"{full_rows[0].date}..{full_rows[-1].date}, need >={min_expected_trading_bars(beg, end_s)})"
+                    )
+                    full_rows = []
                 else:
                     errors.append(
                         f"{code}: kline refresh failed"
@@ -745,6 +798,12 @@ def main() -> None:
 
             maturity_done = maturity_refresh and needs_refresh and bool(full_rows)
             stored_sig = sig if (not needs_refresh or full_rows) else (old_sig or sig)
+            stored_bar_rows = (
+                len(full_rows)
+                if full_rows
+                else int(prev_meta.get("bars_rows") or 0)
+                or local_bar_summary(code, existing)[0]
+            )
             by_code_meta[code] = {
                 "dividend_signature": stored_sig,
                 "dividend_events": len(events),
@@ -753,7 +812,7 @@ def main() -> None:
                 "last_refreshed_at": date.today().isoformat()
                 if needs_refresh and full_rows
                 else prev_meta.get("last_refreshed_at", ""),
-                "bars_rows": len(full_rows),
+                "bars_rows": stored_bar_rows,
                 "overlap_mismatches": mismatch_count,
                 "maturity_listing_date": maturity_listing or prev_meta.get("maturity_listing_date", ""),
                 "maturity_status": maturity_note or prev_meta.get("maturity_status", ""),

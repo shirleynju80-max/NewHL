@@ -4,18 +4,33 @@ import { mondayKey, weeklyLastCloses } from "./weeklyAlign";
 
 export type Signal = "BUY" | "SELL" | "HOLD";
 
-/** 与计划一致：用 T-1 全日 K + 当日 13:45 快照价合并为当日「部分 K 线」（实现规范单选：开高低收由当日已有 OHLC 与 last 合成） */
+function shanghaiTodayYmd(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Shanghai" });
+}
+
+/** 用 T-1 全日 K + 当日快照价合并为当日 K；末根已是今日则改价，否则追加今日 bar（避免把 2022 末根误改成实时价）。 */
 export function mergeIntraday1345(
   bars: OhlcBar[],
   snapshotClose: number,
 ): OhlcBar[] {
   if (bars.length === 0) return bars;
   const copy = bars.map((b) => ({ ...b }));
-  const last = copy[copy.length - 1];
+  const today = shanghaiTodayYmd();
   const c = snapshotClose;
-  last.close = c;
-  last.high = Math.max(last.open, last.high, c);
-  last.low = Math.min(last.open, last.low, c);
+  const last = copy[copy.length - 1]!;
+  if (last.date >= today) {
+    last.close = c;
+    last.high = Math.max(last.open, last.high, c);
+    last.low = Math.min(last.open, last.low, c);
+    return copy;
+  }
+  copy.push({
+    date: today,
+    open: c,
+    high: c,
+    low: c,
+    close: c,
+  });
   return copy;
 }
 
