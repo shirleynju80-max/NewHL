@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ETF 前复权 bars 大幅更新前的数据量 / 全段收益率漂移校验（本地与线上共用口径）。"""
+"""ETF 前复权 bars 大幅更新前的数据量 / 对齐区间收益率漂移校验。"""
 from __future__ import annotations
 
 from datetime import datetime
@@ -8,11 +8,17 @@ from typing import Protocol, Sequence
 # 与 sync_etf_adjusted_bars.MATURITY_FIRST_BAR_SLACK_DAYS 一致
 FIRST_BAR_SLACK_DAYS = 45
 DEFAULT_MAX_RETURN_DRIFT_PP = 5.0
+DEFAULT_MIN_ALIGNED_SPAN_DAYS = 60
 
 
 class BarLike(Protocol):
     date: str
     close: str
+
+
+def beg_to_iso(beg: str) -> str:
+    b = beg.replace("-", "")[:8]
+    return f"{b[:4]}-{b[4:6]}-{b[6:8]}"
 
 
 def history_span_calendar_days(beg: str, end: str) -> int:
@@ -74,13 +80,16 @@ def history_covers_range_for_verify(
     return True
 
 
-def total_return_pct(rows: Sequence[BarLike]) -> float | None:
-    if len(rows) < 2:
+def return_pct_between(
+    by_date: dict[str, BarLike],
+    start_d: str,
+    end_d: str,
+) -> float | None:
+    if start_d not in by_date or end_d not in by_date:
         return None
-    sorted_rows = sorted(rows, key=lambda b: b.date)
     try:
-        c0 = float(sorted_rows[0].close)
-        c1 = float(sorted_rows[-1].close)
+        c0 = float(by_date[start_d].close)
+        c1 = float(by_date[end_d].close)
     except (TypeError, ValueError):
         return None
     if c0 <= 0:
@@ -88,22 +97,56 @@ def total_return_pct(rows: Sequence[BarLike]) -> float | None:
     return (c1 / c0 - 1.0) * 100.0
 
 
-def overlap_total_return_drift_pp(
+def aligned_return_window(
     old_by_date: dict[str, BarLike],
     new_by_date: dict[str, BarLike],
+    beg: str,
+) -> tuple[str, str] | None:
+    """
+    对齐比较窗口：
+    - 起点：上市日 beg（两序列共有），否则 beg 之后首个共有交易日
+    - 终点：min(旧末, 新末)，避免新序列多出的尾段 K 线干扰全段收益对比
+    """
+    if not old_by_date or not new_by_date:
+        return None
+    end_d = min(max(old_by_date), max(new_by_date))
+    common = sorted(d for d in set(old_by_date) & set(new_by_date) if d <= end_d)
+    if len(common) < 2:
+        return None
+    beg_iso = beg_to_iso(beg)
+    if beg_iso in common:
+        start_d = beg_iso
+    else:
+        on_or_after = [d for d in common if d >= beg_iso]
+        start_d = on_or_after[0] if on_or_after else common[0]
+    if start_d > end_d:
+        return None
+    return start_d, end_d
+
+
+def aligned_return_drift_pp(
+    old_by_date: dict[str, BarLike],
+    new_by_date: dict[str, BarLike],
+    beg: str,
     *,
-    min_overlap_days: int = 60,
-) -> float | None:
-    overlap_dates = sorted(set(old_by_date) & set(new_by_date))
-    if len(overlap_dates) < min_overlap_days:
-        return None
-    old_rows = [old_by_date[d] for d in overlap_dates]
-    new_rows = [new_by_date[d] for d in overlap_dates]
-    old_tr = total_return_pct(old_rows)
-    new_tr = total_return_pct(new_rows)
+    min_span_days: int = DEFAULT_MIN_ALIGNED_SPAN_DAYS,
+) -> tuple[float | None, str | None, float | None, float | None]:
+    """
+    同起点、同终点（min 末日期）的全段收益差（百分点）。
+    返回 (drift_pp, window_label, old_tr_pct, new_tr_pct)。
+    """
+    window = aligned_return_window(old_by_date, new_by_date, beg)
+    if not window:
+        return None, None, None, None
+    start_d, end_d = window
+    span_days = len([d for d in set(old_by_date) & set(new_by_date) if start_d <= d <= end_d])
+    if span_days < min_span_days:
+        return None, f"{start_d}..{end_d}", None, None
+    old_tr = return_pct_between(old_by_date, start_d, end_d)
+    new_tr = return_pct_between(new_by_date, start_d, end_d)
     if old_tr is None or new_tr is None:
-        return None
-    return abs(new_tr - old_tr)
+        return None, f"{start_d}..{end_d}", old_tr, new_tr
+    return abs(new_tr - old_tr), f"{start_d}..{end_d}", old_tr, new_tr
 
 
 def old_history_trusted(
@@ -119,21 +162,6 @@ def old_history_trusted(
     return history_covers_range(old_rows, beg, end)
 
 
-def return_drift_within_limit(
-    drift_pp: float,
-    baseline_tr_pct: float | None,
-    *,
-    max_pp: float,
-    max_relative: float = 0.015,
-) -> bool:
-    """绝对漂移 ≤ max_pp，或相对基准全段收益 ≤ max_relative（默认 1.5%）。"""
-    if drift_pp <= max_pp:
-        return True
-    if baseline_tr_pct is not None and abs(baseline_tr_pct) >= 50:
-        return drift_pp / abs(baseline_tr_pct) <= max_relative
-    return False
-
-
 def assess_refresh_guard(
     old_by_date: dict[str, BarLike],
     new_rows: Sequence[BarLike],
@@ -147,7 +175,7 @@ def assess_refresh_guard(
     大幅更新写入前校验：
     1) 新序列根数与首尾日期覆盖上市至今；
     2) 若旧序列已可信，新根数不应大幅缩水；
-    3) 若旧序列已可信，全段/重合段收益率漂移不超过 max_return_drift_pp（默认 5pp）。
+    3) 若旧序列已可信，对齐区间 [beg .. min(旧末,新末)] 的全段收益漂移 ≤ 5pp。
     """
     if not new_rows:
         return False, "empty new rows"
@@ -172,28 +200,19 @@ def assess_refresh_guard(
     if len(new_by) < len(old_by_date) * 0.85:
         return False, f"bar count shrank {len(old_by_date)} -> {len(new_by)}"
 
-    old_tr = total_return_pct(old_sorted)
-    new_tr = total_return_pct(new_sorted)
-    if old_tr is not None and new_tr is not None:
-        drift = abs(new_tr - old_tr)
-        if not return_drift_within_limit(
-            drift, old_tr, max_pp=max_return_drift_pp
-        ):
-            return (
-                False,
-                f"total return drift {drift:.2f}pp exceeds {max_return_drift_pp}pp "
-                f"(old {old_tr:.2f}% new {new_tr:.2f}%)",
-            )
+    drift, window, old_tr, new_tr = aligned_return_drift_pp(
+        old_by_date, new_by, beg
+    )
+    if drift is None:
+        if window:
+            return True, f"ok (aligned window {window} too short for return check)"
+        return True, "ok (no aligned window for return check)"
 
-    overlap_drift = overlap_total_return_drift_pp(old_by_date, new_by)
-    if overlap_drift is not None and not return_drift_within_limit(
-        overlap_drift,
-        total_return_pct(old_sorted),
-        max_pp=max_return_drift_pp,
-    ):
+    if drift > max_return_drift_pp:
         return (
             False,
-            f"overlap return drift {overlap_drift:.2f}pp exceeds {max_return_drift_pp}pp",
+            f"aligned return drift {drift:.2f}pp exceeds {max_return_drift_pp}pp "
+            f"on {window} (old {old_tr:.2f}% new {new_tr:.2f}%)",
         )
 
-    return True, "ok"
+    return True, f"ok (aligned {window} drift {drift:.2f}pp)"

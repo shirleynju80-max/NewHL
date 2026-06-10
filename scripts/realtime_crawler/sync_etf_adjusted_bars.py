@@ -789,9 +789,7 @@ def main() -> None:
                         beg,
                         end_s,
                         max_return_drift_pp=args.max_return_drift,
-                        skip_return_drift=(
-                            prev_src == "tencent_qfq" or args.force
-                        ),
+                        skip_return_drift=(prev_src == "tencent_qfq"),
                     )
                 elif full_rows:
                     guard_ok = history_covers_range(full_rows, beg, end_s)
