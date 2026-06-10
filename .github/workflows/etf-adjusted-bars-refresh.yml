@@ -15,6 +15,11 @@ on:
         description: "Seconds between kline year chunks"
         required: false
         default: "1.2"
+      force:
+        description: "Force full Eastmoney qfq refresh (--force)"
+        required: false
+        default: "true"
+        type: boolean
   schedule:
     # 每周日北京时间 20:30（UTC 12:30）跑一次分红事件检查 + 前复权全量刷新
     - cron: "30 12 * * 0"
@@ -60,7 +65,13 @@ jobs:
           if [ -n "${{ github.event.inputs.codes }}" ]; then
             ARGS+=(--codes "${{ github.event.inputs.codes }}")
           fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force }}" != "false" ]; then
+            ARGS+=(--force)
+          fi
           python scripts/realtime_crawler/sync_etf_adjusted_bars.py "${ARGS[@]}"
+
+      - name: Verify primary ETF bars (local)
+        run: python scripts/realtime_crawler/verify_primary_etf_bars.py
 
       - name: Commit adjusted data if changed
         run: |

@@ -125,3 +125,18 @@ jobs:
           BODY="$(curl -fsSL "${SITE}/api/quote?code=513920")"
           echo "${BODY}" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('ok') and d.get('price',0)>0, d"
           echo "Production quote API OK (same-origin JSON, not SPA HTML)"
+
+      - name: Verify production ETF bars match repo
+        run: |
+          set -euo pipefail
+          SITE="https://newhl-dashboard.pages.dev"
+          for code in 515450 512890; do
+            LOCAL="$(grep -c "^${code}," public/data/barsmore.csv || true)"
+            REMOTE="$(curl -fsSL "${SITE}/data/barsmore.csv" | grep -c "^${code}," || true)"
+            echo "${code}: local barsmore=${LOCAL} production=${REMOTE}"
+            if [ "${REMOTE}" -lt $((LOCAL * 95 / 100)) ]; then
+              echo "::error::Production barsmore for ${code} stale (${REMOTE} < ${LOCAL})"
+              exit 1
+            fi
+          done
+          echo "Production barsmore row counts OK vs repo"

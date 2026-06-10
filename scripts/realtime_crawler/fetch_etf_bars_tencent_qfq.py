@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
 """
-从腾讯财经 fqkline 拉取 ETF 前复权日 K，写入独立 CSV（备用水源，非东财 push2his）。
+从腾讯财经 fqkline 拉取 ETF 前复权日 K，写入独立 CSV（应急备用，非主路径）。
 
-用法：
-  python3 scripts/realtime_crawler/fetch_etf_bars_tencent_qfq.py \\
-    --codes 513920,513950,515080,515100,515450,561580 \\
-    --output public/data/barsmore_tencent_qfq.csv
+主路径：scripts/realtime_crawler/sync_etf_adjusted_bars.py（东方财富 fqt=1，与 etf_params 口径一致）。
+本脚本仅在东财不可达时手工应急；--apply 默认走 refresh guard，异常需 --force-apply。
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import sys
 import time
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 import requests
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from etf_bars_refresh_guard import assess_refresh_guard, history_covers_range, min_expected_trading_bars
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "public" / "data"
@@ -65,7 +70,7 @@ def load_listing_dates(codes: set[str]) -> dict[str, str]:
         code = (row.get("code") or "").strip()
         if code not in codes:
             continue
-        listed = (row.get("listed_date") or row.get("first_trade_date") or "").strip()
+        listed = (row.get("first_trade_date") or row.get("listed_date") or "").strip()
         if listed:
             out[code] = listed
     return out
@@ -220,9 +225,19 @@ def write_bars_csv(path: Path, rows: list[dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
-def apply_to_barsmore(codes: set[str], alt_rows: list[dict[str, str]], as_of: str) -> None:
-    """从 bars/barsmore 移除指定代码，将腾讯前复权全量写入 barsmore。"""
-    import json
+def apply_to_barsmore(
+    codes: set[str],
+    alt_rows: list[dict[str, str]],
+    as_of: str,
+    *,
+    listing: dict[str, str],
+    existing_merged: dict[str, dict[str, dict[str, str]]],
+    max_return_drift_pp: float = 5.0,
+    force_apply: bool = False,
+) -> None:
+    """从 bars/barsmore 移除指定代码，将腾讯前复权全量写入 barsmore（默认过 refresh guard）。"""
+    end_s = as_of.replace("-", "")
+    blocked: list[str] = []
 
     alt_by_code: dict[str, list[dict[str, str]]] = {c: [] for c in codes}
     for row in alt_rows:
@@ -230,24 +245,62 @@ def apply_to_barsmore(codes: set[str], alt_rows: list[dict[str, str]], as_of: st
         if code in alt_by_code:
             alt_by_code[code].append({k: row[k] for k in BARS_FIELDS})
 
+    for code in sorted(codes):
+        rows = alt_by_code.get(code, [])
+        if not rows:
+            blocked.append(f"{code}: no tencent rows")
+            continue
+        listing_d = listing.get(code) or rows[0]["date"]
+        beg = listing_d.replace("-", "")
+        old_rows = existing_merged.get(code) or {}
+
+        class _Bar:
+            def __init__(self, d: str, c: str):
+                self.date = d
+                self.close = c
+
+        old_by = {d: _Bar(d, r.get("close", "")) for d, r in old_rows.items()}
+        new_bars = [_Bar(r["date"], r["close"]) for r in rows]
+        if not force_apply:
+            ok, note = assess_refresh_guard(
+                old_by,
+                new_bars,
+                beg,
+                end_s,
+                max_return_drift_pp=max_return_drift_pp,
+            )
+            if not ok:
+                blocked.append(f"{code}: {note}")
+                alt_by_code[code] = []
+
+    if blocked:
+        print("Tencent apply blocked by refresh guard:")
+        for item in blocked:
+            print("  " + item)
+        if not force_apply:
+            print("Use --force-apply to override (not recommended for production).")
+            sys.exit(1)
+
+    codes_ok = {c for c in codes if alt_by_code.get(c)}
+
     for path in (BARS, BARS_MORE):
-        kept, removed = scrub_codes_from_csv(path, codes)
+        kept, removed = scrub_codes_from_csv(path, codes_ok)
         write_bars_csv(path, kept)
         print(f"scrubbed {path.name}: removed {removed} rows")
 
     barsmore_rows = read_csv(BARS_MORE)
-    for code in sorted(codes):
+    for code in sorted(codes_ok):
         barsmore_rows.extend(alt_by_code.get(code, []))
     barsmore_rows.sort(key=lambda r: (r["etf_code"], r["date"]))
     write_bars_csv(BARS_MORE, barsmore_rows)
-    added = sum(len(alt_by_code[c]) for c in codes)
+    added = sum(len(alt_by_code[c]) for c in codes_ok)
     print(f"updated {BARS_MORE} (+{added} tencent rows, total {len(barsmore_rows)})")
 
     meta: dict[str, Any] = {}
     if META.exists():
         meta = json.loads(META.read_text(encoding="utf-8"))
     etfs = meta.setdefault("etfs", {})
-    for code in sorted(codes):
+    for code in sorted(codes_ok):
         rows = alt_by_code.get(code, [])
         prev = etfs.get(code) or {}
         etfs[code] = {
@@ -273,12 +326,35 @@ def main() -> None:
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="拉取后将腾讯前复权写入 barsmore（并从 bars/barsmore 移除同代码旧数据）",
+        help="拉取后将腾讯前复权写入 barsmore（默认过 refresh guard）",
+    )
+    parser.add_argument(
+        "--force-apply",
+        action="store_true",
+        help="跳过 refresh guard（不推荐用于生产）",
+    )
+    parser.add_argument(
+        "--max-return-drift",
+        type=float,
+        default=5.0,
+        help="收益率漂移上限（百分点，默认 5）",
     )
     args = parser.parse_args()
 
     codes = sorted({c.strip() for c in args.codes.split(",") if c.strip()})
     listing = load_listing_dates(set(codes))
+    existing = load_merged_existing(set(codes))
+
+    def do_apply(all_rows: list[dict[str, str]]) -> None:
+        apply_to_barsmore(
+            set(codes),
+            all_rows,
+            args.as_of,
+            listing=listing,
+            existing_merged=existing,
+            max_return_drift_pp=args.max_return_drift,
+            force_apply=args.force_apply,
+        )
 
     alt_by_code: dict[str, dict[str, dict[str, str]]] = {c: {} for c in codes}
     if not args.compare_only:
@@ -297,7 +373,7 @@ def main() -> None:
         print(f"wrote {args.output} ({len(all_rows)} rows)")
         if args.apply:
             print("\n=== apply tencent_qfq → barsmore ===")
-            apply_to_barsmore(set(codes), all_rows, args.as_of)
+            do_apply(all_rows)
             return
     else:
         for row in read_csv(args.output):
@@ -307,10 +383,9 @@ def main() -> None:
         if args.apply:
             all_rows = [alt_by_code[c][d] for c in codes for d in sorted(alt_by_code[c])]
             print("\n=== apply tencent_qfq → barsmore (from cache) ===")
-            apply_to_barsmore(set(codes), all_rows, args.as_of)
+            do_apply(all_rows)
             return
 
-    existing = load_merged_existing(set(codes))
     print("\n=== 对比：腾讯前复权 vs 本地 bars∪barsmore（barsmore 覆盖同日） ===")
     for code in codes:
         r = compare_code(code, alt_by_code[code], existing[code])

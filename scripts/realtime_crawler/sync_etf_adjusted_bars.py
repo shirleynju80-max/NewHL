@@ -35,6 +35,16 @@ from urllib.parse import urlencode
 
 import requests
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from etf_bars_refresh_guard import (
+    assess_refresh_guard,
+    history_covers_range,
+    min_expected_trading_bars,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "public" / "data"
 ETFS = DATA_DIR / "etfs.csv"
@@ -185,16 +195,16 @@ def years_between(earlier: date, later: date) -> float:
 
 
 def load_product_listing_dates() -> dict[str, str]:
-    """etf_products：优先 listed_date，否则 first_trade_date。"""
+    """etf_products：优先 first_trade_date（K 线首根），否则 listed_date。"""
     _, rows = read_csv(ETF_PRODUCTS)
     out: dict[str, str] = {}
     for row in rows:
         code = (row.get("code") or "").strip()
         if not code:
             continue
-        listed = (row.get("listed_date") or row.get("first_trade_date") or "").strip()
-        if listed:
-            out[code] = listed
+        ref = (row.get("first_trade_date") or row.get("listed_date") or "").strip()
+        if ref:
+            out[code] = ref
     return out
 
 
@@ -393,45 +403,6 @@ def fetch_kline_range(secid: str, beg: str, end: str) -> list[Bar]:
     payload = fetch_json(HIS_URL, kline_params(secid, beg, end))
     klines = (payload.get("data") or {}).get("klines") or []
     return parse_klines(klines)
-
-
-def history_span_calendar_days(beg: str, end: str) -> int:
-    bd = datetime.strptime(beg[:8], "%Y%m%d").date()
-    ed = datetime.strptime(end[:8], "%Y%m%d").date()
-    return max(0, (ed - bd).days)
-
-
-def min_expected_trading_bars(beg: str, end: str) -> int:
-    """粗略下限：约 240 交易日 / 365 自然日；短于 3 个月则至少 40 根。"""
-    days = history_span_calendar_days(beg, end)
-    return max(40, int(days * 240 / 365))
-
-
-def history_covers_range(rows: list[Bar], beg: str, end: str) -> bool:
-    """
-    东方财富单次大区间请求可能只返回一段（如仅 2022 年 242 根）。
-    写入 barsmore 前必须首尾日期与根数均合理，否则 RSI/布林会算错。
-    """
-    if not rows:
-        return False
-    min_bars = min_expected_trading_bars(beg, end)
-    if len(rows) < min_bars:
-        return False
-    first = rows[0].date.replace("-", "")
-    last = rows[-1].date.replace("-", "")
-    beg8 = beg[:8]
-    end8 = end[:8]
-    first_d = datetime.strptime(first, "%Y%m%d").date()
-    beg_d = datetime.strptime(beg8, "%Y%m%d").date()
-    last_d = datetime.strptime(last, "%Y%m%d").date()
-    end_d = datetime.strptime(end8, "%Y%m%d").date()
-    # 首根不应晚于 beg 太多（上市日/首交易日口径）
-    if (first_d - beg_d).days > MATURITY_FIRST_BAR_SLACK_DAYS:
-        return False
-    # 末根应接近 end（允许周末/节假日与 T-1）
-    if (end_d - last_d).days > 12:
-        return False
-    return True
 
 
 def fetch_kline_range_with_retry(secid: str, beg: str, end: str, *, retries: int = KLINE_CHUNK_RETRIES) -> list[Bar]:
@@ -679,6 +650,17 @@ def main() -> None:
         "--as-of",
         help="覆盖「今日」用于成立年限判断（YYYY-MM-DD，便于 dry-run）",
     )
+    parser.add_argument(
+        "--max-return-drift",
+        type=float,
+        default=5.0,
+        help="旧序列可信时，全段/重合段收益率允许漂移上限（百分点，默认 5）",
+    )
+    parser.add_argument(
+        "--skip-return-guard",
+        action="store_true",
+        help="跳过收益率漂移校验（仅应急）",
+    )
     args = parser.parse_args()
 
     as_of = parse_ymd(args.as_of) or date.today()
@@ -779,14 +761,24 @@ def main() -> None:
             if needs_refresh:
                 beg = history_beg_for_code(code, listing_dates, existing)
                 end_s = as_of.isoformat().replace("-", "")
-                if full_rows and history_covers_range(full_rows, beg, end_s):
+                old_by_date = existing.get(code) or {}
+                guard_ok, guard_note = (True, "skipped")
+                if full_rows and not args.skip_return_guard:
+                    guard_ok, guard_note = assess_refresh_guard(
+                        old_by_date,
+                        full_rows,
+                        beg,
+                        end_s,
+                        max_return_drift_pp=args.max_return_drift,
+                    )
+                elif full_rows:
+                    guard_ok = history_covers_range(full_rows, beg, end_s)
+                    guard_note = "return guard skipped" if guard_ok else "incomplete history"
+                if full_rows and guard_ok:
                     barsmore[code] = {b.date: b for b in full_rows}
                     refreshed.append(code)
                 elif full_rows:
-                    errors.append(
-                        f"{code}: incomplete history ({len(full_rows)} bars "
-                        f"{full_rows[0].date}..{full_rows[-1].date}, need >={min_expected_trading_bars(beg, end_s)})"
-                    )
+                    errors.append(f"{code}: refresh guard failed ({guard_note})")
                     full_rows = []
                 else:
                     errors.append(
@@ -819,6 +811,9 @@ def main() -> None:
                 "maturity_full_refresh_at": date.today().isoformat()
                 if maturity_done
                 else prev_meta.get("maturity_full_refresh_at", ""),
+                "refresh_source": "eastmoney_fqt1"
+                if needs_refresh and full_rows
+                else prev_meta.get("refresh_source", ""),
             }
             print(
                 f"[{i}/{len(codes)}] {code}: dividends={len(events)} latest_ex={latest_ex or '-'} "
