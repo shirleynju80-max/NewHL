@@ -70,12 +70,12 @@
       "refresh_source": ""
     },
     "159399": {
-      "bars_rows": 312,
-      "dividend_events": 16,
-      "dividend_signature": "40e5f4dbcb05b7c928fcc5a466b6380c2e701d6bf25f90a0770feff2dd56fc8d",
+      "bars_rows": 313,
+      "dividend_events": 5,
+      "dividend_signature": "1c234cdc39c5d0bba1ee9c9a9d8a3aad95efa74854a80d4934039c86c940f43e",
       "last_checked_at": "2026-06-11",
-      "last_refreshed_at": "2026-06-10",
-      "latest_ex_dividend_date": "2026-06-16",
+      "last_refreshed_at": "2026-06-11",
+      "latest_ex_dividend_date": "2025-11-27",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
