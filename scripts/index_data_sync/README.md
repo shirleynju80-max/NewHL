@@ -37,7 +37,7 @@ python3 scripts/index_data_sync/sync_bonds_monthly.py
 
 ## 中证/上证系列口径
 
-数据源为中证官网公开接口：
+数据源为中证官网公开接口（GitHub Actions 偶发 403 时，价格指数/全收益会回退东方财富指数日 K `fqt=0`；仍失败则保留 `index_bars.csv` 已有行并告警，不阻断当日 sync）：
 
 - 价格指数：`/perf/index-perf?indexCode=<价格指数代码>`
 - 全收益指数：先用 `/perf/get-derivative-index?indexCode=<价格指数代码>` 确认，再用 `/perf/index-perf?indexCode=<全收益代码>`

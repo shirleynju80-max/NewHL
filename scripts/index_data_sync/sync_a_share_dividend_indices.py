@@ -4,6 +4,7 @@ import csv
 import json
 import time
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -17,11 +18,26 @@ INDICES = DATA_DIR / "indices.csv"
 TRACKING = DATA_DIR / "index_tracking_etfs.csv"
 
 CSI_BASE = "https://www.csindex.com.cn/csindex-home"
+EM_HIS_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
     "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9",
     "Referer": "https://www.csindex.com.cn/",
+    "Origin": "https://www.csindex.com.cn",
 }
+EM_HEADERS = {
+    "User-Agent": HEADERS["User-Agent"],
+    "Accept": "application/json, text/plain, */*",
+    "Referer": "https://quote.eastmoney.com/",
+}
+# 东方财富指数 secid：多数中证代码为 2.<code>；少数上证体系为 1.<code>
+EM_INDEX_SECID_SH = frozenset({"000300", "000015"})
+SESSION = requests.Session()
+SESSION.trust_env = False
 
 
 @dataclass(frozen=True)
@@ -120,12 +136,19 @@ def normalize_date(raw: Any) -> str:
     return s
 
 
+def warm_csi_session() -> None:
+    try:
+        SESSION.get("https://www.csindex.com.cn/", headers=HEADERS, timeout=30)
+    except Exception:
+        pass
+
+
 def get_json(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     url = f"{CSI_BASE}{path}"
     last_error: Exception | None = None
     for attempt in range(4):
         try:
-            r = requests.get(url, params=params, headers=HEADERS, timeout=45)
+            r = SESSION.get(url, params=params, headers=HEADERS, timeout=45)
             r.raise_for_status()
             data = r.json()
             if data.get("code") != "200":
@@ -135,13 +158,22 @@ def get_json(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
             last_error = exc
             if attempt == 3:
                 break
-            time.sleep(0.8 * (attempt + 1))
+            time.sleep(1.2 * (attempt + 1))
     if last_error:
         raise last_error
     raise RuntimeError(f"CSI API failed {path}")
 
 
-def fetch_close_series(code: str, start_date: str) -> dict[str, float]:
+def infer_em_index_secids(code: str) -> list[str]:
+    c = code.strip().upper()
+    if not c:
+        return []
+    if c in EM_INDEX_SECID_SH:
+        return [f"1.{c}", f"2.{c}"]
+    return [f"2.{c}", f"1.{c}"]
+
+
+def fetch_close_series_csi(code: str, start_date: str) -> dict[str, float]:
     start = start_date.replace("-", "") or "20000101"
     data = get_json(
         "/perf/index-perf",
@@ -149,12 +181,79 @@ def fetch_close_series(code: str, start_date: str) -> dict[str, float]:
     )
     out: dict[str, float] = {}
     for row in data.get("data") or []:
-        date = normalize_date(row.get("tradeDate"))
+        d = normalize_date(row.get("tradeDate"))
         close = row.get("close")
-        if date and close is not None:
-            out[date] = float(close)
+        if d and close is not None:
+            out[d] = float(close)
     if not out:
-        raise RuntimeError(f"{code} returned no close series")
+        raise RuntimeError(f"{code} returned no CSI close series")
+    return out
+
+
+def fetch_close_series_em(code: str, start_date: str) -> dict[str, float]:
+    beg = start_date.replace("-", "") or "20000101"
+    end = date.today().strftime("%Y%m%d")
+    last_error: Exception | None = None
+    for secid in infer_em_index_secids(code):
+        try:
+            r = SESSION.get(
+                EM_HIS_URL,
+                params={
+                    "secid": secid,
+                    "fields1": "f1,f2,f3,f4,f5,f6",
+                    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+                    "klt": "101",
+                    "fqt": "0",
+                    "beg": beg,
+                    "end": end,
+                    "lmt": "120000",
+                },
+                headers=EM_HEADERS,
+                timeout=45,
+            )
+            r.raise_for_status()
+            payload = r.json()
+            klines = (payload.get("data") or {}).get("klines") or []
+            out: dict[str, float] = {}
+            for item in klines:
+                parts = str(item).split(",")
+                if len(parts) < 3:
+                    continue
+                d = normalize_date(parts[0])
+                close = parts[2]
+                if d and close:
+                    out[d] = float(close)
+            if out:
+                return out
+        except Exception as exc:
+            last_error = exc
+    if last_error:
+        raise last_error
+    raise RuntimeError(f"{code} returned no Eastmoney close series")
+
+
+def fetch_close_series(code: str, start_date: str) -> dict[str, float]:
+    try:
+        return fetch_close_series_csi(code, start_date)
+    except requests.HTTPError as exc:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status == 403:
+            print(f"::warning::CSI {code} got 403; fallback to Eastmoney index kline")
+            return fetch_close_series_em(code, start_date)
+        raise
+
+
+def rows_to_close_map(rows: list[dict[str, str]], *, price_key: str = "price_close") -> dict[str, float]:
+    out: dict[str, float] = {}
+    for row in rows:
+        d = (row.get("date") or "").strip()
+        raw = (row.get(price_key) or "").strip()
+        if not d or not raw:
+            continue
+        try:
+            out[d] = float(raw)
+        except ValueError:
+            continue
     return out
 
 
@@ -193,7 +292,13 @@ def fetch_dividend_yield(code: str) -> dict[str, float]:
 
 
 def fetch_basic_info(code: str) -> dict[str, Any]:
-    data = get_json(f"/indexInfo/index-basic-info/{quote(code)}")
+    try:
+        data = get_json(f"/indexInfo/index-basic-info/{quote(code)}")
+    except requests.HTTPError as exc:
+        if getattr(getattr(exc, "response", None), "status_code", None) == 403:
+            print(f"::warning::CSI basic-info {code} got 403; use indices.csv fallback if any")
+            return {}
+        raise
     info = data.get("data") or {}
     if not info.get("indexCode"):
         return {}
@@ -243,19 +348,54 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
 
 
 def sync_index_bars() -> dict[str, dict[str, Any]]:
+    warm_csi_session()
     fields, rows = read_csv(INDEX_BARS)
     required = ["index_code", "date", "tri_close", "price_close", "div_yield_nominal_pct"]
     fieldnames = required + [x for x in fields if x not in required]
     replace_codes = {t.code for t in CSI_TARGETS} | {t.code for t in CNINDEX_TARGETS}
     kept = [row for row in rows if row.get("index_code") not in replace_codes]
+    existing_by_code: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        code = (row.get("index_code") or "").strip()
+        if code in replace_codes:
+            existing_by_code.setdefault(code, []).append(row)
+    indices_meta = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
 
     summary: dict[str, dict[str, Any]] = {}
     new_rows: list[dict[str, str]] = []
     tri_fallback_codes: list[str] = []
+    kept_on_failure: list[str] = []
     for target in CSI_TARGETS:
         basic = fetch_basic_info(target.code)
-        start_date = normalize_date(basic.get("basicDate")) or normalize_date(basic.get("publishDate")) or "2000-01-01"
-        price = fetch_close_series(target.code, start_date)
+        meta = indices_meta.get(target.code) or {}
+        start_date = (
+            normalize_date(basic.get("basicDate"))
+            or normalize_date(basic.get("publishDate"))
+            or (meta.get("base_date") or "").strip()
+            or "2000-01-01"
+        )
+        try:
+            price = fetch_close_series(target.code, start_date)
+        except Exception as exc:
+            old_rows = existing_by_code.get(target.code, [])
+            if old_rows:
+                kept_on_failure.append(target.code)
+                print(
+                    f"::warning::{target.code} price fetch failed ({exc}); "
+                    f"keep {len(old_rows)} existing index_bars rows",
+                )
+                new_rows.extend(old_rows)
+                dates = sorted((row.get("date") or "") for row in old_rows if row.get("date"))
+                summary[target.code] = {
+                    "rows": len(old_rows),
+                    "div_rows": sum(1 for row in old_rows if (row.get("div_yield_nominal_pct") or "").strip()),
+                    "range": [dates[0], dates[-1]] if dates else None,
+                    "tri_expected": target.tri_expected,
+                    "tri_source": "kept-on-fetch-failure",
+                }
+                time.sleep(0.4)
+                continue
+            raise
         tri_source = "not-available"
         tri = {}
         if target.tri_expected:
@@ -274,6 +414,18 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
                     )
                 else:
                     raise
+            except Exception as exc:
+                old_rows = existing_by_code.get(target.code, [])
+                old_tri = rows_to_close_map(old_rows, price_key="tri_close")
+                if old_tri:
+                    tri = old_tri
+                    tri_source = "kept-tri-on-fetch-failure"
+                    print(f"::warning::TRI {target.tri_code} fetch failed ({exc}); reuse existing tri_close")
+                else:
+                    tri = price
+                    tri_source = "fallback-price-on-fetch-failure"
+                    tri_fallback_codes.append(target.code)
+                    print(f"::warning::TRI {target.tri_code} fetch failed ({exc}); fallback to price series")
         div = fetch_dividend_yield(target.code)
         dates = sorted(set(price) & set(tri)) if tri else sorted(price)
         count_div = 0
@@ -297,6 +449,7 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             "tri_expected": target.tri_expected,
             "tri_source": tri_source,
         }
+        time.sleep(0.4)
     for target in CNINDEX_TARGETS:
         meta_by_code = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
         start_date = meta_by_code.get(target.code, {}).get("base_date") or "2000-01-01"
@@ -325,6 +478,8 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
         print(
             f"::warning::TRI fallback used for expected-TRI indices: {', '.join(sorted(tri_fallback_codes))}",
         )
+    if kept_on_failure:
+        print(f"::warning::Kept existing index_bars on fetch failure: {', '.join(sorted(kept_on_failure))}")
     return summary
 
 
