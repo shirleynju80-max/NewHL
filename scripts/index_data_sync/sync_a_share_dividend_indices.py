@@ -232,15 +232,53 @@ def fetch_close_series_em(code: str, start_date: str) -> dict[str, float]:
     raise RuntimeError(f"{code} returned no Eastmoney close series")
 
 
-def fetch_close_series(code: str, start_date: str) -> dict[str, float]:
+def merge_close_series_tail(
+    baseline: dict[str, float],
+    patch: dict[str, float],
+) -> dict[str, float]:
+    """CSI 全量失败时，用 EM 等较短序列至少补齐 baseline 之后的尾 K。"""
+    if not baseline:
+        return patch
+    if not patch:
+        return baseline
+    old_last = max(baseline)
+    out = dict(baseline)
+    for d, close in patch.items():
+        if d >= old_last:
+            out[d] = close
+    return out
+
+
+def fetch_close_series(
+    code: str,
+    start_date: str,
+    *,
+    baseline: dict[str, float] | None = None,
+) -> dict[str, float]:
+    csi_error: Exception | None = None
     try:
         return fetch_close_series_csi(code, start_date)
-    except requests.HTTPError as exc:
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-        if status == 403:
-            print(f"::warning::CSI {code} got 403; fallback to Eastmoney index kline")
-            return fetch_close_series_em(code, start_date)
+    except Exception as exc:
+        csi_error = exc
+    try:
+        em = fetch_close_series_em(code, start_date)
+    except Exception as em_exc:
+        if csi_error:
+            raise csi_error from em_exc
         raise
+    if baseline and len(em) < max(40, int(len(baseline) * 0.85)):
+        merged = merge_close_series_tail(baseline, em)
+        if merged and max(merged) > max(baseline):
+            print(
+                f"::warning::CSI {code} failed ({csi_error}); merged Eastmoney tail "
+                f"({max(baseline)} -> {max(merged)})",
+            )
+            return merged
+        if csi_error:
+            raise csi_error
+        raise RuntimeError(f"{code} Eastmoney series too short vs baseline")
+    print(f"::warning::CSI {code} failed ({csi_error}); fallback to Eastmoney index kline")
+    return em
 
 
 def rows_to_close_map(rows: list[dict[str, str]], *, price_key: str = "price_close") -> dict[str, float]:
@@ -407,10 +445,11 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             or (meta.get("base_date") or "").strip()
             or "2000-01-01"
         )
+        old_rows = existing_by_code.get(target.code, [])
+        old_price = rows_to_close_map(old_rows) if old_rows else None
         try:
-            price = fetch_close_series(target.code, start_date)
+            price = fetch_close_series(target.code, start_date, baseline=old_price)
         except Exception as exc:
-            old_rows = existing_by_code.get(target.code, [])
             if old_rows:
                 kept_on_failure.append(target.code)
                 print(
@@ -433,8 +472,9 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
         tri = {}
         if target.tri_expected:
             tri_source = "official-tri"
+            old_tri = rows_to_close_map(old_rows, price_key="tri_close") if old_rows else None
             try:
-                tri = fetch_close_series(target.tri_code, start_date)
+                tri = fetch_close_series(target.tri_code, start_date, baseline=old_tri)
             except requests.HTTPError as exc:
                 code = getattr(getattr(exc, "response", None), "status_code", None)
                 if code == 403:
@@ -448,8 +488,6 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
                 else:
                     raise
             except Exception as exc:
-                old_rows = existing_by_code.get(target.code, [])
-                old_tri = rows_to_close_map(old_rows, price_key="tri_close")
                 if old_tri:
                     tri = old_tri
                     tri_source = "kept-tri-on-fetch-failure"
