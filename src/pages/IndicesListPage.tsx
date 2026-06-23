@@ -35,7 +35,9 @@ import {
 } from "../lib/indexOfficialLinks";
 import {
   calcMetricBlockForWindow,
+  displayReturnPctForWindow,
   isMetricWindowSatisfied,
+  listReturnColumnLabel,
   type DateValuePoint,
   type MetricWindowId,
 } from "../lib/indexPanelMetrics";
@@ -338,6 +340,7 @@ export function IndicesListPage() {
           metricWindowId,
         );
         const mb = metricForWindow(metricSeries, perfWindow);
+        const displayReturn = displayReturnPctForWindow(mb, metricWindowId);
         const dim = indexToConfigDimension(def.meta.category);
         const spreadRows = buildIndexSpreadRows(
           def,
@@ -356,8 +359,9 @@ export function IndicesListPage() {
           avail: indexDataAvailability(def),
           primary,
           mb,
+          displayReturn,
           windowSatisfied,
-          sharpe: sharpeLike(mb.annualReturnPct, mb.annualVolPct),
+          sharpe: sharpeLike(displayReturn, mb.annualVolPct),
           baseDate: def.meta.base_date?.trim() || null,
           inceptionDate: def.meta.inception_date?.trim() || null,
           divYield: showSpread ? latestSpread?.divYieldPct : null,
@@ -406,8 +410,8 @@ export function IndicesListPage() {
         );
       else
         diff = compare(
-          metricToSortValue(a.mb.annualReturnPct),
-          metricToSortValue(b.mb.annualReturnPct),
+          metricToSortValue(a.displayReturn),
+          metricToSortValue(b.displayReturn),
         );
       if (diff !== 0) return diff;
       if (sort.key !== "dimension") {
@@ -646,7 +650,9 @@ export function IndicesListPage() {
                 {sortableTh("inceptionDate", "成立日", {
                   title: "指数正式发布/成立日",
                 })}
-                {sortableTh("annualReturnPct", "年化")}
+                {sortableTh("annualReturnPct", listReturnColumnLabel(
+                  perfWindow === "all" ? "all" : perfWindow,
+                ))}
                 {sortableTh("maxDrawdownPct", "回撤")}
                 {!compactTable ? sortableTh("annualVolPct", "波动") : null}
                 {sortableTh("sharpeLike", "收益/波动", {
@@ -686,6 +692,7 @@ export function IndicesListPage() {
                   avail,
                   primary,
                   mb,
+                  displayReturn,
                   windowSatisfied,
                   sharpe,
                   baseDate,
@@ -745,7 +752,7 @@ export function IndicesListPage() {
                         {fmtMetaDate(inceptionDate)}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
-                        {fmtPctCell(mb.annualReturnPct, windowSatisfied)}
+                        {fmtPctCell(displayReturn, windowSatisfied)}
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
                         {fmtPctCell(mb.maxDrawdownPct, windowSatisfied)}

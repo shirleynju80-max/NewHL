@@ -333,6 +333,22 @@ export function shouldShowAnnualizedReturn(id: MetricWindowId): boolean {
   );
 }
 
+/** 与指数详情页「收益」列一致：ytd/mtd/m1/m3 用区间收益，长窗用年化。 */
+export function displayReturnPctForWindow(
+  block: MetricBlock,
+  id: MetricWindowId,
+): number | null {
+  return shouldShowAnnualizedReturn(id)
+    ? block.annualReturnPct
+    : block.totalReturnPct;
+}
+
+export function listReturnColumnLabel(id: MetricWindowId): string {
+  if (id === "ytd") return "今年来";
+  if (shouldShowAnnualizedReturn(id)) return "年化";
+  return "区间";
+}
+
 export function buildMetricRow(
   id: string,
   label: string,

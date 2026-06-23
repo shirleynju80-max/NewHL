@@ -295,6 +295,46 @@ def rows_to_close_map(rows: list[dict[str, str]], *, price_key: str = "price_clo
     return out
 
 
+DIV_YIELD_PRESERVE_COLUMNS = [
+    "div_yield_nominal_pct",
+    "div_yield_redrocket_did_pct",
+    "div_yield_redrocket_percentile_pct",
+    "div_yield_equal_pct",
+    "div_yield_ttm_pct",
+    "div_yield_ttm_equal_pct",
+]
+
+
+def preserved_div_by_date(rows: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+    out: dict[str, dict[str, str]] = {}
+    for row in rows:
+        d = (row.get("date") or "").strip()
+        if not d:
+            continue
+        preserved = {
+            col: (row.get(col) or "").strip()
+            for col in DIV_YIELD_PRESERVE_COLUMNS
+            if (row.get(col) or "").strip()
+        }
+        if preserved:
+            out[d] = preserved
+    return out
+
+
+def merge_preserved_div_fields(
+    row: dict[str, str],
+    preserved: dict[str, str],
+    *,
+    div_value: float | None,
+) -> None:
+    if div_value is not None:
+        row["div_yield_nominal_pct"] = f"{div_value:.4f}"
+    for col, val in preserved.items():
+        if col == "div_yield_nominal_pct" and row.get("div_yield_nominal_pct"):
+            continue
+        row[col] = val
+
+
 def fetch_cnindex_close_series(source_code: str, start_date: str) -> dict[str, float]:
     # 国证官网公开行情接口只返回价格指数日收盘序列；未找到独立全收益代码。
     r = requests.get(
@@ -498,21 +538,26 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
                     tri_fallback_codes.append(target.code)
                     print(f"::warning::TRI {target.tri_code} fetch failed ({exc}); fallback to price series")
         div = fetch_dividend_yield(target.code)
+        old_div_by_date = preserved_div_by_date(old_rows)
         dates = sorted(set(price) & set(tri)) if tri else sorted(price)
         count_div = 0
         for date in dates:
             div_value = div.get(date)
-            if div_value is not None:
-                count_div += 1
-            new_rows.append(
-                {
-                    "index_code": target.code,
-                    "date": date,
-                    "tri_close": f"{tri[date]:.4f}" if tri else "",
-                    "price_close": f"{price[date]:.4f}",
-                    "div_yield_nominal_pct": "" if div_value is None else f"{div_value:.4f}",
-                }
+            row = {
+                "index_code": target.code,
+                "date": date,
+                "tri_close": f"{tri[date]:.4f}" if tri else "",
+                "price_close": f"{price[date]:.4f}",
+                "div_yield_nominal_pct": "",
+            }
+            merge_preserved_div_fields(
+                row,
+                old_div_by_date.get(date, {}),
+                div_value=div_value,
             )
+            if (row.get("div_yield_nominal_pct") or "").strip():
+                count_div += 1
+            new_rows.append(row)
         summary[target.code] = {
             "rows": len(dates),
             "div_rows": count_div,
@@ -525,22 +570,27 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
         meta_by_code = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
         start_date = meta_by_code.get(target.code, {}).get("base_date") or "2000-01-01"
         price = fetch_cnindex_close_series(target.source_code, start_date)
+        old_rows = existing_by_code.get(target.code, [])
+        old_div_by_date = preserved_div_by_date(old_rows)
         dates = sorted(price)
+        count_div = 0
         for date in dates:
-            new_rows.append(
-                {
-                    "index_code": target.code,
-                    "date": date,
-                    # 国证公开接口未返回独立全收益序列；用价格序列占位以便详情页展示，
-                    # 口径在脚本文档中说明。
-                    "tri_close": f"{price[date]:.4f}",
-                    "price_close": f"{price[date]:.4f}",
-                    "div_yield_nominal_pct": "",
-                }
-            )
+            row = {
+                "index_code": target.code,
+                "date": date,
+                # 国证公开接口未返回独立全收益序列；用价格序列占位以便详情页展示，
+                # 口径在脚本文档中说明。
+                "tri_close": f"{price[date]:.4f}",
+                "price_close": f"{price[date]:.4f}",
+                "div_yield_nominal_pct": "",
+            }
+            merge_preserved_div_fields(row, old_div_by_date.get(date, {}), div_value=None)
+            if (row.get("div_yield_nominal_pct") or "").strip():
+                count_div += 1
+            new_rows.append(row)
         summary[target.code] = {
             "rows": len(dates),
-            "div_rows": 0,
+            "div_rows": count_div,
             "range": [dates[0], dates[-1]] if dates else None,
             "source": "cnindex-price-only",
         }

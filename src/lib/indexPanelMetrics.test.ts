@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calcMetricBlockForWindow,
+  displayReturnPctForWindow,
   isMetricWindowSatisfied,
   type DateValuePoint,
 } from "./indexPanelMetrics";
@@ -54,6 +55,19 @@ describe("isMetricWindowSatisfied", () => {
     expect(isMetricWindowSatisfied(long, "y5")).toBe(true);
     const block = calcMetricBlockForWindow(long, "y5");
     expect(block.annualReturnPct).not.toBeNull();
+  });
+
+  it("displayReturnPctForWindow：ytd 用区间收益，y5 用年化", () => {
+    const block = calcMetricBlockForWindow(
+      seriesFrom("2026-01-01", "2026-06-20"),
+      "ytd",
+    );
+    expect(displayReturnPctForWindow(block, "ytd")).toBe(block.totalReturnPct);
+    const y5 = calcMetricBlockForWindow(
+      seriesFrom("2015-01-01", "2026-05-20"),
+      "y5",
+    );
+    expect(displayReturnPctForWindow(y5, "y5")).toBe(y5.annualReturnPct);
   });
 });
 
