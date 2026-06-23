@@ -42,7 +42,7 @@ python3 scripts/index_data_sync/sync_bonds_monthly.py
 - 价格指数：`/perf/index-perf?indexCode=<价格指数代码>`
 - 全收益指数：先用 `/perf/get-derivative-index?indexCode=<价格指数代码>` 确认，再用 `/perf/index-perf?indexCode=<全收益代码>`
 - 股息率：中证接口暂不写入。已核对 `/perf/indexCsiDsPe?indexCode=<价格指数代码>` 返回字段 `peg` 与 factsheet 的股息率不一致；例如 `000300` 最新约 14.6，更接近滚动市盈率，不可作为 DP/股息率。已确认红色火箭 DID 的指数，统一由红色火箭脚本补入。
-- 基本信息：`/indexInfo/index-basic-info/<价格指数代码>`
+- 基本信息：`/indexInfo/index-basic-info/<价格指数代码>`（GHA 403 时 **保留** `indices.csv` 已有行，不写成 `name=index_code` 空壳）
 
 写入规则：
 

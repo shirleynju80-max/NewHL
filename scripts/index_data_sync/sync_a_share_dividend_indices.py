@@ -332,6 +332,39 @@ def row_for_target(target: CsiTarget, basic: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def meta_row_is_usable(row: dict[str, str]) -> bool:
+    code = (row.get("index_code") or "").strip()
+    name = (row.get("name") or "").strip()
+    if not code or not name or name == code:
+        return False
+    return bool((row.get("inception_date") or "").strip() or (row.get("base_date") or "").strip())
+
+
+def merge_index_meta_row(
+    target: CsiTarget,
+    existing: dict[str, str],
+    fetched: dict[str, str],
+) -> dict[str, str]:
+    """CSI basic-info 403/空时保留 indices.csv 已有元数据，避免 name=code 覆盖。"""
+    if meta_row_is_usable(fetched):
+        out = dict(fetched)
+        for key, value in existing.items():
+            if key not in out and (value or "").strip():
+                out[key] = value
+        out["index_code"] = target.code
+        out["market"] = target.market
+        out["category"] = target.category
+        return out
+    if meta_row_is_usable(existing):
+        print(f"::warning::CSI basic-info {target.code} empty/403; keep existing indices.csv meta")
+        out = dict(existing)
+        out["index_code"] = target.code
+        out["market"] = target.market
+        out["category"] = target.category
+        return out
+    return fetched
+
+
 def read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     if not path.exists():
         return [], []
@@ -504,7 +537,17 @@ def sync_indices_meta() -> None:
     # 删除旧错码与本次目标旧行，保留其他指数。
     replace_codes = {t.code for t in CSI_TARGETS} | {"000926", "931374", "SPCLLHCP.SPI"}
     kept = [row for row in rows if row.get("index_code") not in replace_codes]
-    new_rows = [row_for_target(t, fetch_basic_info(t.code)) for t in CSI_TARGETS]
+    existing_by_code = {
+        (row.get("index_code") or "").strip(): row
+        for row in rows
+        if (row.get("index_code") or "").strip()
+    }
+    new_rows: list[dict[str, str]] = []
+    for target in CSI_TARGETS:
+        fetched = row_for_target(target, fetch_basic_info(target.code))
+        new_rows.append(
+            merge_index_meta_row(target, existing_by_code.get(target.code) or {}, fetched)
+        )
     new_rows.insert(3, SP_TARGET)
     write_csv(INDICES, fieldnames, new_rows + kept)
 
