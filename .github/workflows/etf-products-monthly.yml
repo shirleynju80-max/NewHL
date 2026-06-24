@@ -44,12 +44,7 @@ jobs:
 
       - name: Commit ETF product data if changed
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/index_tracking_etfs.csv public/data/etf_products.csv
-          if git diff --staged --quiet; then
-            echo "No changes to etf_products.csv"
-          else
-            git commit -m "chore(data): sync ETF product metadata"
-            git push
-          fi
+          bash scripts/github/commit_and_push_data.sh \
+            "chore(data): sync ETF product metadata" \
+            public/data/index_tracking_etfs.csv \
+            public/data/etf_products.csv

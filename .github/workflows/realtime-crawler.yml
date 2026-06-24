@@ -36,12 +36,8 @@ jobs:
 
       - name: Commit realtime data if changed
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/barsmore.csv public/data/etf_dividends.csv public/data/etf_adjusted_bars_meta.json
-          if git diff --staged --quiet; then
-            echo "No changes to ETF realtime / dividend data"
-          else
-            git commit -m "chore(data): run realtime crawler and dividend check"
-            git push
-          fi
+          bash scripts/github/commit_and_push_data.sh \
+            "chore(data): run realtime crawler and dividend check" \
+            public/data/barsmore.csv \
+            public/data/etf_dividends.csv \
+            public/data/etf_adjusted_bars_meta.json

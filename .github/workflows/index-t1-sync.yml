@@ -158,15 +158,13 @@ jobs:
 
       - name: Commit index data if changed
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f public/data/index_bars.csv public/data/indices.csv public/data/index_tracking_etfs.csv public/data/redrocket_div_yield_meta.json public/data/fund_bars.csv
-          if git diff --staged --quiet; then
-            echo "No changes to index data"
-          else
-            git commit -m "chore(data): sync index t-1 data"
-            git push
-          fi
+          bash scripts/github/commit_and_push_data.sh \
+            "chore(data): sync index t-1 data" \
+            public/data/index_bars.csv \
+            public/data/indices.csv \
+            public/data/index_tracking_etfs.csv \
+            public/data/redrocket_div_yield_meta.json \
+            public/data/fund_bars.csv
 
       - name: Notify Feishu / WeCom webhook on warnings or failure
         if: ${{ always() }}
