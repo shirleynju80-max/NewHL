@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sys
 import time
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -38,6 +39,17 @@ EM_HEADERS = {
 EM_INDEX_SECID_SH = frozenset({"000300", "000015"})
 SESSION = requests.Session()
 SESSION.trust_env = False
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from index_bars_incremental import (  # noqa: E402
+    group_rows_by_code,
+    incremental_fetch_start,
+    merge_incremental_close_series,
+    verify_index_bars_consistency,
+)
 
 
 @dataclass(frozen=True)
@@ -530,7 +542,30 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
         writer.writerows(rows)
 
 
-def sync_index_bars() -> dict[str, dict[str, Any]]:
+def ingest_close_series(
+    code: str,
+    fetch_start: str,
+    baseline: dict[str, float] | None,
+    *,
+    field: str,
+    incremental: bool,
+) -> tuple[dict[str, float], dict[str, Any]]:
+    fetched = fetch_close_series(
+        code,
+        fetch_start,
+        baseline=baseline if not incremental else None,
+    )
+    if incremental and baseline:
+        return merge_incremental_close_series(
+            baseline,
+            fetched,
+            code=code,
+            field=field,
+        )
+    return fetched, {"sync_mode": "full"}
+
+
+def sync_index_bars(*, full_refresh: bool = False) -> dict[str, dict[str, Any]]:
     warm_csi_session()
     fields, rows = read_csv(INDEX_BARS)
     required = ["index_code", "date", "tri_close", "price_close", "div_yield_nominal_pct"]
@@ -543,6 +578,10 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
         if code in replace_codes:
             existing_by_code.setdefault(code, []).append(row)
     indices_meta = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
+    before_by_code = {
+        code: list(code_rows)
+        for code, code_rows in existing_by_code.items()
+    }
 
     summary: dict[str, dict[str, Any]] = {}
     new_rows: list[dict[str, str]] = []
@@ -553,9 +592,19 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
         meta = indices_meta.get(target.code) or {}
         old_rows = existing_by_code.get(target.code, [])
         old_price = rows_to_close_map(old_rows) if old_rows else None
-        start_date = resolve_sync_start_date(basic, meta, old_price)
+        use_incremental = not full_refresh and bool(old_price)
+        full_start = resolve_sync_start_date(basic, meta, old_price)
+        fetch_start = (
+            incremental_fetch_start(old_price) if use_incremental else full_start
+        )
         try:
-            price = fetch_close_series(target.code, start_date, baseline=old_price)
+            price, price_meta = ingest_close_series(
+                target.code,
+                fetch_start,
+                old_price,
+                field="price",
+                incremental=use_incremental,
+            )
         except Exception as exc:
             if old_rows:
                 kept_on_failure.append(target.code)
@@ -578,11 +627,21 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             raise
         tri_source = "not-available"
         tri = {}
+        tri_meta: dict[str, Any] = {}
         if target.tri_expected:
             tri_source = "official-tri"
             old_tri = rows_to_close_map(old_rows, price_key="tri_close") if old_rows else None
+            tri_fetch_start = (
+                incremental_fetch_start(old_tri) if use_incremental and old_tri else fetch_start
+            )
             try:
-                tri = fetch_close_series(target.tri_code, start_date, baseline=old_tri)
+                tri, tri_meta = ingest_close_series(
+                    target.tri_code,
+                    tri_fetch_start,
+                    old_tri,
+                    field="tri",
+                    incremental=use_incremental and bool(old_tri),
+                )
             except requests.HTTPError as exc:
                 code = getattr(getattr(exc, "response", None), "status_code", None)
                 if code == 403:
@@ -650,13 +709,30 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             "range": [dates[0], dates[-1]] if dates else None,
             "tri_expected": target.tri_expected,
             "tri_source": tri_source,
+            "price_sync": price_meta.get("sync_mode"),
+            "tri_sync": tri_meta.get("sync_mode") if tri_meta else None,
         }
         time.sleep(0.4)
     for target in CNINDEX_TARGETS:
         meta_by_code = {row.get("index_code"): row for row in read_csv(INDICES)[1]}
-        start_date = meta_by_code.get(target.code, {}).get("base_date") or "2000-01-01"
-        price = fetch_cnindex_close_series(target.source_code, start_date)
         old_rows = existing_by_code.get(target.code, [])
+        old_price = rows_to_close_map(old_rows) if old_rows else None
+        use_incremental = not full_refresh and bool(old_price)
+        start_date = (
+            incremental_fetch_start(old_price)
+            if use_incremental
+            else (meta_by_code.get(target.code, {}).get("base_date") or "2000-01-01")
+        )
+        fetched = fetch_cnindex_close_series(target.source_code, start_date)
+        if use_incremental and old_price:
+            price, cn_meta = merge_incremental_close_series(
+                old_price,
+                fetched,
+                code=target.code,
+                field="price",
+            )
+        else:
+            price, cn_meta = fetched, {"sync_mode": "full"}
         old_div_by_date = preserved_div_by_date(old_rows)
         dates = sorted(price)
         count_div = 0
@@ -679,7 +755,10 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
             "div_rows": count_div,
             "range": [dates[0], dates[-1]] if dates else None,
             "source": "cnindex-price-only",
+            "price_sync": cn_meta.get("sync_mode"),
         }
+    after_by_code = group_rows_by_code(new_rows)
+    verify_index_bars_consistency(before_by_code, after_by_code, replace_codes=replace_codes)
     write_csv(INDEX_BARS, fieldnames, new_rows + kept)
     if tri_fallback_codes:
         print(
@@ -772,7 +851,16 @@ def sync_tracking() -> None:
 
 
 def main() -> None:
-    summary = sync_index_bars()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Sync CSI/CN index bars into index_bars.csv")
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Full-history refresh (default: incremental tail merge when baseline exists)",
+    )
+    args = parser.parse_args()
+    summary = sync_index_bars(full_refresh=args.full)
     sync_indices_meta()
     sync_tracking()
     print(json.dumps(summary, ensure_ascii=False, indent=2))

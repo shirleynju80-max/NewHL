@@ -6,6 +6,10 @@
 
 ```bash
 python3 scripts/index_data_sync/sync_a_share_dividend_indices.py
+# 全量重建（罕见：换源、基日纠错）；日常 CI 默认增量尾 K
+python3 scripts/index_data_sync/sync_a_share_dividend_indices.py --full
+python3 scripts/index_data_sync/verify_index_bars.py
+python3 scripts/index_data_sync/test_incremental_merge.py
 ```
 
 脚本会写入：
@@ -39,6 +43,14 @@ python3 scripts/index_data_sync/sync_bonds_monthly.py
 
 数据源为中证官网公开接口（GitHub Actions 偶发 403/限流时，价格指数/全收益会回退东方财富指数日 K `fqt=0`；EM 历史偏短则仅合并尾 K 到已有序列；仍全失败则保留 `index_bars.csv` 已有行并告警）：
 
+**日常增量（默认）**：本地已有 `index_bars` 时，仅拉末根日前约 120 日历天的 price/tri，再与基线合并：
+
+- 末根 10 日历天之前的历史行 **原样保留**（指数官方序列不像 ETF 前复权那样因分红改写全历史）。
+- 重叠窗口内若官方点位修订，以新拉取为准并 `::warning::` 告警。
+- 写盘前跑 `verify_index_bars_consistency`：禁止首根日期后移、行数变少、保留区 `price_close`/`tri_close` 漂移。
+
+全量 `--full`：从 `basicDate`/基日重拉整段，仅用于换源或人工对账。
+
 - 价格指数：`/perf/index-perf?indexCode=<价格指数代码>`
 - 全收益指数：先用 `/perf/get-derivative-index?indexCode=<价格指数代码>` 确认，再用 `/perf/index-perf?indexCode=<全收益代码>`
 - 股息率：中证接口暂不写入。已核对 `/perf/indexCsiDsPe?indexCode=<价格指数代码>` 返回字段 `peg` 与 factsheet 的股息率不一致；例如 `000300` 最新约 14.6，更接近滚动市盈率，不可作为 DP/股息率。已确认红色火箭 DID 的指数，统一由红色火箭脚本补入。
@@ -49,7 +61,7 @@ python3 scripts/index_data_sync/sync_bonds_monthly.py
 - `tri_close` 写全收益指数 close。
 - `price_close` 写价格指数 close。
 - `div_yield_nominal_pct` 在未确认可靠历史 DP 接口前保持为空；没有数据就留空，不做前向填充、不做 fallback。
-- 价格和全收益从官方 `basicDate` 起拉取，避免用任意早期 `startDate` 触发接口伪造起点行。
+- 首建无基线时从官方 `basicDate`/基日全量拉取；有基线后默认仅增量尾 K（见上）。
 
 ## 国证系列口径
 

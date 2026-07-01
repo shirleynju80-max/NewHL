@@ -51,6 +51,9 @@ jobs:
       - name: Sync index price / total return series
         run: python scripts/index_data_sync/sync_a_share_dividend_indices.py
 
+      - name: Verify index bars consistency
+        run: python scripts/index_data_sync/verify_index_bars.py
+
       - name: Sync Hang Seng index series (optional)
         id: sync_hsi
         if: ${{ env.HSI_LOGIN_USERNAME != '' || env.HSI_ACCESS_TOKEN != '' }}
