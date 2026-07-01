@@ -58,9 +58,24 @@ def test_verify_rejects_truncation() -> None:
     raise AssertionError("expected verify to fail on truncation")
 
 
+def test_verify_rejects_tri_price_ratio_jump() -> None:
+    rows = {
+        "X": [
+            {"index_code": "X", "date": "2026-06-12", "price_close": "4777.32", "tri_close": "4777.32"},
+            {"index_code": "X", "date": "2026-06-15", "price_close": "4891.71", "tri_close": "7265.64"},
+        ]
+    }
+    try:
+        verify_index_bars_consistency(rows, rows, replace_codes={"X"})
+    except SystemExit:
+        return
+    raise AssertionError("expected verify to fail on tri/price ratio jump")
+
+
 def main() -> None:
     test_merge_preserves_prefix()
     test_verify_rejects_truncation()
+    test_verify_rejects_tri_price_ratio_jump()
     print("incremental merge tests ok")
 
 

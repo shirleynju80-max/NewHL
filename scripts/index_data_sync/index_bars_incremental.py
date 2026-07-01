@@ -16,6 +16,8 @@ OVERLAP_DRIFT_ABS_EPS = 0.02
 OVERLAP_DRIFT_REJECT_REL = 0.05
 # 保留区历史点位允许的最大绝对差（浮点/四舍五入）。
 PRESERVED_CLOSE_ABS_EPS = 0.02
+# TRI / price 比例理论上只随分红缓慢变化；大跳通常意味着价格指数与全收益指数拼接。
+TRI_PRICE_RATIO_JUMP_REJECT_REL = 0.05
 
 
 def incremental_fetch_start(baseline: dict[str, float], *, lookback_days: int | None = None) -> str:
@@ -158,6 +160,25 @@ def verify_index_bars_consistency(
                         errors.append(
                             f"{code}: {col} changed before overlap {d} ({old_raw} -> {new_raw})",
                         )
+
+        ratio_rows: list[tuple[str, float]] = []
+        for row in sorted(after, key=lambda r: r.get("date") or ""):
+            d = (row.get("date") or "").strip()
+            price_raw = (row.get("price_close") or "").strip()
+            tri_raw = (row.get("tri_close") or "").strip()
+            if not d or not price_raw or not tri_raw:
+                continue
+            price = float(price_raw)
+            tri = float(tri_raw)
+            if price > 0 and tri > 0:
+                ratio_rows.append((d, tri / price))
+        for (prev_d, prev_ratio), (d, ratio) in zip(ratio_rows, ratio_rows[1:]):
+            rel = abs(ratio / prev_ratio - 1) if prev_ratio else 0
+            if rel > TRI_PRICE_RATIO_JUMP_REJECT_REL:
+                errors.append(
+                    f"{code}: tri/price ratio jumped {rel:.2%} on {d} "
+                    f"({prev_d} {prev_ratio:.6f} -> {ratio:.6f})",
+                )
 
     if errors:
         for msg in errors:
