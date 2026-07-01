@@ -4,10 +4,10 @@ name: Index T-1 sync
 on:
   workflow_dispatch:
   schedule:
-    # 北京时间 18:30；等待中证/国证当日数据发布后再跑。
-    - cron: "30 10 * * 1-5"
-    # 备用窗口：北京时间 20:30；用于网络抖动或上游短时失败后的补跑。
-    - cron: "30 12 * * 1-5"
+    # 北京时间 18:35 / 20:35（UTC+8）；错开 realtime-crawler 18:30 的 push，减少并发冲突。
+    - cron: "35 10 * * 1-5"
+    # 备用窗口：北京时间 20:35。
+    - cron: "35 12 * * 1-5"
 
 concurrency:
   group: index-t1-sync

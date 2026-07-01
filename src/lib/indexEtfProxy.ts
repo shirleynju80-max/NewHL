@@ -68,3 +68,14 @@ export function metricOhlcForIndexRow(
 
 export const SP_INDEX_ETF_PROXY_FOOTNOTE =
   "标普中国 A 股大盘红利低波 50（SPCLLHCP.SPI）、标普港股通低波红利（SPAHLVCP.SPI）等在本地无官方指数全收益序列时，「指数表现矩阵」以对应主跟踪 ETF 的前复权收盘价近似计算年化、回撤与波动；非指数原始全收益口径，仅供精选横向参考。";
+
+export const SP_ETF_PROXY_DETAIL_NOTE =
+  "本地无标普官方指数价格/全收益日序列。下图仅展示主跟踪 ETF 前复权收盘价走势对比，非指数全收益口径。沪深300 对比线来自指数层行情，末根日期可能与 ETF 不同步。";
+
+export function etfProxyPriceLineLabel(
+  productName: string,
+  etfCode: string,
+): string {
+  const name = productName.trim() || etfCode;
+  return `${name}（${etfCode} 前复权）`;
+}

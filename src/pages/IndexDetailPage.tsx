@@ -72,7 +72,11 @@ const QUICK_RANGES = [
 ] as const;
 const RETURN_WINDOWS = RETURN_METRIC_WINDOW_IDS;
 const ANNUAL_WINDOWS = ANNUAL_METRIC_WINDOW_IDS;
-import { SP_INDEX_ETF_PROXY_CODES } from "../lib/indexEtfProxy";
+import {
+  SP_ETF_PROXY_DETAIL_NOTE,
+  SP_INDEX_ETF_PROXY_CODES,
+  etfProxyPriceLineLabel,
+} from "../lib/indexEtfProxy";
 const COMPARE_COLORS = [
   CHART.series.tertiary,
   CHART.series.warn,
@@ -352,7 +356,7 @@ export function IndexDetailPage() {
   useEffect(() => {
     if (!def) return;
     if (spFallbackWithEtf) {
-      setVisibleLineKeys(new Set(["price", "tri", "hs300"]));
+      setVisibleLineKeys(new Set(["price", "hs300"]));
     } else {
       setVisibleLineKeys(defaultVisibleLineKeys(def.bars));
     }
@@ -426,11 +430,15 @@ export function IndexDetailPage() {
       }),
     [compareCodes, indices],
   );
+  const primaryPerfSeries = useMemo<DateValuePoint[]>(
+    () => (spFallbackWithEtf ? priceSeries : triSeries),
+    [spFallbackWithEtf, priceSeries, triSeries],
+  );
   const subjectChartModes = useMemo(
     (): IndexValueMode[] =>
       def
         ? spFallbackWithEtf
-          ? (["tri", "price"] as IndexValueMode[])
+          ? (["price"] as IndexValueMode[])
           : indexChartValueModes(def.bars)
         : [],
     [def, spFallbackWithEtf],
@@ -448,8 +456,14 @@ export function IndexDetailPage() {
         subjectLines.push({
           key: "price",
           code: def?.meta.index_code ?? "",
-          name: priceLabel,
-          color: CHART.series.muted,
+          name:
+            spFallbackWithEtf && primaryProduct
+              ? etfProxyPriceLineLabel(
+                  primaryProduct.name,
+                  primaryProduct.code,
+                )
+              : priceLabel,
+          color: spFallbackWithEtf ? CHART.series.primary : CHART.series.muted,
           series: priceSeries,
         });
         return;
@@ -470,7 +484,7 @@ export function IndexDetailPage() {
       {
         key: "hs300",
         code: "000300",
-        name: "沪深300",
+        name: spFallbackWithEtf ? "沪深300全收益（指数层）" : "沪深300",
         color: CHART.series.secondary,
         series: hs300Series,
       },
@@ -485,6 +499,8 @@ export function IndexDetailPage() {
     hs300Series,
     compareSeriesDefs,
     subjectChartModes,
+    spFallbackWithEtf,
+    primaryProduct,
   ]);
   const visibleLineDefs = useMemo(
     () => lineDefs.filter((line) => visibleLineKeys.has(line.key)),
@@ -494,9 +510,18 @@ export function IndexDetailPage() {
     () => new Map(visibleLineDefs.map((line) => [line.key, line.color])),
     [visibleLineDefs],
   );
-  const perfDates = useMemo(() => triSeries.map((p) => p.date), [triSeries]);
-  const brushPreview = useMemo(() => sampledBrushData(triSeries), [triSeries]);
-  const fullPerf = useMemo(() => calcMetricBlock(triSeries), [triSeries]);
+  const perfDates = useMemo(
+    () => primaryPerfSeries.map((p) => p.date),
+    [primaryPerfSeries],
+  );
+  const brushPreview = useMemo(
+    () => sampledBrushData(primaryPerfSeries),
+    [primaryPerfSeries],
+  );
+  const fullPerf = useMemo(
+    () => calcMetricBlock(primaryPerfSeries),
+    [primaryPerfSeries],
+  );
   const firstPerfDate = perfDates[0];
   const lastPerfDate = perfDates.at(-1);
   const perfStartDate = perfStartDateOverride ?? firstPerfDate;
@@ -558,12 +583,12 @@ export function IndexDetailPage() {
     [visibleLineDefs],
   );
   const visibleReturnWindows = useMemo(
-    () => satisfiedMetricWindowIds(triSeries, RETURN_WINDOWS),
-    [triSeries],
+    () => satisfiedMetricWindowIds(primaryPerfSeries, RETURN_WINDOWS),
+    [primaryPerfSeries],
   );
   const visibleAnnualWindows = useMemo(
-    () => satisfiedMetricWindowIds(triSeries, ANNUAL_WINDOWS),
-    [triSeries],
+    () => satisfiedMetricWindowIds(primaryPerfSeries, ANNUAL_WINDOWS),
+    [primaryPerfSeries],
   );
 
   const shouldShowSpreadModule = Boolean(
@@ -748,7 +773,7 @@ export function IndexDetailPage() {
     setCompareCandidate("");
     setVisibleLineKeys(
       spFallbackWithEtf
-        ? new Set(["price", "tri", "hs300"])
+        ? new Set(["price", "hs300"])
         : defaultVisibleLineKeys(def?.bars),
     );
   }
@@ -769,7 +794,9 @@ export function IndexDetailPage() {
             {def.meta.index_code}
           </p>
           <p className="mt-2 text-xs fin-muted-text">
-            指数研究 · 图表与绩效基于指数全收益序列
+            {spFallbackWithEtf
+              ? "指数研究 · 无官方指数序列时以主跟踪 ETF 前复权收盘价展示走势"
+              : "指数研究 · 图表与绩效基于指数全收益序列"}
           </p>
           {primaryProduct ? (
             <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -885,6 +912,16 @@ export function IndexDetailPage() {
 
       {hasBars ? (
         <>
+          {spFallbackWithEtf ? (
+            <section className="fin-alert-warn text-sm leading-relaxed">
+              <p className="font-medium text-[var(--fin-text)]">
+                无标普官方指数日序列
+              </p>
+              <p className="mt-2 opacity-90">{SP_ETF_PROXY_DETAIL_NOTE}</p>
+            </section>
+          ) : null}
+
+          {!spFallbackWithEtf ? (
           <section
             id="section-perf"
             className="fin-section-scroll fin-panel p-6"
@@ -917,11 +954,22 @@ export function IndexDetailPage() {
               </div>
             </dl>
           </section>
+          ) : null}
 
           <section
             id="section-chart"
             className="fin-section-scroll fin-panel overflow-hidden"
           >
+            {spFallbackWithEtf ? (
+              <div className="border-b border-fin-border px-5 py-4">
+                <h2 className="text-lg font-semibold text-[var(--fin-text)]">
+                  走势对比（ETF 前复权）
+                </h2>
+                <p className="mt-1 text-xs fin-muted-text">
+                  累计收益以各序列可见区间首日为基准归一化，非指数官方全收益口径。
+                </p>
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-3 border-b border-fin-border px-5 py-4 xl:flex-nowrap">
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-[var(--fin-dim)]">
@@ -1110,6 +1158,7 @@ export function IndexDetailPage() {
             ) : null}
           </section>
 
+          {!spFallbackWithEtf ? (
           <section
             id="section-metrics"
             className="fin-section-scroll fin-panel overflow-x-auto"
@@ -1228,12 +1277,13 @@ export function IndexDetailPage() {
               </tbody>
             </table>
           </section>
+          ) : null}
         </>
       ) : (
         <section className="fin-alert-warn">
           <p className="font-medium">暂无指数日序列</p>
           <p className="mt-2 opacity-90">
-            暂无该指数的全收益日序列数据，图表与绩效无法展示。
+            暂无可用日序列，图表与绩效无法展示。
           </p>
         </section>
       )}
@@ -1525,12 +1575,6 @@ export function IndexDetailPage() {
         </p>
         <IndexTrackingProductsTable products={indexProducts} />
       </section>
-
-      {spFallbackWithEtf ? (
-        <div className="px-6 pb-10 text-xs fin-muted-text leading-relaxed">
-          标普指数暂无官方全收益序列，部分图表以主跟踪 ETF 行情近似展示。
-        </div>
-      ) : null}
     </div>
   );
 }

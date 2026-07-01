@@ -4,7 +4,7 @@ import csv
 import json
 import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -52,6 +52,8 @@ class CsiTarget:
 
 
 CSI_TARGETS = [
+    # 详情页对比基准；放首位避免批量拉取后 CSI 403 导致沪深300停更。
+    CsiTarget("000300", "H00300", "", category="宽基"),
     CsiTarget("H30269", "H20269", "512890"),
     CsiTarget("930955", "H20955", "515100"),
     CsiTarget("000922", "H00922", "515080"),
@@ -66,8 +68,6 @@ CSI_TARGETS = [
     CsiTarget("932366", "932366CNY010", "562080", category="现金流"),
     CsiTarget("932367", "932367CNY010", "560120", category="现金流"),
     CsiTarget("932368", "932368CNY010", "563990", category="现金流"),
-    # 详情页对比基准。
-    CsiTarget("000300", "H00300", "", category="宽基"),
 ]
 
 
@@ -143,6 +143,32 @@ def warm_csi_session() -> None:
         pass
 
 
+def warm_em_session() -> None:
+    try:
+        SESSION.get("https://quote.eastmoney.com/", headers=EM_HEADERS, timeout=20)
+    except Exception:
+        pass
+
+
+def tail_start_date(baseline: dict[str, float], *, lookback_days: int = 120) -> str:
+    old_last = max(baseline)
+    return (date.fromisoformat(old_last) - timedelta(days=lookback_days)).isoformat()
+
+
+def resolve_sync_start_date(
+    basic: dict[str, Any],
+    meta: dict[str, str],
+    baseline: dict[str, float] | None,
+) -> str:
+    return (
+        normalize_date(basic.get("basicDate"))
+        or normalize_date(basic.get("publishDate"))
+        or (meta.get("base_date") or "").strip()
+        or (min(baseline) if baseline else "")
+        or "2000-01-01"
+    )
+
+
 def get_json(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     url = f"{CSI_BASE}{path}"
     last_error: Exception | None = None
@@ -194,42 +220,66 @@ def fetch_close_series_em(code: str, start_date: str) -> dict[str, float]:
     beg = start_date.replace("-", "") or "20000101"
     end = date.today().strftime("%Y%m%d")
     last_error: Exception | None = None
-    for secid in infer_em_index_secids(code):
-        try:
-            r = SESSION.get(
-                EM_HIS_URL,
-                params={
-                    "secid": secid,
-                    "fields1": "f1,f2,f3,f4,f5,f6",
-                    "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
-                    "klt": "101",
-                    "fqt": "0",
-                    "beg": beg,
-                    "end": end,
-                    "lmt": "120000",
-                },
-                headers=EM_HEADERS,
-                timeout=45,
-            )
-            r.raise_for_status()
-            payload = r.json()
-            klines = (payload.get("data") or {}).get("klines") or []
-            out: dict[str, float] = {}
-            for item in klines:
-                parts = str(item).split(",")
-                if len(parts) < 3:
-                    continue
-                d = normalize_date(parts[0])
-                close = parts[2]
-                if d and close:
-                    out[d] = float(close)
-            if out:
-                return out
-        except Exception as exc:
-            last_error = exc
+    for attempt in range(3):
+        warm_em_session()
+        for secid in infer_em_index_secids(code):
+            try:
+                r = SESSION.get(
+                    EM_HIS_URL,
+                    params={
+                        "secid": secid,
+                        "fields1": "f1,f2,f3,f4,f5,f6",
+                        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58",
+                        "klt": "101",
+                        "fqt": "0",
+                        "beg": beg,
+                        "end": end,
+                        "lmt": "120000",
+                    },
+                    headers=EM_HEADERS,
+                    timeout=45,
+                )
+                r.raise_for_status()
+                payload = r.json()
+                klines = (payload.get("data") or {}).get("klines") or []
+                out: dict[str, float] = {}
+                for item in klines:
+                    parts = str(item).split(",")
+                    if len(parts) < 3:
+                        continue
+                    d = normalize_date(parts[0])
+                    close = parts[2]
+                    if d and close:
+                        out[d] = float(close)
+                if out:
+                    return out
+            except Exception as exc:
+                last_error = exc
+        if attempt < 2:
+            time.sleep(1.5 * (attempt + 1))
     if last_error:
         raise last_error
     raise RuntimeError(f"{code} returned no Eastmoney close series")
+
+
+def merge_price_tri_series(
+    price: dict[str, float],
+    tri: dict[str, float],
+    *,
+    code: str,
+) -> tuple[dict[str, float], dict[str, float], list[str]]:
+    if not price:
+        return price, tri, []
+    if not tri:
+        return price, price, sorted(price)
+    dates = sorted(set(price) & set(tri))
+    if dates:
+        return price, tri, dates
+    print(
+        f"::warning::{code} price/tri dates disjoint "
+        f"(price ..{max(price)}, tri ..{max(tri)}); align tri to price",
+    )
+    return price, price, sorted(price)
 
 
 def merge_close_series_tail(
@@ -260,12 +310,34 @@ def fetch_close_series(
         return fetch_close_series_csi(code, start_date)
     except Exception as exc:
         csi_error = exc
+
+    if baseline:
+        try:
+            tail = fetch_close_series_csi(code, tail_start_date(baseline))
+            merged = merge_close_series_tail(baseline, tail)
+            if merged and max(merged) > max(baseline):
+                print(
+                    f"::warning::CSI {code} full fetch failed ({csi_error}); "
+                    f"merged CSI tail ({max(baseline)} -> {max(merged)})",
+                )
+                return merged
+        except Exception:
+            pass
+
     try:
         em = fetch_close_series_em(code, start_date)
     except Exception as em_exc:
-        if csi_error:
+        if baseline:
+            try:
+                em = fetch_close_series_em(code, tail_start_date(baseline))
+            except Exception:
+                if csi_error:
+                    raise csi_error from em_exc
+                raise
+        elif csi_error:
             raise csi_error from em_exc
-        raise
+        else:
+            raise
     if baseline and len(em) < max(40, int(len(baseline) * 0.85)):
         merged = merge_close_series_tail(baseline, em)
         if merged and max(merged) > max(baseline):
@@ -479,14 +551,9 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
     for target in CSI_TARGETS:
         basic = fetch_basic_info(target.code)
         meta = indices_meta.get(target.code) or {}
-        start_date = (
-            normalize_date(basic.get("basicDate"))
-            or normalize_date(basic.get("publishDate"))
-            or (meta.get("base_date") or "").strip()
-            or "2000-01-01"
-        )
         old_rows = existing_by_code.get(target.code, [])
         old_price = rows_to_close_map(old_rows) if old_rows else None
+        start_date = resolve_sync_start_date(basic, meta, old_price)
         try:
             price = fetch_close_series(target.code, start_date, baseline=old_price)
         except Exception as exc:
@@ -497,6 +564,7 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
                     f"keep {len(old_rows)} existing index_bars rows",
                 )
                 new_rows.extend(old_rows)
+                warm_csi_session()
                 dates = sorted((row.get("date") or "") for row in old_rows if row.get("date"))
                 summary[target.code] = {
                     "rows": len(old_rows),
@@ -539,7 +607,25 @@ def sync_index_bars() -> dict[str, dict[str, Any]]:
                     print(f"::warning::TRI {target.tri_code} fetch failed ({exc}); fallback to price series")
         div = fetch_dividend_yield(target.code)
         old_div_by_date = preserved_div_by_date(old_rows)
-        dates = sorted(set(price) & set(tri)) if tri else sorted(price)
+        price, tri, dates = merge_price_tri_series(price, tri, code=target.code)
+        if not dates and old_rows:
+            kept_on_failure.append(target.code)
+            print(
+                f"::warning::{target.code} produced no price/tri rows after fetch; "
+                f"keep {len(old_rows)} existing index_bars rows",
+            )
+            new_rows.extend(old_rows)
+            warm_csi_session()
+            old_dates = sorted((row.get("date") or "") for row in old_rows if row.get("date"))
+            summary[target.code] = {
+                "rows": len(old_rows),
+                "div_rows": sum(1 for row in old_rows if (row.get("div_yield_nominal_pct") or "").strip()),
+                "range": [old_dates[0], old_dates[-1]] if old_dates else None,
+                "tri_expected": target.tri_expected,
+                "tri_source": "kept-on-empty-merge",
+            }
+            time.sleep(0.4)
+            continue
         count_div = 0
         for date in dates:
             div_value = div.get(date)

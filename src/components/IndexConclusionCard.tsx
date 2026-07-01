@@ -16,6 +16,10 @@ import {
   indexDataAvailability,
   indexToConfigDimension,
 } from "../lib/configFramework";
+import {
+  SP_ETF_PROXY_DETAIL_NOTE,
+  shouldUseEtfProxyForIndex,
+} from "../lib/indexEtfProxy";
 import { EtfProductCodeLink } from "./EtfProductDetailLink";
 import { etfDashboardHref } from "../lib/etfListingAge";
 import { formatPct } from "../lib/formatDisplay";
@@ -53,6 +57,61 @@ export function IndexConclusionCard({
   const availTone = dataAvailabilityTone(avail);
 
   if (dim === "shareholder_return") {
+    const usesEtfProxy = shouldUseEtfProxyForIndex(
+      def.meta.index_code,
+      def.bars,
+    );
+    if (usesEtfProxy) {
+      return (
+        <section className="fin-panel border-l-[3px] border-l-[var(--fin-up)] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium fin-muted-text">研究结论</p>
+              <p className="mt-2 text-sm fin-muted-text leading-relaxed">
+                {SP_ETF_PROXY_DETAIL_NOTE}
+              </p>
+            </div>
+            {primaryProduct ? (
+              <p className="text-sm fin-muted-text">
+                主跟踪{" "}
+                <EtfProductCodeLink
+                  product={primaryProduct}
+                  etf={primaryEtf}
+                  className="font-mono font-semibold fin-link"
+                />
+              </p>
+            ) : null}
+          </div>
+          {primaryProduct ? (
+            <div className="mt-4 flex flex-wrap gap-3 text-sm">
+              <Link
+                to={etfDashboardHref(
+                  primaryProduct.code,
+                  "intraday",
+                  primaryEtf,
+                  primaryProduct,
+                )}
+                className="fin-link"
+              >
+                盘中监控
+              </Link>
+              <Link
+                to={etfDashboardHref(
+                  primaryProduct.code,
+                  "backtest",
+                  primaryEtf,
+                  primaryProduct,
+                )}
+                className="fin-link"
+              >
+                策略回测
+              </Link>
+            </div>
+          ) : null}
+        </section>
+      );
+    }
+
     const bondAnchor = bondAnchorProp ?? resolveBondAnchorForIndex(def);
     const bondLabel = bondAnchorShortLabel(bondAnchor);
     const spreadRows = buildIndexSpreadRows(def, bondByDate, bondAnchor);
@@ -150,11 +209,14 @@ export function IndexConclusionCard({
   }
 
   const tri = indexSeriesForMode(def.bars, "tri");
-  const overview = buildIndexOverviewFromSeries(
-    tri,
-    def.meta.index_code,
-    def.meta.name,
-  );
+  const usesEtfProxy = shouldUseEtfProxyForIndex(def.meta.index_code, def.bars);
+  const overview = usesEtfProxy
+    ? null
+    : buildIndexOverviewFromSeries(
+        tri,
+        def.meta.index_code,
+        def.meta.name,
+      );
   const y5 = overview?.y5 ?? null;
   const allFallback = !y5 ? (overview?.all ?? null) : null;
   const perfBlock = y5 ?? allFallback;
@@ -207,7 +269,9 @@ export function IndexConclusionCard({
         </div>
       </dl>
       <p className="mt-3 text-sm fin-muted-text">
-        关注企业持续创造现金的能力；长期表现基于指数全收益序列，实盘历史较短时请结合基日回溯理解。
+        {usesEtfProxy
+          ? SP_ETF_PROXY_DETAIL_NOTE
+          : "关注企业持续创造现金的能力；长期表现基于指数全收益序列，实盘历史较短时请结合基日回溯理解。"}
       </p>
     </section>
   );
