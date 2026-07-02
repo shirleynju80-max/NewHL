@@ -13,6 +13,10 @@ from index_bars_incremental import (  # noqa: E402
     merge_incremental_close_series,
     verify_index_bars_consistency,
 )
+from sync_a_share_dividend_indices import (  # noqa: E402
+    rows_have_price_only_tri,
+    tri_series_incompatible_with_price_only_history,
+)
 
 
 def test_merge_preserves_prefix() -> None:
@@ -72,10 +76,29 @@ def test_verify_rejects_tri_price_ratio_jump() -> None:
     raise AssertionError("expected verify to fail on tri/price ratio jump")
 
 
+def test_detects_incompatible_official_tri_tail_on_price_only_history() -> None:
+    old_rows = [
+        {"price_close": "3283.51", "tri_close": "3283.51"},
+        {"price_close": "3218.76", "tri_close": "3218.76"},
+        {"price_close": "3145.71", "tri_close": "3145.71"},
+    ]
+    price = {
+        "2026-06-23": 3109.83,
+        "2026-06-24": 3110.00,
+    }
+    tri = {
+        "2026-06-23": 4955.46,
+        "2026-06-24": 4956.00,
+    }
+    assert rows_have_price_only_tri(old_rows)
+    assert tri_series_incompatible_with_price_only_history(price, tri)
+
+
 def main() -> None:
     test_merge_preserves_prefix()
     test_verify_rejects_truncation()
     test_verify_rejects_tri_price_ratio_jump()
+    test_detects_incompatible_official_tri_tail_on_price_only_history()
     print("incremental merge tests ok")
 
 

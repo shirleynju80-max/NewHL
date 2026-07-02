@@ -294,6 +294,34 @@ def merge_price_tri_series(
     return price, price, sorted(price)
 
 
+def rows_have_price_only_tri(rows: list[dict[str, str]], *, sample_size: int = 20) -> bool:
+    sampled = [
+        row for row in rows
+        if (row.get("price_close") or "").strip() and (row.get("tri_close") or "").strip()
+    ][-sample_size:]
+    if not sampled:
+        return False
+    equal_count = 0
+    for row in sampled:
+        price = float(row["price_close"])
+        tri = float(row["tri_close"])
+        if price > 0 and abs(tri / price - 1) <= 1e-4:
+            equal_count += 1
+    return equal_count / len(sampled) >= 0.9
+
+
+def tri_series_incompatible_with_price_only_history(
+    price: dict[str, float],
+    tri: dict[str, float],
+) -> bool:
+    shared = sorted(set(price) & set(tri))
+    if not shared:
+        return False
+    tail = shared[-10:]
+    ratios = [tri[d] / price[d] for d in tail if price[d] > 0 and tri[d] > 0]
+    return bool(ratios) and max(abs(r - 1) for r in ratios) > 0.05
+
+
 def merge_close_series_tail(
     baseline: dict[str, float],
     patch: dict[str, float],
@@ -666,6 +694,19 @@ def sync_index_bars(*, full_refresh: bool = False) -> dict[str, dict[str, Any]]:
                     print(f"::warning::TRI {target.tri_code} fetch failed ({exc}); fallback to price series")
         div = fetch_dividend_yield(target.code)
         old_div_by_date = preserved_div_by_date(old_rows)
+        if (
+            target.tri_expected
+            and old_rows
+            and rows_have_price_only_tri(old_rows)
+            and tri_series_incompatible_with_price_only_history(price, tri)
+        ):
+            print(
+                f"::warning::{target.code} existing tri_close is price-only; "
+                "keep price series as tri_close to avoid mixed TRI/price history",
+            )
+            tri = dict(price)
+            tri_source = "fallback-price-on-price-only-history"
+            tri_fallback_codes.append(target.code)
         price, tri, dates = merge_price_tri_series(price, tri, code=target.code)
         if not dates and old_rows:
             kept_on_failure.append(target.code)
