@@ -28,6 +28,7 @@ etf_code,year,record_date,ex_dividend_date,cash_per_unit,payment_date,source_url
 159232,2025,2025-10-24,2025-10-27,0.0050,2025-10-28,https://fundf10.eastmoney.com/fhsp_159232.html,2026-07-09
 159232,2026,2026-01-19,2026-01-20,0.0100,2026-01-21,https://fundf10.eastmoney.com/fhsp_159232.html,2026-07-09
 159232,2026,2026-04-14,2026-04-15,0.0100,2026-04-16,https://fundf10.eastmoney.com/fhsp_159232.html,2026-07-09
+159232,2026,2026-07-14,2026-07-15,0.0100,2026-07-16,https://fundf10.eastmoney.com/fhsp_159232.html,2026-07-09
 159399,2025,2025-03-13,2025-03-14,0.0010,2025-03-18,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
 159399,2025,2025-04-15,2025-04-16,0.0030,2025-04-18,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
 159399,2025,2025-05-13,2025-05-14,0.0029,2025-05-16,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
@@ -44,6 +45,7 @@ etf_code,year,record_date,ex_dividend_date,cash_per_unit,payment_date,source_url
 159399,2026,2026-04-14,2026-04-15,0.0028,2026-04-17,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
 159399,2026,2026-05-13,2026-05-14,0.0028,2026-05-18,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
 159399,2026,2026-06-15,2026-06-16,0.0026,2026-06-18,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
+159399,2026,2026-07-14,2026-07-15,0.0023,2026-07-17,https://fundf10.eastmoney.com/fhsp_159399.html,2026-07-09
 159569,2025,2025-06-20,2025-06-23,0.0390,2025-06-25,https://fundf10.eastmoney.com/fhsp_159569.html,2026-07-09
 159569,2025,2025-12-22,2025-12-23,0.0279,2025-12-25,https://fundf10.eastmoney.com/fhsp_159569.html,2026-07-09
 159569,2026,2026-06-23,2026-06-24,0.0166,2026-06-26,https://fundf10.eastmoney.com/fhsp_159569.html,2026-07-09
@@ -91,6 +93,7 @@ etf_code,year,record_date,ex_dividend_date,cash_per_unit,payment_date,source_url
 513920,2025,2025-07-14,2025-07-15,0.0190,2025-07-18,https://fundf10.eastmoney.com/fhsp_513920.html,2026-07-09
 513920,2025,2025-10-22,2025-10-23,0.0200,2025-10-28,https://fundf10.eastmoney.com/fhsp_513920.html,2026-07-09
 513920,2026,2026-01-15,2026-01-16,0.0080,2026-01-21,https://fundf10.eastmoney.com/fhsp_513920.html,2026-07-09
+513920,2026,2026-07-14,2026-07-15,0.0110,2026-07-20,https://fundf10.eastmoney.com/fhsp_513920.html,2026-07-09
 513950,2023,2023-08-29,2023-08-30,0.0297,2023-09-04,https://fundf10.eastmoney.com/fhsp_513950.html,2026-07-09
 513950,2023,2023-11-28,2023-11-29,0.0140,2023-12-04,https://fundf10.eastmoney.com/fhsp_513950.html,2026-07-09
 513950,2024,2024-02-27,2024-02-28,0.0050,2024-03-04,https://fundf10.eastmoney.com/fhsp_513950.html,2026-07-09
@@ -137,6 +140,7 @@ etf_code,year,record_date,ex_dividend_date,cash_per_unit,payment_date,source_url
 515450,2024,2024-12-16,2024-12-17,0.0550,2024-12-20,https://fundf10.eastmoney.com/fhsp_515450.html,2026-07-09
 515450,2025,2025-07-14,2025-07-15,0.0450,2025-07-18,https://fundf10.eastmoney.com/fhsp_515450.html,2026-07-09
 515450,2025,2025-12-12,2025-12-15,0.0300,2025-12-18,https://fundf10.eastmoney.com/fhsp_515450.html,2026-07-09
+515450,2026,2026-07-14,2026-07-15,0.0100,2026-07-20,https://fundf10.eastmoney.com/fhsp_515450.html,2026-07-09
 520550,2025,2025-05-14,2025-05-15,0.0020,2025-05-20,https://fundf10.eastmoney.com/fhsp_520550.html,2026-05-29
 520550,2025,2025-06-16,2025-06-17,0.0040,2025-06-20,https://fundf10.eastmoney.com/fhsp_520550.html,2026-05-29
 520550,2025,2025-07-14,2025-07-15,0.0040,2025-07-18,https://fundf10.eastmoney.com/fhsp_520550.html,2026-05-29
