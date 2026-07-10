@@ -17,6 +17,7 @@ jobs:
   sync-index-data:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     env:
       HSI_STALE_DAYS: "3"
@@ -180,91 +181,13 @@ jobs:
           HSI_STALE: ${{ steps.check_hsi_freshness.outputs.hsi_stale }}
           HSI_LATEST: ${{ steps.check_hsi_freshness.outputs.hsi_latest }}
           JOB_STATUS: ${{ job.status }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          SCHEDULE_CRON: ${{ github.event.schedule }}
+          WORKFLOW_FILE: index-t1-sync.yml
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           SERVER_URL: ${{ github.server_url }}
-        run: |
-          python - <<'PY'
-          import base64
-          import hashlib
-          import hmac
-          import os
-          import time
-          import requests
-
-          status = os.getenv("JOB_STATUS", "")
-          credentials_present = os.getenv("HSI_CREDENTIALS_PRESENT", "") == "true"
-          hsi_outcome = os.getenv("HSI_SYNC_OUTCOME", "")
-          hsi_stale = os.getenv("HSI_STALE", "")
-          hsi_latest = os.getenv("HSI_LATEST", "")
-          run_url = f"{os.getenv('SERVER_URL')}/{os.getenv('REPO')}/actions/runs/{os.getenv('RUN_ID')}"
-
-          hsi_data_stale = bool(hsi_stale) and hsi_stale != "none"
-
-          warnings = []
-          if hsi_data_stale:
-            if credentials_present:
-              warnings.append(
-                f"HSI 数据已过期，请检查 HSI_LOGIN_USERNAME/HSI_LOGIN_PASSWORD 或同步脚本：{hsi_stale}"
-              )
-            else:
-              warnings.append(f"HSI 数据已过期且未配置 HSI 登录凭据：{hsi_stale}")
-          elif credentials_present and hsi_outcome == "failure":
-            print(
-              "HSI 同步失败，但数据仍在容忍期内（未超过 HSI_STALE_DAYS），本次不发告警。"
-            )
-          elif not credentials_present:
-            print("HSI 登录凭据未配置，但数据仍在容忍期内，本次不发告警。")
-
-          should_notify = status != "success" or bool(warnings)
-          if not should_notify:
-            print("No warning/failure; skip webhook notification.")
-            raise SystemExit(0)
-
-          level = "WARN" if status == "success" else "ERROR"
-          text = (
-            f"[{level}] Index T-1 sync {status}\n"
-            f"Repo: {os.getenv('REPO')}\n"
-            f"HSI latest: {hsi_latest}\n"
-            f"Warnings: {', '.join(warnings) if warnings else 'none'}\n"
-            f"Run: {run_url}"
-          )
-
-          feishu = os.getenv("FEISHU_WEBHOOK_URL", "").strip()
-          feishu_secret = os.getenv("FEISHU_BOT_SECRET", "").strip()
-          if feishu:
-            try:
-              payload = {"msg_type": "text", "content": {"text": text}}
-              # 飞书签名校验：timestamp + '\n' + secret 做 HMAC-SHA256，再 base64
-              if feishu_secret:
-                timestamp = str(int(time.time()))
-                string_to_sign = f"{timestamp}\n{feishu_secret}".encode("utf-8")
-                sign = base64.b64encode(
-                  hmac.new(
-                    string_to_sign,
-                    digestmod=hashlib.sha256,
-                  ).digest()
-                ).decode("utf-8")
-                payload["timestamp"] = timestamp
-                payload["sign"] = sign
-              requests.post(
-                feishu,
-                json=payload,
-                timeout=15,
-              ).raise_for_status()
-              print("Feishu notification sent.")
-            except Exception as e:
-              print(f"Feishu notification failed: {e}")
-
-          wecom = os.getenv("WECOM_WEBHOOK_URL", "").strip()
-          if wecom:
-            try:
-              requests.post(
-                wecom,
-                json={"msgtype": "text", "text": {"content": text}},
-                timeout=15,
-              ).raise_for_status()
-              print("WeCom notification sent.")
-            except Exception as e:
-              print(f"WeCom notification failed: {e}")
-          PY
+        run: python scripts/github/notify_index_t1_sync.py
