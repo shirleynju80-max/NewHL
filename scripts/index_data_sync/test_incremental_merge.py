@@ -94,11 +94,21 @@ def test_detects_incompatible_official_tri_tail_on_price_only_history() -> None:
     assert tri_series_incompatible_with_price_only_history(price, tri)
 
 
+def test_existing_official_tri_is_not_price_only_history() -> None:
+    old_rows = [
+        {"price_close": "3000.00", "tri_close": "4500.00"},
+        {"price_close": "3100.00", "tri_close": "4650.00"},
+        {"price_close": "3200.00", "tri_close": "4800.00"},
+    ]
+    assert not rows_have_price_only_tri(old_rows)
+
+
 def main() -> None:
     test_merge_preserves_prefix()
     test_verify_rejects_truncation()
     test_verify_rejects_tri_price_ratio_jump()
     test_detects_incompatible_official_tri_tail_on_price_only_history()
+    test_existing_official_tri_is_not_price_only_history()
     print("incremental merge tests ok")
 
 

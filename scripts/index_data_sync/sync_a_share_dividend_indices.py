@@ -673,13 +673,20 @@ def sync_index_bars(*, full_refresh: bool = False) -> dict[str, dict[str, Any]]:
             except requests.HTTPError as exc:
                 code = getattr(getattr(exc, "response", None), "status_code", None)
                 if code == 403:
-                    # 仅当该指数“按口径应有 TRI”时才允许临时用价格替代，并显式告警。
-                    tri = price
-                    tri_source = "fallback-price-on-403"
-                    tri_fallback_codes.append(target.code)
-                    print(
-                        f"::warning::TRI {target.tri_code} got 403; fallback to price series for {target.code}",
-                    )
+                    if old_tri:
+                        tri = old_tri
+                        tri_source = "kept-tri-on-403"
+                        print(
+                            f"::warning::TRI {target.tri_code} got 403; keep existing tri_close for {target.code}",
+                        )
+                    else:
+                        # 仅首建无旧 TRI 时才允许临时用价格替代，并显式告警。
+                        tri = price
+                        tri_source = "fallback-price-on-403"
+                        tri_fallback_codes.append(target.code)
+                        print(
+                            f"::warning::TRI {target.tri_code} got 403; fallback to price series for {target.code}",
+                        )
                 else:
                     raise
             except Exception as exc:
