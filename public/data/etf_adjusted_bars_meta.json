@@ -135,11 +135,11 @@
       "refresh_source": ""
     },
     "513530": {
-      "bars_rows": 1023,
+      "bars_rows": 1031,
       "dividend_events": 14,
-      "dividend_signature": "57c7dad501258a61005b6141e5aa91b25924c017e4d376aeb2fdc4c4ad787701",
+      "dividend_signature": "e0180379997b04374fd0fa2550083bc3b0af9fc849648adbf18e3996ca0831bf",
       "last_checked_at": "2026-07-24",
-      "last_refreshed_at": "2026-07-14",
+      "last_refreshed_at": "2026-07-24",
       "latest_ex_dividend_date": "2026-07-20",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
@@ -148,11 +148,11 @@
       "refresh_source": "eastmoney_fqt1"
     },
     "513630": {
-      "bars_rows": 633,
+      "bars_rows": 635,
       "dividend_events": 8,
-      "dividend_signature": "786db9c7d725ad932d99cb91f0086971a118a7b995886394c19ba1099f4b5702",
+      "dividend_signature": "9523e9bc30be6af9cb6721ffb2780a2b3a9998b014d96d0773999af138c13dfb",
       "last_checked_at": "2026-07-24",
-      "last_refreshed_at": "2026-07-22",
+      "last_refreshed_at": "2026-07-24",
       "latest_ex_dividend_date": "2026-07-24",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
