@@ -1,10 +1,10 @@
 {
   "etfs": {
     "007751": {
-      "dividend_events": 0,
-      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "dividend_events": 22,
+      "dividend_signature": "79783f15fad91ad4936ff29dc8a7cbf4c403cf30aa66eef76e8a489182076165",
       "last_checked_at": "2026-08-20",
-      "latest_ex_dividend_date": "",
+      "latest_ex_dividend_date": "2026-07-07",
       "product_type": "otc_fund"
     },
     "159143": {
