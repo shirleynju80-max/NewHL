@@ -26,12 +26,12 @@
       "overlap_mismatches": 0
     },
     "159201": {
-      "bars_rows": 374,
-      "dividend_events": 0,
-      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "bars_rows": 387,
+      "dividend_events": 1,
+      "dividend_signature": "28fa515e09552b0efc5a15e2ba25321166a506bcb09eca81eeff50c8bf7a144a",
       "last_checked_at": "2026-09-24",
-      "last_refreshed_at": "2026-09-07",
-      "latest_ex_dividend_date": "",
+      "last_refreshed_at": "2026-09-24",
+      "latest_ex_dividend_date": "2017-06-28",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
