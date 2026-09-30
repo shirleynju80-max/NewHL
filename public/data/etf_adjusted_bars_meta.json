@@ -148,12 +148,12 @@
       "refresh_source": "eastmoney_fqt1"
     },
     "513630": {
-      "bars_rows": 673,
-      "dividend_events": 10,
-      "dividend_signature": "196d726816fabe2e6512fe4351c0628f59867c4508c925b758127e556a678756",
+      "bars_rows": 682,
+      "dividend_events": 2,
+      "dividend_signature": "740797e4e53158b161c8624d662ec5c89898fbfc66ba02d989579c1fbc85c939",
       "last_checked_at": "2026-09-30",
-      "last_refreshed_at": "2026-09-16",
-      "latest_ex_dividend_date": "2026-09-18",
+      "last_refreshed_at": "2026-09-30",
+      "latest_ex_dividend_date": "2018-03-23",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
