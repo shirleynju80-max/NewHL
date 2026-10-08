@@ -1,10 +1,10 @@
 {
   "etfs": {
     "007751": {
-      "dividend_events": 22,
-      "dividend_signature": "79783f15fad91ad4936ff29dc8a7cbf4c403cf30aa66eef76e8a489182076165",
+      "dividend_events": 23,
+      "dividend_signature": "3c03941644fda9c0c2fcee94f56e92466a9e69005174739d6a569ecc8bb206b1",
       "last_checked_at": "2026-10-08",
-      "latest_ex_dividend_date": "2026-07-07",
+      "latest_ex_dividend_date": "2026-10-12",
       "product_type": "otc_fund"
     },
     "159143": {
@@ -70,11 +70,11 @@
       "refresh_source": "eastmoney_fqt1"
     },
     "159399": {
-      "bars_rows": 377,
+      "bars_rows": 391,
       "dividend_events": 20,
-      "dividend_signature": "d41c781a3be4d82c46e32424c106ea405e7b0ed32950d8a5cebbd00ffc8a9395",
+      "dividend_signature": "776223f869305008596c10d3ee2398a3725e16299bf7ea01981724d89217da66",
       "last_checked_at": "2026-10-08",
-      "last_refreshed_at": "2026-09-10",
+      "last_refreshed_at": "2026-10-08",
       "latest_ex_dividend_date": "2026-10-14",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
@@ -214,11 +214,11 @@
     },
     "515100": {
       "bars_rows": 1518,
-      "dividend_events": 0,
+      "dividend_events": 2,
       "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "last_checked_at": "2026-10-08",
       "last_refreshed_at": "2026-10-08",
-      "latest_ex_dividend_date": "",
+      "latest_ex_dividend_date": "2025-12-23",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "",
       "maturity_status": "",
@@ -271,11 +271,11 @@
     },
     "560120": {
       "bars_rows": 204,
-      "dividend_events": 0,
-      "dividend_signature": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "dividend_events": 1,
+      "dividend_signature": "2ae447d191802078cbba4ba7ab20adbe808a6f5a96e85ca193d00610fbd7850e",
       "last_checked_at": "2026-10-08",
       "last_refreshed_at": "2026-06-10",
-      "latest_ex_dividend_date": "",
+      "latest_ex_dividend_date": "2026-07-13",
       "maturity_full_refresh_at": "",
       "maturity_listing_date": "2025-08-05",
       "maturity_status": "maturity: pending (1.17y / 2y, listed 2025-08-05)",
